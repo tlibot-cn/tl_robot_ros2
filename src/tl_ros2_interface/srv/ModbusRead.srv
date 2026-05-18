@@ -1,0 +1,9 @@
+# 读Modbus
+int32 master_id
+int32 addr
+int32 quantity
+tl_ros2_interface/ModbusMasterParam master_param
+---
+bool success
+string message
+int32[] data

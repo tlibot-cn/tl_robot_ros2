@@ -1,0 +1,5 @@
+# 轨迹保存
+string traj_name
+---
+bool success
+string message

@@ -1,0 +1,6 @@
+# 点动
+int32 axis
+bool direction
+---
+bool success
+string message

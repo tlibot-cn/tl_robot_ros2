@@ -1,0 +1,6 @@
+# 获取全局位置点
+string pos_name
+---
+bool success
+string message
+float64[] pos

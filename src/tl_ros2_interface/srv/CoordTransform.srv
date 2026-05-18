@@ -1,0 +1,10 @@
+# 坐标转换
+int32 origin_coord
+int32 target_coord
+int32 form
+float64[] origin_pos
+float64[] reference_pos
+---
+bool success
+string message
+float64[] target_pos

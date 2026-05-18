@@ -1,0 +1,395 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+     Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot
+  name="tl_tcb610">
+  <link
+    name="link0">
+    <inertial>
+      <origin
+        xyz="-0.0020391678669849 0.000208461233542918 0.0437970464318419"
+        rpy="0 0 0" />
+      <mass
+        value="0.230943297728628" />
+      <inertia
+        ixx="0.000578857931988568"
+        ixy="2.4964429515846E-06"
+        ixz="-3.62761994221812E-06"
+        iyy="0.000597326060992728"
+        iyz="8.87603974516217E-07"
+        izz="0.000630268815467388" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb610/link0.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb610/link0.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="link1">
+    <inertial>
+      <origin
+        xyz="-2.8259283596747E-06 -0.0149440554612562 0.0760738628611228"
+        rpy="0 0 0" />
+      <mass
+        value="0.188795049535535" />
+      <inertia
+        ixx="0.000644330974536614"
+        ixy="5.55804168466963E-08"
+        ixz="-5.40921744937873E-08"
+        iyy="0.000669839544820847"
+        iyz="0.000101917330586459"
+        izz="0.000292784373513458" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb610/link1.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb610/link1.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint1"
+    type="revolute">
+    <origin
+      xyz="0 0 0.12215"
+      rpy="0 0 0" />
+    <parent
+      link="link0" />
+    <child
+      link="link1" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-3.1416"
+      upper="3.1416"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link2">
+    <inertial>
+      <origin
+        xyz="-3.41557976948607E-06 -0.154403021433948 0.0117350233964887"
+        rpy="0 0 0" />
+      <mass
+        value="0.336430035256786" />
+      <inertia
+        ixx="0.00409550966536826"
+        ixy="2.27297893015086E-07"
+        ixz="-4.07589463639515E-08"
+        iyy="0.000379304151063669"
+        iyz="-6.4612439746862E-05"
+        izz="0.00414165289962892" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb610/link2.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb610/link2.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint2"
+    type="revolute">
+    <origin
+      xyz="0 0.00665 0.14085"
+      rpy="-1.5708 0 0" />
+    <parent
+      link="link1" />
+    <child
+      link="link2" />
+    <axis
+      xyz="0 0 -1" />
+    <limit
+      lower="-2.3737"
+      upper="2.3737"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link3">
+    <inertial>
+      <origin
+        xyz="2.74481746994064E-06 0.065499648512279 0.0144299040479778"
+        rpy="0 0 0" />
+      <mass
+        value="0.145368246128048" />
+      <inertia
+        ixx="0.000526467481082564"
+        ixy="2.65464402133674E-08"
+        ixz="8.84179853188939E-09"
+        iyy="0.000131598077920685"
+        iyz="7.17192965076357E-05"
+        izz="0.000544513478137754" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb610/link3.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb610/link3.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint3"
+    type="revolute">
+    <origin
+      xyz="0 -0.3205 -0.0118"
+      rpy="3.1416 0 1.5708" />
+    <parent
+      link="link2" />
+    <child
+      link="link3" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-0.9935"
+      upper="4.1423"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link4">
+    <inertial>
+      <origin
+        xyz="5.09035849398104E-06 -0.0131445029955622 0.0626745222356143"
+        rpy="0 0 0" />
+      <mass
+        value="0.0899815381638705" />
+      <inertia
+        ixx="0.000204808170770652"
+        ixy="1.15810515435477E-08"
+        ixz="-4.0698804813627E-08"
+        iyy="0.000207969515429875"
+        iyz="3.60476542196075E-05"
+        izz="7.75188399631723E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb610/link4.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb610/link4.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint4"
+    type="revolute">
+    <origin
+      xyz="0 0.16615 -0.00515"
+      rpy="-1.5708 0 0" />
+    <parent
+      link="link3" />
+    <child
+      link="link4" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-3.1416"
+      upper="3.1416"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link5">
+    <inertial>
+      <origin
+        xyz="-1.29749982976207E-05 -0.0398707312600616 0.00873816110028223"
+        rpy="0 0 0" />
+      <mass
+        value="0.0915266768417461" />
+      <inertia
+        ixx="0.000167005961446374"
+        ixy="3.62631341230194E-08"
+        ixz="1.27355290243352E-08"
+        iyy="8.07130413912459E-05"
+        iyz="-3.15887030571337E-05"
+        izz="0.000170834721676769" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb610/link5.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb610/link5.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint5"
+    type="revolute">
+    <origin
+      xyz="0 0.00615 0.11335"
+      rpy="-1.5708 1.5708 0" />
+    <parent
+      link="link4" />
+    <child
+      link="link5" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-3.8386"
+      upper="0.6970"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link6">
+    <inertial>
+      <origin
+        xyz="-0.000399244210043394 -8.96781331540938E-05 0.0324677284599193"
+        rpy="0 0 0" />
+      <mass
+        value="0.0756964619305608" />
+      <inertia
+        ixx="5.73362607159586E-05"
+        ixy="-4.71066536653812E-09"
+        ixz="3.25485729113061E-07"
+        iyy="5.76036490584805E-05"
+        iyz="1.43757810045802E-08"
+        izz="7.09151369147825E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb610/link6.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb610/link6.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint6"
+    type="revolute">
+    <origin
+      xyz="0 -0.10615 -0.00615"
+      rpy="1.5708 0 0" />
+    <parent
+      link="link5" />
+    <child
+      link="link6" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-3.1416"
+      upper="3.1416"
+      effort="0"
+      velocity="0" />
+  </joint>
+</robot>

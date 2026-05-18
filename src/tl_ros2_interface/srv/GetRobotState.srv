@@ -1,0 +1,14 @@
+# 获取机械臂状态
+int32 channel
+bool stop
+int32 mode
+int32 interval 
+bool io_state
+int32 position
+bool detail_motion_pos
+int32 pos_sum
+string[] io_port
+string[] optional
+---
+bool success
+string message

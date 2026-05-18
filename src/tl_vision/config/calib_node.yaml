@@ -1,0 +1,11 @@
+calib_node:
+  ros__parameters:
+    robot_ip: "192.168.1.13"
+    robot_port: "6001"
+    camera_width: 640
+    camera_height: 480
+    camera_fps: 30
+    chessboard_xx: 11
+    chessboard_yy: 8
+    chessboard_L: 0.02
+    save_path: "/home/ubuntu/tl_robot/src/tl_vision/eye_hand_data"

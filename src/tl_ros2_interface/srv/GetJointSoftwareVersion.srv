@@ -1,0 +1,5 @@
+# 获取独立轴当前电机电流
+int32 axis_num
+---
+bool success
+string message

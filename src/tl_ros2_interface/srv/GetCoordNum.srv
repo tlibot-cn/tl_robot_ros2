@@ -1,0 +1,6 @@
+# 获取坐标系编号
+---
+bool success
+string message
+int32 tool_num
+int32 user_num

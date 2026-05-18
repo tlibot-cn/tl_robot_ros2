@@ -1,0 +1,5 @@
+# 设置零位
+int32 axis
+---
+bool success
+string message

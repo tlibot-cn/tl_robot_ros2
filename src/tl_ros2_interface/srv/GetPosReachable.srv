@@ -1,0 +1,6 @@
+# 目标是否可达
+float64[] pos
+string move_type 
+---
+bool success
+string message

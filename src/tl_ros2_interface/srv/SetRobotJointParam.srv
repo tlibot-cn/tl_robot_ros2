@@ -1,0 +1,6 @@
+# 设置机械臂关节参数
+int32 id
+tl_ros2_interface/RobotJointParam param
+---
+bool success
+string message

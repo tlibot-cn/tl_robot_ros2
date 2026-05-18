@@ -1,0 +1,453 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+     Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot
+  name="tl_tcb705">
+  <link
+    name="link0">
+    <inertial>
+      <origin
+        xyz="0.000708831292588153 -8.6107534914906E-05 0.0437241147546661"
+        rpy="0 0 0" />
+      <mass
+        value="0.184997778677384" />
+      <inertia
+        ixx="0.000408655880224899"
+        ixy="-6.47925326858498E-07"
+        ixz="3.45905947380277E-06"
+        iyy="0.000402045698173366"
+        iyz="-4.42033155327597E-07"
+        izz="0.000394929591269372" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb705/link0.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb705/link0.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="link1">
+    <inertial>
+      <origin
+        xyz="-1.4189019277123E-05 -0.0147043432758809 0.0739725067130976"
+        rpy="0 0 0" />
+      <mass
+        value="0.140788242034027" />
+      <inertia
+        ixx="0.000389189148274927"
+        ixy="9.56014640706854E-09"
+        ixz="-4.0052899016421E-08"
+        iyy="0.000404624430565959"
+        iyz="5.39754948564023E-05"
+        izz="0.000158805233771653" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb705/link1.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb705/link1.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint1"
+    type="revolute">
+    <origin
+      xyz="0 0 0.11455"
+      rpy="0 0 0" />
+    <parent
+      link="link0" />
+    <child
+      link="link1" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-3.1416"
+      upper="3.1416"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link2">
+    <inertial>
+      <origin
+        xyz="9.19207954618283E-06 -0.0560553900664352 0.0115243937335766"
+        rpy="0 0 0" />
+      <mass
+        value="0.124453837315585" />
+      <inertia
+        ixx="0.000370562388619595"
+        ixy="-1.23017622950655E-08"
+        ixz="-1.0794523166152E-08"
+        iyy="0.000121240641801281"
+        iyz="-7.13336123519827E-05"
+        izz="0.000380165496119024" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb705/link2.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb705/link2.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint2"
+    type="revolute">
+    <origin
+      xyz="0 0.00715 0.12725"
+      rpy="-1.5708 0 0" />
+    <parent
+      link="link1" />
+    <child
+      link="link2" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-2.4086"
+      upper="2.4086"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link3">
+    <inertial>
+      <origin
+        xyz="-0.000129925169837953 0.0129886993835705 0.0728745662870723"
+        rpy="0 0 0" />
+      <mass
+        value="0.114589017421966" />
+      <inertia
+        ixx="0.000277976900897136"
+        ixy="-1.68692363161655E-07"
+        ixz="9.63556530398865E-07"
+        iyy="0.000287459181446612"
+        iyz="-3.76317124310853E-05"
+        izz="9.72100160237893E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb705/link3.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb705/link3.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint3"
+    type="revolute">
+    <origin
+      xyz="0 -0.14065 -0.00735"
+      rpy="1.5708 0 0" />
+    <parent
+      link="link2" />
+    <child
+      link="link3" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-3.1416"
+      upper="3.1416"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link4">
+    <inertial>
+      <origin
+        xyz="-6.46545148829825E-06 0.0577535239528024 0.00878471471985597"
+        rpy="0 0 0" />
+      <mass
+        value="0.0945260086054296" />
+      <inertia
+        ixx="0.000237785840924209"
+        ixy="5.31249473535568E-08"
+        ixz="-1.09590833982248E-09"
+        iyy="6.42616332896452E-05"
+        iyz="4.60316398883639E-05"
+        izz="0.000240859287939207" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb705/link4.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb705/link4.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint4"
+    type="revolute">
+    <origin
+      xyz="0 -0.00815 0.12915"
+      rpy="1.5708 1.5708 0" />
+    <parent
+      link="link3" />
+    <child
+      link="link4" />
+    <axis
+      xyz="0 0 -1" />
+    <limit
+      lower="-4.0666"
+      upper="0.9250"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link5">
+    <inertial>
+      <origin
+        xyz="1.01643219096706E-05 -0.0129940461144523 0.0552922958436949"
+        rpy="0 0 0" />
+      <mass
+        value="0.072084877607265" />
+      <inertia
+        ixx="0.000105414979838941"
+        ixy="1.21065620530406E-08"
+        ixz="2.48504586308139E-09"
+        iyy="0.000106134770502875"
+        iyz="1.86457236507763E-05"
+        izz="4.55695530042532E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb705/link5.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb705/link5.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint5"
+    type="revolute">
+    <origin
+      xyz="0 0.13665 -0.00835"
+      rpy="-1.5708 0 0" />
+    <parent
+      link="link4" />
+    <child
+      link="link5" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-3.1416"
+      upper="3.1416"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link6">
+    <inertial>
+      <origin
+        xyz="-1.08589514110573E-06 -0.0369306844975036 0.0120181285669343"
+        rpy="0 0 0" />
+      <mass
+        value="0.0641129523179877" />
+      <inertia
+        ixx="9.88028571604253E-05"
+        ixy="7.57179561200419E-09"
+        ixz="-3.11343531446862E-09"
+        iyy="4.10033810292749E-05"
+        iyz="-2.10914884308664E-05"
+        izz="9.73769574430475E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb705/link6.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb705/link6.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint6"
+    type="revolute">
+    <origin
+      xyz="0 0.00365 0.09315"
+      rpy="-1.5708 1.5708 0" />
+    <parent
+      link="link5" />
+    <child
+      link="link6" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-3.8921"
+      upper="0.7505"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link7">
+    <inertial>
+      <origin
+        xyz="0.000439337912566585 -0.00011463025858148 0.0338360355605346"
+        rpy="0 0 0" />
+      <mass
+        value="0.0531024374144144" />
+      <inertia
+        ixx="3.09184116553573E-05"
+        ixy="-1.15972581719968E-08"
+        ixz="-2.34766421628389E-07"
+        iyy="3.18708092165575E-05"
+        iyz="6.28848515529782E-08"
+        izz="3.41446110066842E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb705/link7.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://tl_description/meshes/tl_tcb705/link7.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint7"
+    type="revolute">
+    <origin
+      xyz="0 -0.09515 -0.00385"
+      rpy="1.5708 0 0" />
+    <parent
+      link="link6" />
+    <child
+      link="link7" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-3.1416"
+      upper="3.1416"
+      effort="0"
+      velocity="0" />
+  </joint>
+</robot>

@@ -1,0 +1,6 @@
+# 日志下载
+int32 count
+string directory_path
+---
+bool success
+string message

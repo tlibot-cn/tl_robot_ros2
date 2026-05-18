@@ -1,0 +1,5 @@
+# 设置速度
+float64 speed
+---
+bool success
+string message

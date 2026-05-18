@@ -1,0 +1,7 @@
+# 打开ServoJ
+float64[] vmax
+float64[] amax
+float64[] jmax
+---
+bool success
+string message

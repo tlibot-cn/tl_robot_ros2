@@ -1,0 +1,6 @@
+# 设置数字输出
+int32 port
+int32 value
+---
+bool success
+string message

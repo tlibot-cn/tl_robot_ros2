@@ -1,0 +1,6 @@
+# 设置工具参数
+int32 tool_num
+tl_ros2_interface/ToolParam param
+---
+bool success
+string message

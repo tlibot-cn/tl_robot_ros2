@@ -1,0 +1,16 @@
+yolo_node:
+  ros__parameters:
+    model_path: "/home/ubuntu/yolov8n.pt"
+    confidence_threshold: 0.5
+    device: "cpu"
+    rgb_topic: "/camera/camera/color/image_raw"
+    depth_topic: "/camera/camera/depth/image_rect_raw"
+    camera.fx: 610.0
+    camera.fy: 610.0
+    camera.cx: 320.0
+    camera.cy: 240.0
+    depth_median_window: 10
+    max_valid_depth: 10.0
+    min_valid_depth: 0.1
+    show_display: true
+    display_window_name: "YOLO Detection"

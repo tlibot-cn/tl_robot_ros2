@@ -1,0 +1,8 @@
+# 配置控制器有线网口IP
+string name 
+string addr
+string gateway
+string dns
+---
+bool success
+string message

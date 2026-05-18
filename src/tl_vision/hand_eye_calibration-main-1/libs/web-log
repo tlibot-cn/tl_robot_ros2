@@ -1,0 +1,10 @@
+2026-05-12 09:45:23 - libs.auxiliary - INFO: create folder eye_hand_data/data20260512
+2026-05-12 09:45:23 - libs.auxiliary - INFO: command:['ping', '-c', '1', '192.168.1.18']
+2026-05-12 09:45:26 - libs.auxiliary - INFO: command:['ping', '-c', '1', '192.168.10.18']
+2026-05-12 09:45:36 - __main__ - INFO: robot_ip:False
+2026-05-12 09:47:18 - libs.auxiliary - INFO: create folder eye_hand_data/data2026051201
+2026-05-12 09:47:18 - libs.auxiliary - INFO: command:['ping', '-c', '1', '192.168.1.13']
+2026-05-12 09:47:18 - __main__ - INFO: robot_ip:192.168.1.13
+2026-05-12 09:47:44 - libs.auxiliary - INFO: create folder eye_hand_data/data2026051202
+2026-05-12 09:47:44 - libs.auxiliary - INFO: command:['ping', '-c', '1', '192.168.1.13']
+2026-05-12 09:47:44 - __main__ - INFO: robot_ip:192.168.1.13

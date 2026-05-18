@@ -1,0 +1,6 @@
+# 设置用户坐标系
+int32 user_num
+tl_ros2_interface/CartesianPose pos
+---
+bool success
+string message

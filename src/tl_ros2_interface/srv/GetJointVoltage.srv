@@ -1,0 +1,6 @@
+# 获取关节电压
+---
+bool success
+string message
+float64[] joint_voltage
+float64[] positioner_voltage

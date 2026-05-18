@@ -1,0 +1,5 @@
+# 获取DH参数
+---
+bool success
+string message
+tl_ros2_interface/RobotDHParam param

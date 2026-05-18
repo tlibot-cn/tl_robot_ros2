@@ -1,0 +1,6 @@
+# 获取所有数字输入输出
+---
+bool success
+string message
+int32[] input
+int32[] output

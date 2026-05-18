@@ -1,0 +1,5 @@
+# 是否打开MoveJ队列运动模式
+bool status
+---
+bool success
+string message

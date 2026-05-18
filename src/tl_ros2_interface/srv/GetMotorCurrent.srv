@@ -1,0 +1,5 @@
+# 获取独立轴当前电机电流
+---
+bool success
+string message
+float64[] motor_current

@@ -1,0 +1,5 @@
+# 设置当前坐标系
+int32 coord
+---
+bool success
+string message

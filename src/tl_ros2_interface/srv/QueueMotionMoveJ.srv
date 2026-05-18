@@ -1,0 +1,6 @@
+# MoveJ队列运动模式
+bool is_continue
+tl_ros2_interface/MoveCommand cmd
+---
+bool success
+string message

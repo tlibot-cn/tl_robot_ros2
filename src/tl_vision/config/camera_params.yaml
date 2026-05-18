@@ -1,0 +1,8 @@
+realsense_camera:
+  ros__parameters:
+    rgb_camera.profile: "640x480x30"
+    depth_module.depth_profile: "640x480x30"
+    align_depth.enable: true
+    enable_color: true
+    enable_depth: true
+    enable_sync: true

@@ -1,0 +1,6 @@
+# 设置坐标系编号
+int32 tool_num
+int32 user_num
+---
+bool success
+string message

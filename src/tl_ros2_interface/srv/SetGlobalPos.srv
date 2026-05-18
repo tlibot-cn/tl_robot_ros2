@@ -1,0 +1,6 @@
+# 设置全局位置点
+string pos_name
+float64[] pos_info
+---
+bool success
+string message

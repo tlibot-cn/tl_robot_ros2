@@ -1,0 +1,5 @@
+# 获取当前坐标系
+---
+bool success
+string message
+int32 coord

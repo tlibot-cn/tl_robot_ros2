@@ -1,0 +1,5 @@
+# 获取关节温度
+---
+bool success
+string message
+float64[] temperatures

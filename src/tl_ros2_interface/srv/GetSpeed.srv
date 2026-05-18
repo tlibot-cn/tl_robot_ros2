@@ -1,0 +1,5 @@
+# 获取速度
+---
+bool success
+string message
+float64 speed
