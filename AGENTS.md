@@ -103,3 +103,73 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 - **tl_vision/hand_eye_calibration-main-1/** 是独立 Python 工具，不属于 ROS2 包。直接用 `python compute_in_hand.py` 或 `python compute_to_hand.py` 运行。
 - **无自动化测试**，仅有 ament 代码风格检查脚手架。`test/` 目录只包含 `ament_copyright`、`ament_flake8`、`ament_pep257`。
 - **开发环境通过 Docker 搭建**（Docker 配置不在本仓库中）。构建和运行均在容器内进行。
+
+## 命名规范
+
+### C++ 命名规范
+
+| 元素 | 规范 | 示例 |
+|------|------|------|
+| **文件名** | snake_case | `tl_driver.cpp`、`tl_driver.h` |
+| **类名** | PascalCase | `TL_Arm`、`MessageLists` |
+| **枚举名** | PascalCase | `MessageLists` |
+| **枚举值** | UPPER_SNAKE_CASE | `ROBOT_STATE`、`SUCCESS`、`RECEIVE_FAILED` |
+| **成员变量** | snake_case + 下划线后缀 | `arm_ip_`、`socket_fd_`、`is_connected_`、`joint_state_pub_` |
+| **普通变量** | snake_case | `arm_ip`、`socket_fd`、`state` |
+| **成员函数** | camelCase | `handle_connect_service`、`power_on`、`publish_arm_state` |
+| **ROS 服务回调** | `handle_` + `{service}` + `_service` | `handle_connect_service`、`handle_set_speed_service` |
+| **ROS 话题回调** | `handle_` + `{topic}` + `_topic` | `handle_movej_topic`、`handle_movel_topic` |
+| **命名空间** | ROS 标准（`::` 分隔） | `tl_ros2_interface::srv::SetSpeed` |
+| **头文件宏保护** | `包名__文件名_H_` | `#ifndef TL_DRIVER__TL_DRIVER_H_` |
+| **静态内联变量** | snake_case（下划线前缀可选） | `msg_id`、`msg`、`msg_received` |
+| **ROS msg/srv 类型** | snake_case（自动生成） | `MoveCommand`、`CartesianPose`、`ArmStatus` |
+| **参数默认值** | 小写字符串（ROS约定） | `"arm_ip"`、`"6001"`、`"TCB605"` |
+| **回调函数指针** | lambda + bind 模式 | `std::bind(&TL_Arm::handle_..., this, ...)` |
+
+**注意**：
+- 服务句柄变量命名：`{service_name}_service_`（如 `connect_service_`、`set_speed_service_`）
+- 话题订阅变量命名：`{topic_name}_sub_`（如 `movej_sub_`、`movel_sub_`）
+- 话题发布变量命名：`{topic_name}_pub_`（如 `joint_state_pub_`、`tcp_pose_pub_`）
+
+### Python 命名规范
+
+| 元素 | 规范 | 示例 |
+|------|------|------|
+| **文件名** | snake_case | `control_node.py`、`yolo_node.py`、`calib_node.py` |
+| **类名** | PascalCase | `ObjectToBaseNode`、`YOLODemo`、`HandEyeCalibrationNode` |
+| **ROS 节点类** | PascalCase，继承 `Node` | `class ObjectToBaseNode(Node)` |
+| **实例变量** | snake_case | `robot_ip`、`camera_object_topic`、`base_frame_id` |
+| **私有方法** | 下划线前缀 + snake_case | `_tcp_pose_callback`、`_wait_for_services` |
+| **公开方法** | snake_case | `safe_log_info`、`get_robot_pose`、`pose_to_tool_rt` |
+| **ROS 参数键** | snake_case | `'arm_ip'`、`'camera_width'`、`'handeye_matrix'` |
+| **ROS 话题名** | snake_case（小写） | `/tl_vision/object_3d_pos_camera`、`/tcp_pose` |
+| **ROS 服务名** | snake_case（小写） | `/tl_driver/connect_arm`、`/tl_driver/power_on` |
+| **入口点函数** | snake_case | `yolo_node`、`calib_node`、`control_node`、`fk_test_node` |
+| **console_scripts** | snake_case（与文件名对应） | `yolo_node = tl_vision.yolo_node:main` |
+| **标准库导入** | 常用别名 | `import numpy as np`、`import cv2` |
+| **ROS 客户端** | 下划线前缀 + `_cli` 后缀 | `self._connect_cli`、`self._power_on_cli` |
+| **订阅者** | 下划线前缀 + `_sub` 后缀 | `self._tcp_pose_sub` |
+
+### ROS 话题/服务命名规范
+
+- 所有话题和服务名使用 **snake_case（小写+下划线）**
+- 包名前缀：`/tl_driver/`、`/tl_vision/`、`/tl_driver/`
+- 示例话题： `/joint_states`、`/tcp_pose`、`/arm_status`
+- 示例服务： `/tl_driver/connect_arm`、`/tl_driver/set_speed`
+
+### 文件组织规范
+
+```
+tl_driver/
+├── src/tl_driver.cpp          # 主节点实现（camelCase 方法）
+├── include/tl_driver/tl_driver.h  # 头文件（类定义）
+├── launch/tl_driver.launch.py # 启动文件
+└── config/*.yaml              # 配置文件
+
+tl_vision/
+├── tl_vision/
+│   ├── control_node.py        # snake_case 文件名
+│   ├── yolo_node.py
+│   └── calib_node.py
+└── launch/*.launch.py
+```
