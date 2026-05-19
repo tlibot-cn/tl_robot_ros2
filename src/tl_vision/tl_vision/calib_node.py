@@ -11,14 +11,10 @@ import yaml
 
 from scipy.spatial.transform import Rotation as R
 from rclpy.node import Node
-from ament_index_python.packages import get_package_share_directory, get_package_prefix
+from ament_index_python.packages import get_package_share_directory
 
-# 运行时通过 ament_index 发现 tl_driver 的 lib 目录（开发/部署均适用）
-_nrc_lib_dir = os.path.join(get_package_prefix('tl_driver'), 'lib', 'tl_driver')
-if _nrc_lib_dir not in sys.path:
-    sys.path.insert(0, _nrc_lib_dir)
-
-import nrc_interface as nrc
+from std_srvs.srv import Trigger
+from tl_ros2_interface.msg import CartesianPose
 
 np.set_printoptions(precision=8, suppress=True)
 
@@ -31,8 +27,6 @@ class HandEyeCalibrationNode(Node):
     def __init__(self):
         super().__init__('calib_demo')
 
-        self.declare_parameter('robot_ip', '192.168.1.13')
-        self.declare_parameter('robot_port', '6001')
         self.declare_parameter('camera_width', 640)
         self.declare_parameter('camera_height', 480)
         self.declare_parameter('camera_fps', 30)
@@ -46,8 +40,6 @@ class HandEyeCalibrationNode(Node):
         self.declare_parameter('data_file', os.path.join(_default_eye_hand_data, 'handeye_samples.npz'))
         self.declare_parameter('handeye_method', 'TSAI')
 
-        self.robot_ip = self.get_parameter('robot_ip').value
-        self.robot_port = self.get_parameter('robot_port').value
         self.camera_width = self.get_parameter('camera_width').value
         self.camera_height = self.get_parameter('camera_height').value
         self.camera_fps = self.get_parameter('camera_fps').value
@@ -72,10 +64,27 @@ class HandEyeCalibrationNode(Node):
         if not self.data_file:
             self.data_file = os.path.join(self.save_path, 'handeye_samples.npz')
 
-        self.socket_fd = None
+        # ROS2 service clients (tl_driver wraps NRC SDK)
+        self._connect_cli = self.create_client(Trigger, '/tl_driver/connect_arm')
+        self._power_on_cli = self.create_client(Trigger, '/tl_driver/power_on')
+        self._power_off_cli = self.create_client(Trigger, '/tl_driver/power_off')
+        self._clear_error_cli = self.create_client(Trigger, '/tl_driver/clear_error')
+        self._disconnect_cli = self.create_client(Trigger, '/tl_driver/disconnect_arm')
+
+        # /tcp_pose 订阅 — 替代 nrc.get_current_position()
+        self._tcp_pose = None
+        self._tcp_pose_received = False
+        self._tcp_pose_sub = self.create_subscription(
+            CartesianPose,
+            '/tcp_pose',
+            self._tcp_pose_callback,
+            10
+        )
+
         self.running = True
         self.pipeline = None
         self.cleaned = False
+        self.robot_connected = False
         self.obj_points_mem = []
         self.img_points_mem = []
         self.pose_mem = []
@@ -115,7 +124,7 @@ class HandEyeCalibrationNode(Node):
 
         self.safe_log_info('手眼标定节点初始化完成')
         self.safe_log_info(f'模式: {self.calculation_mode}')
-        self.safe_log_info(f'机械臂IP: {self.robot_ip}:{self.robot_port}')
+        self.safe_log_info(f'机械臂通过 tl_driver ROS2 服务连接')
         self.safe_log_info(
             f'标定板配置: {self.chessboard_xx}x{self.chessboard_yy}, '
             f'格子大小: {self.chessboard_L} m'
@@ -159,6 +168,39 @@ class HandEyeCalibrationNode(Node):
                 print(f'[ERROR] {msg}')
         else:
             print(f'[ERROR] {msg}')
+
+    def _call_service(self, client, request, timeout_sec=10.0):
+        """同步 ROS2 服务调用，带超时"""
+        if not client.service_is_ready():
+            self.safe_log_error(f'服务未就绪: {client.srv_name}')
+            return None
+        future = client.call_async(request)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=timeout_sec)
+        if future.done() and future.result() is not None:
+            return future.result()
+        self.safe_log_error(f'服务调用超时: {client.srv_name}')
+        return None
+
+    def _wait_for_services(self, timeout_sec=10.0):
+        """等待所有必需服务就绪"""
+        services = [
+            (self._connect_cli, 'connect_arm'),
+            (self._power_on_cli, 'power_on'),
+            (self._power_off_cli, 'power_off'),
+            (self._disconnect_cli, 'disconnect_arm'),
+        ]
+        self.safe_log_info('等待 tl_driver 服务就绪...')
+        for cli, name in services:
+            if not cli.wait_for_service(timeout_sec=timeout_sec):
+                self.safe_log_error(f'服务 {name} 未就绪（超时 {timeout_sec}s）')
+                return False
+        self.safe_log_info('所有 tl_driver 服务已就绪')
+        return True
+
+    def _tcp_pose_callback(self, msg):
+        """订阅 /tcp_pose 话题，缓存最新位姿"""
+        self._tcp_pose = msg
+        self._tcp_pose_received = True
 
     def init_camera(self):
         """初始化 RealSense 相机，并读取官方内参"""
@@ -209,155 +251,67 @@ class HandEyeCalibrationNode(Node):
             self.cleanup_and_exit()
 
     def init_robot(self):
-        """初始化机械臂连接并上电"""
-        self.safe_log_info(f'尝试连接机械臂: {self.robot_ip}:{self.robot_port}')
-
-        try:
-            self.socket_fd = nrc.connect_robot(self.robot_ip, self.robot_port)
-
-            if self.socket_fd <= 0:
-                self.safe_log_error(f'✗ 机械臂连接失败，返回值: {self.socket_fd}')
-                self.cleanup_and_exit()
-
-            self.safe_log_info(f'✓ 机械臂连接成功，socketfd: {self.socket_fd}')
-
-            if not self.power_on_robot():
-                self.safe_log_error('✗ 机械臂上电失败')
-                self.cleanup_and_exit()
-
-            self.safe_log_info('✓ 机械臂上电成功')
-            time.sleep(1)
-
-        except Exception as e:
-            self.safe_log_error(f'✗ 机械臂初始化异常: {e}')
+        """通过 tl_driver ROS2 服务初始化机械臂连接并上电"""
+        if not self._wait_for_services():
+            self.safe_log_error('tl_driver 服务未就绪，请先启动 tl_driver 节点')
             self.cleanup_and_exit()
 
+        self.safe_log_info('通过 /tl_driver/connect_arm 连接机械臂...')
+        result = self._call_service(self._connect_cli, Trigger.Request())
+        if result is None or not result.success:
+            self.safe_log_error(f'机械臂连接失败: {result.message if result else "无响应"}')
+            self.cleanup_and_exit()
+
+        self.safe_log_info('机械臂连接成功')
+        self.robot_connected = True
+
+        self.safe_log_info('通过 /tl_driver/power_on 上电...')
+        result = self._call_service(self._power_on_cli, Trigger.Request())
+        if result is None or not result.success:
+            self.safe_log_error(f'机械臂上电失败: {result.message if result else "无响应"}')
+            self.cleanup_and_exit()
+
+        self.safe_log_info('机械臂上电成功')
+        time.sleep(1)
+
     def power_on_robot(self):
-        """机械臂上电逻辑"""
-        try:
-            ret, state = nrc.get_servo_state(self.socket_fd, -1)
-            self.safe_log_info(f'当前伺服状态: {state}')
-
-            if state == 0:
-                self.safe_log_info('状态0: 执行使能并上电')
-                nrc.set_servo_state(self.socket_fd, 1)
-                time.sleep(0.1)
-                nrc.set_servo_poweron(self.socket_fd)
-
-            elif state == 1:
-                self.safe_log_info('状态1: 直接上电')
-                nrc.set_servo_poweron(self.socket_fd)
-
-            elif state == 2:
-                self.safe_log_info('状态2: 清除错误，重新使能并上电')
-                nrc.clear_error(self.socket_fd)
-                time.sleep(0.1)
-                nrc.set_servo_state(self.socket_fd, 1)
-                time.sleep(0.1)
-                nrc.set_servo_poweron(self.socket_fd)
-
-            elif state == 3:
-                self.safe_log_info('状态3: 机械臂已上电')
-                return True
-
-            else:
-                self.safe_log_error(f'未知的伺服状态: {state}')
-                return False
-
-            time.sleep(0.5)
-            ret, state = nrc.get_servo_state(self.socket_fd, -1)
-
-            if state == 3:
-                self.safe_log_info('上电成功')
-                return True
-            else:
-                self.safe_log_error(f'上电失败，当前状态: {state}')
-                return False
-
-        except Exception as e:
-            self.safe_log_error(f'上电过程发生异常: {e}')
+        """机械臂上电（tl_driver 服务内部处理所有伺服状态逻辑）"""
+        if not self._power_on_cli.service_is_ready():
+            self.safe_log_error('power_on 服务未就绪')
             return False
+        result = self._call_service(self._power_on_cli, Trigger.Request())
+        if result and result.success:
+            self.safe_log_info('上电成功')
+            return True
+        self.safe_log_error(f'上电失败: {result.message if result else "无响应"}')
+        return False
 
     def power_off_robot(self):
-        """机械臂下电逻辑"""
-        if self.socket_fd is None:
+        """机械臂下电（通过 tl_driver 服务）"""
+        if not self._power_off_cli.service_is_ready():
             return True
-
-        try:
-            ret, state = nrc.get_servo_state(self.socket_fd, -1)
-            print(f'当前伺服状态: {state}')
-
-            if state == -1:
-                print('机械臂已断开连接')
-                return True
-
-            elif state in [0, 1, 2]:
-                print(f'状态{state}: 机械臂已下电')
-                return True
-
-            elif state == 3:
-                print('状态3: 执行下电')
-                nrc.set_servo_poweroff(self.socket_fd)
-                time.sleep(0.5)
-
-                ret, state = nrc.get_servo_state(self.socket_fd, -1)
-                print(f'下电后状态: {state}')
-
-                if state != 3 and state != -1:
-                    print('下电成功')
-                    return True
-                else:
-                    print(f'下电失败，当前状态: {state}')
-                    return False
-
-            else:
-                print(f'未知的伺服状态: {state}')
-                return False
-
-        except Exception as e:
-            print(f'下电过程发生异常: {e}')
-            return False
+        result = self._call_service(self._power_off_cli, Trigger.Request())
+        return result is not None and result.success
 
     def get_robot_pose(self):
         """
-        获取机械臂当前位姿。
-
-        返回格式：
-            [x, y, z, A, B, C]
-
-        当前假设：
-            x/y/z 原始单位是 mm，这里转换成 m；
-            A/B/C 原始单位是 rad，不转换。
+        获取机械臂当前位姿（从 /tcp_pose 话题缓存）。
+        返回格式：[x, y, z, A, B, C]，x/y/z 单位 m，A/B/C 单位 rad。
         """
-        try:
-            tcp_pose = nrc.VectorDouble()
-            ret = nrc.get_current_position(self.socket_fd, 1, tcp_pose)
-
-            if ret == 0:
-                pose_raw = list(tcp_pose)
-
-                if len(pose_raw) < 6:
-                    self.safe_log_error(f'机械臂返回位姿长度不足: {pose_raw}')
-                    return False, None
-
-                pose_converted = [
-                    pose_raw[0] / 1000.0,
-                    pose_raw[1] / 1000.0,
-                    pose_raw[2] / 1000.0,
-                    pose_raw[3],
-                    pose_raw[4],
-                    pose_raw[5]
-                ]
-
-                return True, pose_converted
-
-            else:
-                self.safe_log_error(f'获取位姿失败，返回码: {ret}')
-                return False, None
-
-        except Exception as e:
-            self.safe_log_error(f'获取位姿失败: {e}')
+        if self._tcp_pose is None:
+            self.safe_log_error('尚未收到 /tcp_pose 数据')
             return False, None
+
+        msg = self._tcp_pose
+        pose_converted = [
+            msg.position.x / 1000.0,  # mm → m
+            msg.position.y / 1000.0,
+            msg.position.z / 1000.0,
+            msg.rpy.x,               # rad，不变
+            msg.rpy.y,
+            msg.rpy.z
+        ]
+        return True, pose_converted
 
     def pose_to_tool_rt(self, pose):
         """
@@ -941,16 +895,28 @@ class HandEyeCalibrationNode(Node):
                 print(f'停止相机异常: {e}')
             self.pipeline = None
 
-        if self.socket_fd:
-            self.power_off_robot()
-
+        if self.robot_connected:
+            print('通过 /tl_driver/power_off 下电...')
             try:
-                nrc.disconnect_robot(self.socket_fd)
-                print('断开机械臂连接')
+                result = self._call_service(self._power_off_cli, Trigger.Request())
+                if result and result.success:
+                    print('机械臂下电成功')
+                else:
+                    print(f'机械臂下电失败: {result.message if result else "无响应"}')
+            except Exception as e:
+                print(f'下电异常: {e}')
+
+            print('通过 /tl_driver/disconnect_arm 断开连接...')
+            try:
+                result = self._call_service(self._disconnect_cli, Trigger.Request())
+                if result and result.success:
+                    print('断开机械臂连接')
+                else:
+                    print(f'断开连接失败: {result.message if result else "无响应"}')
             except Exception as e:
                 print(f'断开连接异常: {e}')
 
-            self.socket_fd = None
+            self.robot_connected = False
 
         print('资源清理完成')
 

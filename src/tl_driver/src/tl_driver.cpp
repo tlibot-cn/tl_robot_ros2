@@ -743,7 +743,7 @@ void TL_Arm::handle_connect_service(
 
   if (is_connected())
   {
-    response->success = false;
+    response->success = true; // shc 26.5.19 修改：连接了就响应true
     response->message = "Arm already connected";
     return;
   }
@@ -760,7 +760,7 @@ void TL_Arm::handle_disconnect_service(
 
   if (!is_connected())
   {
-    response->success = false;
+    response->success = true;  // shc 26.5.19 修改：断开了就响应true
     response->message = "Arm already disconnected";
     return;
   }
