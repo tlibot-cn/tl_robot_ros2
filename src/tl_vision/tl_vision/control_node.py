@@ -14,10 +14,12 @@ from rclpy.node import Node
 from scipy.spatial.transform import Rotation as R
 
 from tl_ros2_interface.msg import ObjectInfo
+from ament_index_python.packages import get_package_prefix
 
-nrc_lib_path = os.path.expanduser("~/tl_robot/src/tl_driver/lib")
-if nrc_lib_path not in sys.path:
-    sys.path.append(nrc_lib_path)
+# 运行时通过 ament_index 发现 tl_driver 的 lib 目录（开发/部署均适用）
+_nrc_lib_dir = os.path.join(get_package_prefix('tl_driver'), 'lib', 'tl_driver')
+if _nrc_lib_dir not in sys.path:
+    sys.path.insert(0, _nrc_lib_dir)
 
 import nrc_interface as nrc
 

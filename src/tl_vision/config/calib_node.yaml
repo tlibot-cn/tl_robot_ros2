@@ -8,4 +8,11 @@ calib_node:
     chessboard_xx: 11
     chessboard_yy: 8
     chessboard_L: 0.02
-    save_path: "/home/ubuntu/tl_robot/src/tl_vision/eye_hand_data"
+    # save_path: 数据保存路径，留空则则回退到当前工作目录下的 calibration_data_<时间戳>/，注释掉则自动推导为 <install_prefix>/share/tl_vision/eye_hand_data
+    # save_path: ""
+    save_result_file: true
+    display_scale: 2.0
+    calculation_mode: "online"
+    # data_file: offline 模式的 .npz 数据文件路径，留空则则回退到当前工作目录下的 calibration_data_<时间戳>/，注释掉则自动推导为 <save_path>/handeye_samples.npz
+    # data_file: ""
+    handeye_method: "TSAI"

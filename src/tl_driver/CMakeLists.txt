@@ -69,6 +69,7 @@ install(TARGETS tl_driver
 
 install(FILES
   "${CMAKE_CURRENT_SOURCE_DIR}/lib/_nrc_host.so"
+  "${CMAKE_CURRENT_SOURCE_DIR}/lib/nrc_interface.py"
   DESTINATION lib/${PROJECT_NAME}
 )
 

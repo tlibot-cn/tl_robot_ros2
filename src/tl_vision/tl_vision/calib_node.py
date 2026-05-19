@@ -11,15 +11,19 @@ import yaml
 
 from scipy.spatial.transform import Rotation as R
 from rclpy.node import Node
+from ament_index_python.packages import get_package_share_directory, get_package_prefix
 
-# 导入机械臂 API
-nrc_lib_path = os.path.expanduser("~/tl_robot/src/tl_driver/lib")
-if nrc_lib_path not in sys.path:
-    sys.path.append(nrc_lib_path)
+# 运行时通过 ament_index 发现 tl_driver 的 lib 目录（开发/部署均适用）
+_nrc_lib_dir = os.path.join(get_package_prefix('tl_driver'), 'lib', 'tl_driver')
+if _nrc_lib_dir not in sys.path:
+    sys.path.insert(0, _nrc_lib_dir)
 
 import nrc_interface as nrc
 
 np.set_printoptions(precision=8, suppress=True)
+
+_tl_vision_share = get_package_share_directory('tl_vision')
+_default_eye_hand_data = os.path.join(_tl_vision_share, 'eye_hand_data')
 
 class HandEyeCalibrationNode(Node):
     """手眼标定节点：online 实时采集 / offline 离线计算"""
@@ -35,11 +39,11 @@ class HandEyeCalibrationNode(Node):
         self.declare_parameter('chessboard_xx', 9)
         self.declare_parameter('chessboard_yy', 6)
         self.declare_parameter('chessboard_L', 0.025)
-        self.declare_parameter('save_path', '/home/ubuntu/tl_robot/src/tl_vision/eye_hand_data')
+        self.declare_parameter('save_path', _default_eye_hand_data)
         self.declare_parameter('save_result_file', True)
         self.declare_parameter('display_scale', 2.0)
         self.declare_parameter('calculation_mode', 'online')
-        self.declare_parameter('data_file', '/home/ubuntu/tl_robot/src/tl_vision/eye_hand_data/handeye_samples.npz')
+        self.declare_parameter('data_file', os.path.join(_default_eye_hand_data, 'handeye_samples.npz'))
         self.declare_parameter('handeye_method', 'TSAI')
 
         self.robot_ip = self.get_parameter('robot_ip').value

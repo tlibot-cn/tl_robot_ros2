@@ -5,6 +5,7 @@ YOLO Detection Demo Node for ROS2 with Depth Integration
 支持实时OpenCV显示
 """
 
+import os
 import signal
 import sys
 import time
@@ -12,22 +13,25 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import Image
-from geometry_msgs.msg import PointStamped  # 添加这个导入
+from geometry_msgs.msg import PointStamped
 from tl_ros2_interface.msg import ObjectInfo
 from cv_bridge import CvBridge
 from ultralytics import YOLO
+from ament_index_python.packages import get_package_share_directory
 import cv2
 import numpy as np
 
 
 class YOLODemo(Node):
-    """支持深度图像的YOLO检测节点"""
     
     def __init__(self):
         super().__init__('yolo_demo')
         
-        # 参数声明
-        self.declare_parameter('model_path', '/home/ubuntu/tl_robot/src/tl_vision/model/yolov8n.pt')
+        _default_model_path = os.path.join(
+            get_package_share_directory('tl_vision'), 'model', 'yolov8n.pt'
+        )
+        
+        self.declare_parameter('model_path', _default_model_path)
         self.declare_parameter('confidence_threshold', 0.5)
         self.declare_parameter('device', 'cpu')
         self.declare_parameter('rgb_topic', '/camera/camera/color/image_raw')
@@ -44,6 +48,10 @@ class YOLODemo(Node):
         
         # 获取参数值
         model_path = self.get_parameter('model_path').get_parameter_value().string_value
+        if not model_path:
+            model_path = os.path.join(
+                get_package_share_directory('tl_vision'), 'model', 'yolov8n.pt'
+            )
         self.conf_threshold = self.get_parameter('confidence_threshold').get_parameter_value().double_value
         device = self.get_parameter('device').get_parameter_value().string_value
         

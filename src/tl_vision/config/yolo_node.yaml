@@ -1,6 +1,6 @@
 yolo_node:
   ros__parameters:
-    model_path: "/home/ubuntu/yolov8n.pt"
+    model_path: ""
     confidence_threshold: 0.5
     device: "cpu"
     rgb_topic: "/camera/camera/color/image_raw"
