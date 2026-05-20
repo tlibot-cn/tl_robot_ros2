@@ -3,3 +3,4 @@ build/
 install/
 log/
 .sisyphus/
+__pycache__/
