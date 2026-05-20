@@ -79,10 +79,10 @@ class ObjectToBaseNode(Node):
         self.keyboard_fd_need_close = False
         self.setup_keyboard()
 
-        self.T_tool_camera = self.load_handeye_matrix_from_param()
+        self.T_camera_tool = self.load_handeye_matrix_from_param()
 
-        self.safe_log_info('========== T_tool_camera ==========')
-        self.safe_log_info(f'\n{self.T_tool_camera}')
+        self.safe_log_info('========== T_camera_tool ==========')
+        self.safe_log_info(f'\n{self.T_camera_tool}')
         self.safe_log_info('===================================')
 
         # 创建 ROS2 服务客户端
@@ -285,14 +285,14 @@ class ObjectToBaseNode(Node):
                     f'handeye_matrix 参数长度错误，期望 16，实际 {len(handeye_list)}'
                 )
 
-            T_tool_camera = np.array(
+            T_camera_tool = np.array(
                 handeye_list,
                 dtype=np.float64
             ).reshape(4, 4)
 
-            if not np.all(np.isfinite(T_tool_camera)):
+            if not np.all(np.isfinite(T_camera_tool)):
                 raise ValueError(
-                    f'handeye_matrix 中存在 NaN 或 Inf:\n{T_tool_camera}'
+                    f'handeye_matrix 中存在 NaN 或 Inf:\n{T_camera_tool}'
                 )
 
             expected_last_row = np.array(
@@ -300,13 +300,13 @@ class ObjectToBaseNode(Node):
                 dtype=np.float64
             )
 
-            if not np.allclose(T_tool_camera[3, :], expected_last_row, atol=1e-6):
+            if not np.allclose(T_camera_tool[3, :], expected_last_row, atol=1e-6):
                 self.safe_log_warn(
                     f'handeye_matrix 最后一行不是 [0, 0, 0, 1]: '
-                    f'{T_tool_camera[3, :]}'
+                    f'{T_camera_tool[3, :]}'
                 )
 
-            return T_tool_camera
+            return T_camera_tool
 
         except Exception as e:
             self.safe_log_error(f'读取 handeye_matrix 失败: {e}')
@@ -466,7 +466,7 @@ class ObjectToBaseNode(Node):
                 return
 
             T_base_tool = self.pose_to_T_base_tool(robot_pose)
-            T_base_camera = T_base_tool @ self.T_tool_camera
+            T_base_camera = T_base_tool @ self.T_camera_tool
             P_base = T_base_camera @ P_camera
 
             if not np.all(np.isfinite(P_base)):
