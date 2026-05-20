@@ -29,15 +29,55 @@ colcon build --packages-select tl_ros2_interface
 source install/setup.bash
 colcon build --packages-select tl_driver
 ```
-编译完成后我们可以通过以下命令直接启动节点，连接机械臂。当前的控制基于我们没有改变过机械臂的IP即当前机械臂的IP仍为192.168.1.13。在使用时需要将<arm_type>更换为实际的机械臂型号，可选择的机械臂型号有tcb605、tcb605f、tcb605l、tcb605lv、tcb605v、tcb610、tcb610v、tcb705、tcb705f、tcb705l、tcb705lv、tcb705v、tcb710、tcb710v。
-```
+编译完成后我们可以通过以下命令直接启动节点，连接机械臂。
+
+### 启动方式
+
+tl_driver 提供两种启动方式：
+
+**方式一：通用启动（推荐开发调试使用）**
+
+通过 `tl_driver.launch.py` 传入 `arm_type` 参数，适用于快速切换不同臂型：
+
+```bash
 ros2 launch tl_driver tl_driver.launch.py arm_type:=<arm_type>
 ```
+
+**方式二：快捷启动（推荐日常使用）**
+
+每种臂型都有对应的专用 launch 文件，无需传参，直接启动：
+
+| 臂型 | 启动命令 |
+|------|----------|
+| TCB605 | `ros2 launch tl_driver tl_tcb605_driver.launch.py` |
+| TCB605F | `ros2 launch tl_driver tl_tcb605f_driver.launch.py` |
+| TCB605L | `ros2 launch tl_driver tl_tcb605l_driver.launch.py` |
+| TCB605LV | `ros2 launch tl_driver tl_tcb605lv_driver.launch.py` |
+| TCB605V | `ros2 launch tl_driver tl_tcb605v_driver.launch.py` |
+| TCB610 | `ros2 launch tl_driver tl_tcb610_driver.launch.py` |
+| TCB610V | `ros2 launch tl_driver tl_tcb610v_driver.launch.py` |
+| TCB705 | `ros2 launch tl_driver tl_tcb705_driver.launch.py` |
+| TCB705F | `ros2 launch tl_driver tl_tcb705f_driver.launch.py` |
+| TCB705L | `ros2 launch tl_driver tl_tcb705l_driver.launch.py` |
+| TCB705LV | `ros2 launch tl_driver tl_tcb705lv_driver.launch.py` |
+| TCB705V | `ros2 launch tl_driver tl_tcb705v_driver.launch.py` |
+| TCB710 | `ros2 launch tl_driver tl_tcb710_driver.launch.py` |
+| TCB710V | `ros2 launch tl_driver tl_tcb710v_driver.launch.py` |
+
+> 以下文档示例均以 **TCB710** 为例进行说明，其他臂型操作方式相同。
+
+### 示例：启动 TCB710 机械臂
+
+```bash
+ros2 launch tl_driver tl_tcb710_driver.launch.py
+```
+
 启动成功后，将显示以下画面:
 
 ![image](doc/tl_driver1.png)  
 当机械臂IP被改变后我们的启动指令就失效了，再直接使用如上指令就无法成功连接到机械臂了，我们可以通过修改如下配置文件，重新建立连接。
 该配置文件位于我们的tl_driver功能包下的config文件夹下，需要根据不同的机械臂型号修改相应的配置文件。
+以 TCB710 为例，配置文件为 `config/tl_tcb710_config.yaml`：
 
 ![image](doc/tl_driver2.png)  
 其配置文件内容如下:
@@ -48,7 +88,7 @@ tl_driver:
     arm_ip: "192.168.1.13"          # 设置TCP连接时的IP  
     arm_port: "6001"                # 设置TCP连接时的端口  
     arm_port_aux: "7000"            # 设置机械臂连接时的辅助端口
-    arm_type: "TCB605"              # 机械臂型号
+    arm_type: "TCB710"              # 机械臂型号
     arm_joints: ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"] # 关节名称
 ```
 ## tl_driver功能包架构说明
@@ -77,7 +117,21 @@ tl_driver:
 │   └── tl_driver
 │       └── tl_driver.h
 ├── launch                         # 启动文件
-│   └── tl_driver.launch.py
+│   ├── tl_driver.launch.py        # 通用启动（需传arm_type参数）
+│   ├── tl_tcb605_driver.launch.py
+│   ├── tl_tcb605f_driver.launch.py
+│   ├── tl_tcb605l_driver.launch.py
+│   ├── tl_tcb605lv_driver.launch.py
+│   ├── tl_tcb605v_driver.launch.py
+│   ├── tl_tcb610_driver.launch.py
+│   ├── tl_tcb610v_driver.launch.py
+│   ├── tl_tcb705_driver.launch.py
+│   ├── tl_tcb705f_driver.launch.py
+│   ├── tl_tcb705l_driver.launch.py
+│   ├── tl_tcb705lv_driver.launch.py
+│   ├── tl_tcb705v_driver.launch.py
+│   ├── tl_tcb710_driver.launch.py
+│   └── tl_tcb710v_driver.launch.py
 ├── lib                            # API依赖库
 │   ├── include
 │   │   ├── c

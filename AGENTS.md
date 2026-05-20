@@ -48,7 +48,9 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 - **专有库**：`lib/_nrc_host.so`（预编译共享库，不可修改）
 - **Python API**：`lib/nrc_interface.py` — 运行时通过 `sys.path` 加载的 Python 封装
 - **配置**：`config/` 下按臂型命名的 YAML（如 `tl_tcb605_config.yaml`）
-- **启动**：`ros2 launch tl_driver tl_driver.launch.py arm_type:=<arm_type>`
+- **启动**：
+  - 通用：`ros2 launch tl_driver tl_driver.launch.py arm_type:=<arm_type>`
+  - 快捷：`ros2 launch tl_driver tl_tcb710_driver.launch.py`（每种臂型一个专用文件，如 `tl_tcbXXX_driver.launch.py`）
 - **默认机械臂 IP**：`192.168.1.13`，端口 `6001` — 如需修改，改对应配置 YAML
 
 ### tl_description
@@ -163,7 +165,8 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 tl_driver/
 ├── src/tl_driver.cpp          # 主节点实现（camelCase 方法）
 ├── include/tl_driver/tl_driver.h  # 头文件（类定义）
-├── launch/tl_driver.launch.py # 启动文件
+├── launch/tl_driver.launch.py # 通用启动文件
+├── launch/tl_tcbXXX_driver.launch.py # 各臂型快捷启动
 └── config/*.yaml              # 配置文件
 
 tl_vision/
