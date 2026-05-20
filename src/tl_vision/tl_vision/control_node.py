@@ -10,20 +10,16 @@ import numpy as np
 
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import ExternalShutdownException
 
 from scipy.spatial.transform import Rotation as R
 
-from tl_ros2_interface.msg import ObjectInfo
-from ament_index_python.packages import get_package_prefix
-
-# 运行时通过 ament_index 发现 tl_driver 的 lib 目录（开发/部署均适用）
-_nrc_lib_dir = os.path.join(get_package_prefix('tl_driver'), 'lib', 'tl_driver')
-if _nrc_lib_dir not in sys.path:
-    sys.path.insert(0, _nrc_lib_dir)
-
-import nrc_interface as nrc
+from tl_ros2_interface.msg import ObjectInfo, CartesianPose, MoveCommand
+from tl_ros2_interface.srv import CoordTransform, GetPosReachable
+from std_srvs.srv import Trigger
 
 np.set_printoptions(precision=8, suppress=True)
+
 
 class ObjectToBaseNode(Node):
     def __init__(self):
@@ -67,13 +63,15 @@ class ObjectToBaseNode(Node):
         self.dec = 100.0
         self.pl = 5
 
-        self.socket_fd = None
         self.running = True
         self.cleaned = False
 
         self.latest_object_type = None
         self.latest_base_point = None
         self.latest_stamp = None
+
+        # TCP 位姿缓存（来自 /tcp_pose 话题）
+        self.latest_tcp_pose = None
 
         # 键盘控制相关
         self.old_terminal_settings = None
@@ -87,6 +85,13 @@ class ObjectToBaseNode(Node):
         self.safe_log_info(f'\n{self.T_tool_camera}')
         self.safe_log_info('===================================')
 
+        # 创建 ROS2 服务客户端
+        self._create_service_clients()
+
+        # 创建 ROS2 话题订阅与发布
+        self._create_topic_sub_pub()
+
+        # 初始化机械臂（通过 ROS2 服务连接 + 上电）
         self.init_robot()
 
         self.sub_object_camera = self.create_subscription(
@@ -111,6 +116,61 @@ class ObjectToBaseNode(Node):
         self.safe_log_info(f'MoveCmd.velocity speed: {self.speed}')
         self.safe_log_info(f'approach_movetype: {self.approach_movetype}')
         self.safe_log_info('按键: c 执行控制 | z 回零点 | q 退出')
+
+    def _create_service_clients(self):
+        """创建 tl_driver 服务的 ROS2 客户端。"""
+        self.connect_client = self.create_client(Trigger, '/tl_driver/connect_arm')
+        self.disconnect_client = self.create_client(Trigger, '/tl_driver/disconnect_arm')
+        self.power_on_client = self.create_client(Trigger, '/tl_driver/power_on')
+        self.power_off_client = self.create_client(Trigger, '/tl_driver/power_off')
+        self.clear_error_client = self.create_client(Trigger, '/tl_driver/clear_error')
+        self.coord_transform_client = self.create_client(CoordTransform, '/tl_driver/coord_transform')
+        self.get_pos_reachable_client = self.create_client(GetPosReachable, '/tl_driver/get_pos_reachable')
+
+    def _wait_for_services(self):
+        """等待所有 tl_driver 服务就绪。"""
+        timeout = 30.0
+        clients = [
+            ('connect_arm', self.connect_client),
+            ('disconnect_arm', self.disconnect_client),
+            ('power_on', self.power_on_client),
+            ('power_off', self.power_off_client),
+            ('clear_error', self.clear_error_client),
+            ('coord_transform', self.coord_transform_client),
+            ('get_pos_reachable', self.get_pos_reachable_client),
+        ]
+
+        start_time = time.time()
+        for name, client in clients:
+            remaining = timeout - (time.time() - start_time)
+            if remaining <= 0:
+                self.safe_log_error('等待 tl_driver 服务超时')
+                return False
+            self.safe_log_info(f'等待服务: /tl_driver/{name}')
+            if not client.wait_for_service(timeout_sec=remaining):
+                self.safe_log_error(f'服务 /tl_driver/{name} 不可用')
+                return False
+
+        self.safe_log_info('所有 tl_driver 服务已就绪')
+        return True
+
+    def _create_topic_sub_pub(self):
+        """创建 TCP 位姿话题订阅与 MoveJ 运动指令发布器。"""
+        self.tcp_pose_sub = self.create_subscription(
+            CartesianPose,
+            '/tcp_pose',
+            self.tcp_pose_callback,
+            10
+        )
+        self.movej_pub = self.create_publisher(
+            MoveCommand,
+            '/tl_driver/moveJ',
+            10
+        )
+
+    def tcp_pose_callback(self, msg: CartesianPose):
+        """缓存来自 /tcp_pose 话题的最新末端位姿。"""
+        self.latest_tcp_pose = msg
 
     def safe_log_info(self, msg):
         if rclpy.ok():
@@ -216,30 +276,6 @@ class ObjectToBaseNode(Node):
 
         return None
 
-    def make_vector_double(self, values, size=None):
-        values = list(values)
-
-        if size is None:
-            size = len(values)
-
-        try:
-            vec = nrc.VectorDouble(size)
-            for i in range(size):
-                vec[i] = float(values[i]) if i < len(values) else 0.0
-            return vec
-        except Exception:
-            pass
-
-        vec = nrc.VectorDouble()
-        for i in range(size):
-            value = float(values[i]) if i < len(values) else 0.0
-            try:
-                vec.push_back(value)
-            except Exception:
-                vec.append(value)
-
-        return vec
-
     def load_handeye_matrix_from_param(self):
         try:
             handeye_list = list(self.get_parameter('handeye_matrix').value)
@@ -277,33 +313,30 @@ class ObjectToBaseNode(Node):
             self.cleanup_and_exit()
 
     def init_robot(self):
+        self.safe_log_info('等待 tl_driver 服务...')
+
+        if not self._wait_for_services():
+            self.safe_log_error('✗ tl_driver 服务不可用')
+            self.cleanup_and_exit()
+
         self.safe_log_info(f'尝试连接机械臂: {self.robot_ip}:{self.robot_port}')
 
         try:
-            self.socket_fd = nrc.connect_robot(
-                self.robot_ip,
-                self.robot_port
-            )
+            future = self.connect_client.call_async(Trigger.Request())
+            rclpy.spin_until_future_complete(self, future)
+            result = future.result()
 
-            if self.socket_fd <= 0:
-                self.safe_log_error(
-                    f'✗ 机械臂连接失败，返回值: {self.socket_fd}'
-                )
+            if not result.success:
+                self.safe_log_error(f'✗ 机械臂连接失败: {result.message}')
                 self.cleanup_and_exit()
 
-            self.safe_log_info(
-                f'✓ 机械臂连接成功，socketfd: {self.socket_fd}'
-            )
+            self.safe_log_info('✓ 机械臂连接成功')
 
             if not self.power_on_robot():
                 self.safe_log_error('✗ 机械臂上电失败')
                 self.cleanup_and_exit()
 
             self.safe_log_info('✓ 机械臂上电成功')
-
-            # 按你的要求：
-            # 这里不调用 nrc.set_current_mode()
-            # 这里不调用 nrc.set_speed()
 
             time.sleep(1.0)
 
@@ -315,58 +348,16 @@ class ObjectToBaseNode(Node):
             self.cleanup_and_exit()
 
     def power_on_robot(self):
-        if self.socket_fd is None:
-            self.safe_log_error('socket_fd 为空，无法上电')
-            return False
-
         try:
-            ret, state = nrc.get_servo_state(self.socket_fd, -1)
+            future = self.power_on_client.call_async(Trigger.Request())
+            rclpy.spin_until_future_complete(self, future)
+            result = future.result()
 
-            if ret != 0:
-                self.safe_log_error(f'获取伺服状态失败，返回码: {ret}')
-                return False
-
-            self.safe_log_info(f'当前伺服状态: {state}')
-
-            if state == 0:
-                self.safe_log_info('状态0: 执行使能并上电')
-                nrc.set_servo_state(self.socket_fd, 1)
-                time.sleep(0.1)
-                nrc.set_servo_poweron(self.socket_fd)
-
-            elif state == 1:
-                self.safe_log_info('状态1: 直接上电')
-                nrc.set_servo_poweron(self.socket_fd)
-
-            elif state == 2:
-                self.safe_log_info('状态2: 清除错误，重新使能并上电')
-                nrc.clear_error(self.socket_fd)
-                time.sleep(0.1)
-                nrc.set_servo_state(self.socket_fd, 1)
-                time.sleep(0.1)
-                nrc.set_servo_poweron(self.socket_fd)
-
-            elif state == 3:
-                self.safe_log_info('状态3: 机械臂已上电')
-                return True
-
-            else:
-                self.safe_log_error(f'未知的伺服状态: {state}')
-                return False
-
-            time.sleep(0.5)
-
-            ret, state = nrc.get_servo_state(self.socket_fd, -1)
-
-            if ret != 0:
-                self.safe_log_error(f'上电后获取伺服状态失败，返回码: {ret}')
-                return False
-
-            if state == 3:
+            if result.success:
                 self.safe_log_info('上电成功')
                 return True
 
-            self.safe_log_error(f'上电失败，当前状态: {state}')
+            self.safe_log_error(f'上电失败: {result.message}')
             return False
 
         except Exception as e:
@@ -374,94 +365,40 @@ class ObjectToBaseNode(Node):
             return False
 
     def power_off_robot(self):
-        if self.socket_fd is None:
-            return True
-
         try:
-            ret, state = nrc.get_servo_state(self.socket_fd, -1)
+            future = self.power_off_client.call_async(Trigger.Request())
+            rclpy.spin_until_future_complete(self, future)
+            result = future.result()
 
-            if ret != 0:
-                print(f'获取伺服状态失败，返回码: {ret}')
-                return False
-
-            print(f'当前伺服状态: {state}')
-
-            if state == -1:
-                print('机械臂已断开连接')
+            if result.success:
+                self.safe_log_info('下电成功')
                 return True
 
-            elif state in [0, 1, 2]:
-                print(f'状态{state}: 机械臂已下电')
-                return True
-
-            elif state == 3:
-                print('状态3: 执行下电')
-                ret_poweroff = nrc.set_servo_poweroff(self.socket_fd)
-
-                if ret_poweroff is not None and ret_poweroff != 0:
-                    print(f'下电指令返回异常: {ret_poweroff}，继续查询实际状态')
-
-                time.sleep(0.8)
-
-                ret, state = nrc.get_servo_state(self.socket_fd, -1)
-
-                if ret != 0:
-                    print(f'下电后获取伺服状态失败，返回码: {ret}')
-                    return False
-
-                print(f'下电后状态: {state}')
-
-                if state != 3 and state != -1:
-                    print('下电成功')
-                    return True
-
-                print(f'下电失败，当前状态: {state}')
-                return False
-
-            else:
-                print(f'未知的伺服状态: {state}')
-                return False
+            self.safe_log_warn(f'下电失败: {result.message}')
+            return False
 
         except Exception as e:
-            print(f'下电过程发生异常: {e}')
+            self.safe_log_error(f'下电过程发生异常: {e}')
             return False
 
     def get_robot_pose(self):
-        if self.socket_fd is None:
-            self.safe_log_error('socket_fd 为空，无法获取机械臂位姿')
+        """从缓存的 /tcp_pose 话题数据获取当前末端位姿。"""
+        if self.latest_tcp_pose is None:
+            self.safe_log_warn('TCP pose 尚未接收到数据')
             return False, None
 
         try:
-            tcp_pose = nrc.VectorDouble()
+            # CartesianPose 位置单位为 mm，转换为米
+            x = self.latest_tcp_pose.position.x / 1000.0
+            y = self.latest_tcp_pose.position.y / 1000.0
+            z = self.latest_tcp_pose.position.z / 1000.0
 
-            ret = nrc.get_current_position(
-                self.socket_fd,
-                1,
-                tcp_pose
-            )
+            # 从 CartesianPose.rpy 获取欧拉角（弧度）
+            roll = self.latest_tcp_pose.rpy.x
+            pitch = self.latest_tcp_pose.rpy.y
+            yaw = self.latest_tcp_pose.rpy.z
 
-            if ret == 0:
-                pose_raw = list(tcp_pose)
-
-                if len(pose_raw) < 6:
-                    self.safe_log_error(
-                        f'机械臂返回位姿长度不足: {pose_raw}'
-                    )
-                    return False, None
-
-                pose_converted = [
-                    pose_raw[0] / 1000.0,
-                    pose_raw[1] / 1000.0,
-                    pose_raw[2] / 1000.0,
-                    pose_raw[3],
-                    pose_raw[4],
-                    pose_raw[5],
-                ]
-
-                return True, pose_converted
-
-            self.safe_log_error(f'获取位姿失败，返回码: {ret}')
-            return False, None
+            return True, [x, y, z, roll, pitch, yaw]
 
         except Exception as e:
             self.safe_log_error(f'获取位姿失败: {e}')
@@ -559,124 +496,83 @@ class ObjectToBaseNode(Node):
             self.safe_log_error(f'物体坐标转换失败: {e}')
 
     def get_target_joint_from_cartesian(self, target_cart):
-        origin_pos = self.make_vector_double(target_cart, 7)
-        target_pos = self.make_vector_double([], 7)
-
-        origin_coord = 1
-        target_coord = 0
+        """通过 /tl_driver/coord_transform 服务将笛卡尔位姿转为关节角度。"""
+        req = CoordTransform.Request()
+        req.origin_coord = 1  # 直角坐标
+        req.target_coord = 0  # 关节坐标
+        req.form = 0
+        req.origin_pos = list(target_cart)
+        req.reference_pos = [0.0] * 7
 
         try:
-            if hasattr(nrc, 'get_origin_coord_to_target_coord_robot'):
-                ret = nrc.get_origin_coord_to_target_coord_robot(
-                    self.socket_fd,
-                    1,
-                    origin_coord,
-                    origin_pos,
-                    target_coord,
-                    target_pos
-                )
-                return ret, target_pos
+            future = self.coord_transform_client.call_async(req)
+            rclpy.spin_until_future_complete(self, future)
+            result = future.result()
 
-            ret = nrc.get_origin_coord_to_target_coord(
-                self.socket_fd,
-                1,
-                origin_coord,
-                origin_pos,
-                target_coord,
-                target_pos
-            )
-            return ret, target_pos
+            if not result.success:
+                self.safe_log_error(f'笛卡尔转关节失败: {result.message}')
+                return -1, []
+
+            return 0, list(result.target_pos)
 
         except Exception as e:
             self.safe_log_error(f'笛卡尔转关节异常: {e}')
-            return -1, target_pos
-    
-    def make_reachable_pos14(self, point_values, coord=0, angle_unit=0, posture=1):
-        values = list(point_values)
-
-        pos = [0.0] * 14
-
-        pos[0] = int(coord)
-        pos[1] = int(angle_unit)
-        pos[2] = int(posture)
-        pos[3] = 0
-        pos[4] = 0
-        pos[5] = 0
-        pos[6] = 0
-
-        for i in range(7):
-            if i < len(values):
-                pos[7 + i] = float(values[i])
-            else:
-                pos[7 + i] = 0.0
-
-        return pos
+            return -1, []
 
     def check_pos_reachable(self, point_values, coord=0, angle_unit=0, posture=1):
+        """通过 /tl_driver/get_pos_reachable 服务检测关节位姿是否可达。"""
+        # 构建 14 元素位姿数组: [coord, angle_unit, posture, 0,0,0,0, j1..j7]
+        pos = [0.0] * 14
+        pos[0] = float(coord)
+        pos[1] = float(angle_unit)
+        pos[2] = float(posture)
+        for i in range(len(point_values)):
+            pos[7 + i] = float(point_values[i])
+
+        self.safe_log_info(f'可达性检测 pos14: {pos}')
+        self.safe_log_info(f'可达性检测 movetype: {self.approach_movetype}')
+
+        req = GetPosReachable.Request()
+        req.pos = pos
+        req.move_type = self.approach_movetype
+
         try:
-            pos = self.make_reachable_pos14(
-                point_values,
-                coord=coord,
-                angle_unit=angle_unit,
-                posture=posture
-            )
+            future = self.get_pos_reachable_client.call_async(req)
+            rclpy.spin_until_future_complete(self, future)
+            result = future.result()
 
-            self.safe_log_info(f'可达性检测 pos14: {pos}')
-            self.safe_log_info(f'可达性检测 movetype: {self.approach_movetype}')
+            self.safe_log_info(f'get_pos_reachable 返回: success={result.success}, message={result.message}')
 
-            ret, result = nrc.get_pos_reachable(
-                self.socket_fd,
-                pos,
-                self.approach_movetype,
-                False
-            )
-
-            self.safe_log_info(f'get_pos_reachable 返回: ret={ret}, result={result}')
-
-            if ret != 0:
-                self.safe_log_warn(f'可达性判断接口失败: ret={ret}')
+            if not result.success:
+                self.safe_log_warn(f'点位不可达: {result.message}')
                 return False
 
-            if bool(result):
-                self.safe_log_info('点位可达')
-                return True
-
-            self.safe_log_warn('点位不可达')
-            return False
+            self.safe_log_info('点位可达')
+            return True
 
         except Exception as e:
             self.safe_log_error(f'可达性判断异常: {e}')
             return False
 
     def movej(self, joint_pos):
+        """通过 /tl_driver/moveJ 话题发送关节运动指令。"""
         try:
             joint_list = list(joint_pos)
 
             if len(joint_list) < 7:
                 joint_list = joint_list + [0.0] * (7 - len(joint_list))
 
-            move_cmd = nrc.MoveCmd()
-            move_cmd.targetPosValue.resize(7)
+            cmd = MoveCommand()
+            # target_pos_value 共 14 个元素，前 7 个为关节角度（关节模式）
+            cmd.target_pos_value = joint_list[:7] + [0.0] * 7
+            cmd.target_pos_type = 0
+            cmd.coord = 0  # 关节坐标系
+            cmd.velocity = float(self.speed)
+            cmd.acc = float(self.acc)
+            cmd.dec = float(self.dec)
+            cmd.pl = int(self.pl)
 
-            for i in range(7):
-                move_cmd.targetPosValue[i] = float(joint_list[i])
-
-            try:
-                move_cmd.targetPosType = nrc.PosType_data
-            except Exception:
-                pass
-
-            move_cmd.coord = 0
-            move_cmd.velocity = float(self.speed)
-            move_cmd.acc = float(self.acc)
-            move_cmd.dec = float(self.dec)
-            move_cmd.pl = int(self.pl)
-
-            ret = nrc.robot_movej(self.socket_fd, move_cmd)
-
-            if ret != 0:
-                self.safe_log_error(f'robot_movej 失败: ret={ret}')
-                return False
+            self.movej_pub.publish(cmd)
 
             self.safe_log_info('robot_movej 指令已发送')
             return True
@@ -748,8 +644,7 @@ class ObjectToBaseNode(Node):
             self.safe_log_warn('零点位置不可达')
             return False
 
-        joint_pos = self.make_vector_double(zero_joint, 7)
-        return self.movej(joint_pos)
+        return self.movej(zero_joint)
 
     def handle_key(self, key):
         self.safe_log_info(f'收到按键: {repr(key)}')
@@ -778,7 +673,7 @@ class ObjectToBaseNode(Node):
                 if key is not None:
                     self.handle_key(key)
 
-            except rclpy.executors.ExternalShutdownException:
+            except ExternalShutdownException:
                 break
 
             except KeyboardInterrupt:
@@ -806,30 +701,36 @@ class ObjectToBaseNode(Node):
 
         self.restore_keyboard()
 
-        if self.socket_fd:
-            poweroff_ok = self.power_off_robot()
-
-            if not poweroff_ok:
+        # 通过 ROS2 服务下电
+        try:
+            future = self.power_off_client.call_async(Trigger.Request())
+            rclpy.spin_until_future_complete(self, future)
+            result = future.result()
+            if not result.success:
                 print('机械臂下电未成功，但继续断开连接')
+            else:
+                print('机械臂下电成功')
+        except Exception as e:
+            print(f'下电异常: {e}')
 
-            try:
-                ret = nrc.disconnect_robot(self.socket_fd)
-
-                if ret is not None and ret != 0:
-                    print(f'断开机械臂连接返回异常: {ret}')
-                else:
-                    print('断开机械臂连接')
-
-            except Exception as e:
-                print(f'断开连接异常: {e}')
-
-            self.socket_fd = None
+        # 通过 ROS2 服务断开连接
+        try:
+            future = self.disconnect_client.call_async(Trigger.Request())
+            rclpy.spin_until_future_complete(self, future)
+            result = future.result()
+            if result.success:
+                print('断开机械臂连接')
+            else:
+                print(f'断开连接异常: {result.message}')
+        except Exception as e:
+            print(f'断开连接异常: {e}')
 
         print('control_node 资源清理完成')
 
     def cleanup_and_exit(self):
         self.cleanup()
         raise SystemExit(1)
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -876,6 +777,7 @@ def main(args=None):
                 print('ROS2已关闭')
             except Exception as e:
                 print(f'ROS2关闭异常: {e}')
+
 
 if __name__ == '__main__':
     main()
