@@ -1,0 +1,25 @@
+moveit_setup_assistant_config:
+  urdf:
+    package: tl_description
+    relative_path: urdf/tl_tcb610v.urdf
+  srdf:
+    relative_path: config/tl_tcb610v.srdf
+  package_settings:
+    author_name: tl
+    author_email: tl@robot.com
+    generated_timestamp: 1779340121
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+      - velocity
+  modified_urdf:
+    xacros:
+      - control_xacro
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+      - velocity
