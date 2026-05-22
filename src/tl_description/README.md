@@ -20,13 +20,41 @@ tl_description功能包为显示机器人模型和TF变换的功能包，通过�
 * 2.熟悉功能包中的文件构成及作用。
 * 3.熟悉功能包相关的话题，方便开发和使用
 ## tl_description功能包使用
-配置环境后我们可以通过以下命令直接启动节点，运行tl_description功能包，在使用时需要将<arm_type>更换为实际的机械臂型号，可选择的机械臂型号有tcb605、tcb605f、tcb605l、tcb605lv、tcb605v、tcb610、tcb610v、tcb705、tcb705f、tcb705l、tcb705lv、tcb705v、tcb710、tcb710v，<use_sim>选择是否进行仿真控制。
+配置环境后我们可以通过以下命令直接启动节点，运行tl_description功能包。tl_description提供两种启动方式：
+
+**方式一：通用启动（推荐开发调试使用）**
+
+通过 `tl_description.launch.py` 传入 `arm_type` 参数，适用于快速切换不同臂型：
 ```
 ros2 launch tl_description tl_description.launch.py arm_type:=<arm_type> use_sim:=<use_sim>
 ```
-当进行仿真控制时，<use_sim>设置为true，此时/joint_state_publisher_gui节点会发布关节状态话题/joints_states并生成GUI滑动条，通过拖动滑动条可以手动控制每个关节的角度或位置，例如tcb605机械臂的启动命令:
+
+**方式二：快捷启动（推荐日常使用）**
+
+每种臂型都有对应的专用 launch 文件，无需传参，直接启动：
+
+| 臂型 | 启动命令 |
+|------|----------|
+| TCB605 | `ros2 launch tl_description tl_tcb605_description.launch.py` |
+| TCB605F | `ros2 launch tl_description tl_tcb605f_description.launch.py` |
+| TCB605L | `ros2 launch tl_description tl_tcb605l_description.launch.py` |
+| TCB605LV | `ros2 launch tl_description tl_tcb605lv_description.launch.py` |
+| TCB605V | `ros2 launch tl_description tl_tcb605v_description.launch.py` |
+| TCB610 | `ros2 launch tl_description tl_tcb610_description.launch.py` |
+| TCB610V | `ros2 launch tl_description tl_tcb610v_description.launch.py` |
+| TCB705 | `ros2 launch tl_description tl_tcb705_description.launch.py` |
+| TCB705F | `ros2 launch tl_description tl_tcb705f_description.launch.py` |
+| TCB705L | `ros2 launch tl_description tl_tcb705l_description.launch.py` |
+| TCB705LV | `ros2 launch tl_description tl_tcb705lv_description.launch.py` |
+| TCB705V | `ros2 launch tl_description tl_tcb705v_description.launch.py` |
+| TCB710 | `ros2 launch tl_description tl_tcb710_description.launch.py` |
+| TCB710V | `ros2 launch tl_description tl_tcb710v_description.launch.py` |
+
+> 以下文档示例均以 **TCB605** 为例进行说明，其他臂型操作方式相同。
+
+`use_sim` 参数（默认 `false`）控制是否启用仿真模式。当进行仿真控制时，`use_sim` 设置为 `true`，此时 `joint_state_publisher_gui` 节点会发布关节状态话题 `/joint_states` 并生成 GUI 滑动条，通过拖动滑动条可以手动控制每个关节的角度或位置，例如 tcb605 机械臂的仿真启动命令:
 ```
-ros2 launch tl_description tl_description.launch.py arm_type:=tcb605 use_sim:=true
+ros2 launch tl_description tl_tcb605_description.launch.py use_sim:=true
 ```
 节点启动成功后，将弹出以下画面，通过拖动滑动条可以控制每个关节的角度:
 <div align="center">
@@ -35,15 +63,15 @@ ros2 launch tl_description tl_description.launch.py arm_type:=tcb605 use_sim:=tr
 
 </div>
 
-当进行真实机械臂控制时，<use_sim>设置为false，此时节点需要订阅/joint_states话题计算机器人各连杆的tf变换，否则RViz2中无法正常显示机械臂模型运动，因此需要启动tl_driver功能包提供/joint_states话题输入，首先启动tl_driver功能包:
+当进行真实机械臂控制时，`use_sim` 设置为 `false`（默认值），此时节点需要订阅 `/joint_states` 话题计算机器人各连杆的 tf 变换，否则 RViz2 中无法正常显示机械臂模型运动，因此需要启动 tl_driver 功能包提供 `/joint_states` 话题输入，首先启动 tl_driver 功能包（以 TCB605 为例）:
 ```
-ros2 launch tl_driver tl_driver.launch.py arm_type:=tcb605
+ros2 launch tl_driver tl_tcb605_driver.launch.py
 ```
-然后启动tl_driver功能包:
+然后再启动 tl_description:
 ```
-ros2 launch tl_description tl_description.launch.py arm_type:=tcb605 use_sim:=false
+ros2 launch tl_description tl_tcb605_description.launch.py
 ```
-节点启动成功后，控制真实机械臂时，Rviz2中的机械臂模型会进行对应角度的运动。
+节点启动成功后，控制真实机械臂时，Rviz2 中的机械臂模型会进行对应角度的运动。
 
 ## tl_description功能包架构说明
 ## 功能包文件总览
@@ -52,7 +80,21 @@ ros2 launch tl_description tl_description.launch.py arm_type:=tcb605 use_sim:=fa
 ├── doc                                      # 辅助文档、图片文件
 │   └── tl_description.png
 ├── launch                                   # 启动文件
-│   └── tl_description.launch.py
+│   ├── tl_description.launch.py             # 通用启动（需传 arm_type 参数）
+│   ├── tl_tcb605_description.launch.py
+│   ├── tl_tcb605f_description.launch.py
+│   ├── tl_tcb605l_description.launch.py
+│   ├── tl_tcb605lv_description.launch.py
+│   ├── tl_tcb605v_description.launch.py
+│   ├── tl_tcb610_description.launch.py
+│   ├── tl_tcb610v_description.launch.py
+│   ├── tl_tcb705_description.launch.py
+│   ├── tl_tcb705f_description.launch.py
+│   ├── tl_tcb705l_description.launch.py
+│   ├── tl_tcb705lv_description.launch.py
+│   ├── tl_tcb705v_description.launch.py
+│   ├── tl_tcb710_description.launch.py
+│   └── tl_tcb710v_description.launch.py
 ├── meshes                                   # 模型文件
 │   ├── tl_tcb605                            # tcb605机械臂模型文件
 │   │   ├── link0.STL
