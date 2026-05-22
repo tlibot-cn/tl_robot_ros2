@@ -176,3 +176,12 @@ tl_vision/
 │   └── calib_node.py
 └── launch/*.launch.py
 ```
+
+## Sisyphus 后台任务超时规避
+
+后台 explore/librarian 任务有 **30 分钟无活动超时限制**。超大代码库搜索时容易触发。规避方法：
+
+- **每个 explore agent 只查 1-2 个具体模式**，不要塞 5+ 个搜索需求到一个 prompt
+- **已知文件位置**（如已确定路径的文件）直接用 `grep`/`read`/`glob` 直接工具，不 delegation
+- **大范围搜索拆成多个并行小任务**，每个小任务限定搜索范围（`path`、`include`、`globs` 参数）
+- 如果需要跨包/跨语言搜索（如同时查 C++ 和 Python），必须拆成多个并行 agent
