@@ -20,10 +20,23 @@ find_package(Python3 REQUIRED COMPONENTS Development)
 find_package(tl_ros2_interface REQUIRED)
 find_package(std_msgs REQUIRED)
 
-# 导入已有动态库
+# 根据目标架构选择对应的动态库目录
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+  set(NRC_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/arm")
+  set(NRC_ARCH "aarch64")
+  message(STATUS "tl_driver: detected ARM64 architecture, using lib/arm/")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|i686|i386")
+  set(NRC_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/x86")
+  set(NRC_ARCH "x86_64")
+  message(STATUS "tl_driver: detected x86_64 architecture, using lib/x86/")
+else()
+  message(FATAL_ERROR "tl_driver: unsupported architecture '${CMAKE_SYSTEM_PROCESSOR}', expected x86_64 or aarch64")
+endif()
+
+# 导入已有动态库（仅 _nrc_host.so 被 C++ 链接）
 add_library(nrc_host_lib SHARED IMPORTED)
 set_target_properties(nrc_host_lib PROPERTIES
-  IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/lib/_nrc_host.so"
+  IMPORTED_LOCATION "${NRC_LIB_DIR}/_nrc_host.so"
 )
 
 add_executable(tl_driver
@@ -59,7 +72,7 @@ target_link_libraries(tl_driver
 )
 
 set_target_properties(tl_driver PROPERTIES
-  BUILD_RPATH "${CMAKE_CURRENT_SOURCE_DIR}/lib"
+  BUILD_RPATH "${NRC_LIB_DIR}"
   INSTALL_RPATH "$ORIGIN"
 )
 
@@ -67,11 +80,24 @@ install(TARGETS tl_driver
   DESTINATION lib/${PROJECT_NAME}
 )
 
+# 安装 NRC 动态库及 Python 接口
+# C++ 链接的 _nrc_host.so 和 Python 使用的 nrc_interface.py
 install(FILES
-  "${CMAKE_CURRENT_SOURCE_DIR}/lib/_nrc_host.so"
-  "${CMAKE_CURRENT_SOURCE_DIR}/lib/nrc_interface.py"
+  "${NRC_LIB_DIR}/_nrc_host.so"
+  "${NRC_LIB_DIR}/nrc_interface.py"
   DESTINATION lib/${PROJECT_NAME}
 )
+
+# ARM64 额外的 Python ctypes 依赖库（x86_64 版没有这些）
+if(NRC_ARCH STREQUAL "aarch64")
+  install(FILES
+    "${NRC_LIB_DIR}/libnrc_host.so"
+    "${NRC_LIB_DIR}/libmath_wrapper.so"
+    "${NRC_LIB_DIR}/libmodbus_wrapper.so"
+    "${NRC_LIB_DIR}/libservoJ_wrapper.so"
+    DESTINATION lib/${PROJECT_NAME}
+  )
+endif()
 
 install(DIRECTORY config
   DESTINATION share/${PROJECT_NAME}
