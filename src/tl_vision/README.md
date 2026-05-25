@@ -157,7 +157,7 @@ $$P_{base} = T_{base}^{tool} \cdot T_{tool}^{camera} \cdot P_{camera}$$
 | $$T_{base}^{tool}$$ | 机械臂末端在基座坐标下的位姿 | 机械臂 API `get_current_position` 实时获取 |
 | $$P_{base}$$ | 物体在基座坐标系下的 3D 坐标 | control_node 发布 `/tl_vision/object_3d_pos_base` |
 
-> 注意：calib_node 本身不依赖 yolo_node。标定时直接用 RealSense 相机采集棋盘格图像，用 nrc_interface 获取机械臂位姿。yolo_node 只在标定完成后的抓取运行阶段才参与。
+> 注意：calib_node 本身不依赖 yolo_node。标定时直接用 RealSense 相机采集棋盘格图像，用 tl_interface 获取机械臂位姿。yolo_node 只在标定完成后的抓取运行阶段才参与。
 
 ---
 
@@ -192,7 +192,7 @@ $$P_{base} = T_{base}^{tool} \cdot T_{tool}^{camera} \cdot P_{camera}$$
 
 - 检查 `handeye_matrix` 是否正确填入（注意是 `T_tool_camera`，不是 `T_camera_tool`）
 - 确认 `handeye_matrix` 最后一行是 `[0, 0, 0, 1]`
-- 验证 NRC API 返回的位置单位（mm），control_node 会自动除以 1000 转为米
+- 验证 TL API 返回的位置单位（mm），control_node 会自动除以 1000 转为米
 - 检查 `grasp_offset` 参数是否合理
 
 ### 5. calib_node 无法连接机械臂

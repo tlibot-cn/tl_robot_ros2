@@ -77,12 +77,12 @@
 #include "tl_ros2_interface/srv/queue_motion_move_j.hpp"
 
 // lib
-#include "nrc_interface.h"
-#include "nrc_job_operate.h"
-#include "nrc_track.h"
-#include "nrc_io.h"
-#include "nrc_modbus.h"
-#include "nrc_queue_operate.h"
+#include "tl_interface.h"
+#include "tl_job_operate.h"
+#include "tl_track.h"
+#include "tl_io.h"
+#include "tl_modbus.h"
+#include "tl_queue_operate.h"
 
 enum MessageLists
 {

@@ -6,15 +6,7 @@
 
 ## 构建命令
 
-**构建顺序很重要** — 必须先构建 `tl_ros2_interface`（自定义 msg/srv 定义）：
-
-```bash
-colcon build --packages-select tl_ros2_interface
-source install/setup.bash
-colcon build --packages-select tl_driver tl_description tl_bringup tl_vision
-```
-
-或一次性构建（colcon 自动解析拓扑顺序）：
+（colcon 自动解析拓扑顺序）：
 ```bash
 colcon build
 source install/setup.bash
@@ -39,7 +31,7 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 - **用途**：定义所有自定义 ROS2 接口（12 个 `.msg`，41 个 `.srv`）
 - **关键消息**：`ObjectInfo`、`ArmStatus`、`CartesianPose`、`MoveCommand`
 - **关键服务**：`GetCurrentCoord`、`SetSpeed`、`Jogging`、`ModbusRead/Write`、`JobRun`
-- **必须最先构建** — 其他包依赖其生成的头文件
+- **必须最先构建** — 其他包依赖其生成的头文件（colcon 会自动处理构建顺序）
 
 ### tl_driver
 - **构建类型**：ament_cmake（C++17）

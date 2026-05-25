@@ -64,14 +64,14 @@ class HandEyeCalibrationNode(Node):
         if not self.data_file:
             self.data_file = os.path.join(self.save_path, 'handeye_samples.npz')
 
-        # ROS2 service clients (tl_driver wraps NRC SDK)
+        # ROS2 service clients (tl_driver wraps TL SDK)
         self._connect_cli = self.create_client(Trigger, '/tl_driver/connect_arm')
         self._power_on_cli = self.create_client(Trigger, '/tl_driver/power_on')
         self._power_off_cli = self.create_client(Trigger, '/tl_driver/power_off')
         self._clear_error_cli = self.create_client(Trigger, '/tl_driver/clear_error')
         self._disconnect_cli = self.create_client(Trigger, '/tl_driver/disconnect_arm')
 
-        # /tcp_pose 订阅 — 替代 nrc.get_current_position()
+        # /tcp_pose 订阅 — 替代 tl.get_current_position()
         self._tcp_pose = None
         self._tcp_pose_received = False
         self._tcp_pose_sub = self.create_subscription(

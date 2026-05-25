@@ -7,6 +7,7 @@
 ## 目录
 * 1.[tl_driver功能包说明](#tl_driver功能包说明)
 * 2.[tl_driver功能包使用](#tl_driver功能包使用)
+* 3.[tl_driver功能包架构说明](#tl_driver功能包架构说明)
 * 4.[tl_driver功能包话题与服务说明](#tl_driver功能包话题与服务说明)
 
 ## tl_driver功能包说明
@@ -21,13 +22,11 @@ tl_driver功能包在机械臂ROS2功能包中是十分重要的，该功能包�
 * 3.熟悉功能包相关的话题，方便开发和使用  
 ## tl_driver功能包使用
 ### tl_driver功能包编译
-在使用该功能包之前需要完成tl_ros2_interface功能包的编译，因为该功能包依赖于tl_ros2_interface功能包
-中的自定义msg和srv, 编译完成后接着编译tl_driver功能包,具体操作如下: 
-```
+
+```bash
 cd ~/tl_robot
-colcon build --packages-select tl_ros2_interface
+colcon build
 source install/setup.bash
-colcon build --packages-select tl_driver
 ```
 编译完成后我们可以通过以下命令直接启动节点，连接机械臂。
 
@@ -136,44 +135,40 @@ tl_driver:
 │   ├── include
 │   │   ├── c
 │   │   │   ├── interface
-│   │   │   │   ├── nrc_c_craft_pallet.h
-│   │   │   │   ├── nrc_c_interface.h
-│   │   │   │   ├── nrc_c_io.h
-│   │   │   │   ├── nrc_c_job_operate.h
-│   │   │   │   └── nrc_c_queue_operate.h
-│   │   │   └── parameter
-│   │   │       ├── nrc_define.h
-│   │   │       └── nrc_interface_parameter.h
-│   │   └── cpp
-│   │       ├── interface
-│   │       │   ├── nrc_api.h
-│   │       │   ├── nrc_craft_conveyor_belt_track.h
-│   │       │   ├── nrc_craft_laser_cutting.h
-│   │       │   ├── nrc_craft_pallet.h
-│   │       │   ├── nrc_craft_track.h
-│   │       │   ├── nrc_craft_vision.h
-│   │       │   ├── nrc_craft_weld.h
-│   │       │   ├── nrc_dual_arm.h
-│   │       │   ├── nrc_interface.h
-│   │       │   ├── nrc_io.h
-│   │       │   ├── nrc_job_operate.h
-│   │       │   ├── nrc_modbus.h
-│   │       │   ├── nrc_queue_operate.h
-│   │       │   ├── nrc_track.h
-│   │       │   └── nrc_vfd_ctr.h
-│   │       └── parameter
-│   │           ├── nrc_craft_conveyor_belt_track_parameter.h
-│   │           ├── nrc_craft_laser_cutting_parameter.h
-│   │           ├── nrc_craft_track_parameter.h
-│   │           ├── nrc_craft_vision_parameter.h
-│   │           ├── nrc_craft_weld_parameter.h
-│   │           ├── nrc_define.h
-│   │           ├── nrc_interface_parameter.h
-│   │           ├── nrc_io_parameter.h
-│   │           ├── nrc_modbus_parameter.h
-│   │           └── nrc_parameter.h
-│   ├── _nrc_host.so
-│   └── nrc_interface.py
+│   │   │   │   ├── tl_c_craft_pallet.h
+│   │   │   │   ├── tl_c_interface.h
+│   │   │   │   ├── tl_c_io.h
+│   │   │   │   ├── tl_c_job_operate.h
+│   │   │   │   └── tl_c_queue_operate.h
+│   │   │       ├── tl_define.h
+│   │   │       └── tl_interface_parameter.h
+│   │       │   ├── tl_api.h
+│   │       │   ├── tl_craft_conveyor_belt_track.h
+│   │       │   ├── tl_craft_laser_cutting.h
+│   │       │   ├── tl_craft_pallet.h
+│   │       │   ├── tl_craft_track.h
+│   │       │   ├── tl_craft_vision.h
+│   │       │   ├── tl_craft_weld.h
+│   │       │   ├── tl_dual_arm.h
+│   │       │   ├── tl_interface.h
+│   │       │   ├── tl_io.h
+│   │       │   ├── tl_job_operate.h
+│   │       │   ├── tl_modbus.h
+│   │       │   ├── tl_queue_operate.h
+│   │       │   ├── tl_track.h
+│   │       │   └── tl_vfd_ctr.h
+│   │           ├── tl_craft_conveyor_belt_track_parameter.h
+│   │           ├── tl_craft_laser_cutting_parameter.h
+│   │           ├── tl_craft_track_parameter.h
+│   │           ├── tl_craft_vision_parameter.h
+│   │           ├── tl_craft_weld_parameter.h
+│   │           ├── tl_define.h
+│   │           ├── tl_interface_parameter.h
+│   │           ├── tl_io_parameter.h
+│   │           ├── tl_modbus_parameter.h
+│   │           └── tl_parameter.h
+│   ├── _tl_host.so
+│   └── tl_interface.py
 ├── package.xml
 ├── README.md
 ├── README_update.md             
