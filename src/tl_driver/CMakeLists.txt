@@ -88,6 +88,14 @@ install(FILES
   DESTINATION lib/${PROJECT_NAME}
 )
 
+# 创建 libnrc_host.so 符号链接，兼容旧版 SONAME 引用
+install(CODE "
+  execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
+    libtl_host.so
+    \"\${CMAKE_INSTALL_PREFIX}/lib/${PROJECT_NAME}/libnrc_host.so\"
+  )
+")
+
 # ARM64 额外的 Python ctypes 依赖库（x86_64 版没有这些）
 if(TL_ARCH STREQUAL "aarch64")
   install(FILES
