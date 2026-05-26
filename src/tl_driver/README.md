@@ -132,16 +132,26 @@ tl_driver:
 │   ├── tl_tcb710_driver.launch.py
 │   └── tl_tcb710v_driver.launch.py
 ├── lib                            # API依赖库
-│   ├── include
-│   │   ├── c
+│   ├── arm                         # ARM 架构库文件
+│   │   ├── _tl_host.so
+│   │   ├── libtl_host.so
+│   │   ├── libservoJ_wrapper.so
+│   │   ├── libmodbus_wrapper.so
+│   │   ├── libmath_wrapper.so
+│   │   └── tl_interface.py
+│   ├── include                     # C/C++ API 头文件
+│   │   ├── c                       # C 语言头文件
 │   │   │   ├── interface
 │   │   │   │   ├── tl_c_craft_pallet.h
 │   │   │   │   ├── tl_c_interface.h
 │   │   │   │   ├── tl_c_io.h
 │   │   │   │   ├── tl_c_job_operate.h
 │   │   │   │   └── tl_c_queue_operate.h
+│   │   │   └── parameter
 │   │   │       ├── tl_define.h
 │   │   │       └── tl_interface_parameter.h
+│   │   └── cpp                     # C++ 头文件
+│   │       ├── interface
 │   │       │   ├── tl_api.h
 │   │       │   ├── tl_craft_conveyor_belt_track.h
 │   │       │   ├── tl_craft_laser_cutting.h
@@ -157,6 +167,7 @@ tl_driver:
 │   │       │   ├── tl_queue_operate.h
 │   │       │   ├── tl_track.h
 │   │       │   └── tl_vfd_ctr.h
+│   │       └── parameter
 │   │           ├── tl_craft_conveyor_belt_track_parameter.h
 │   │           ├── tl_craft_laser_cutting_parameter.h
 │   │           ├── tl_craft_track_parameter.h
@@ -167,8 +178,9 @@ tl_driver:
 │   │           ├── tl_io_parameter.h
 │   │           ├── tl_modbus_parameter.h
 │   │           └── tl_parameter.h
-│   ├── _tl_host.so
-│   └── tl_interface.py
+│   └── x86                        # x86 架构库文件
+│       ├── _tl_host.so
+│       └── tl_interface.py
 ├── package.xml
 ├── README.md
 ├── README_update.md             

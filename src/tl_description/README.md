@@ -77,6 +77,21 @@ ros2 launch tl_description tl_tcb605_description.launch.py
 ## 功能包文件总览
 ```
 ├── CMakeLists.txt                           # 编译规则文件
+├── config                                   # 关节名称配置（每型号一个 YAML）
+│   ├── joint_names_tl_tcb605.yaml
+│   ├── joint_names_tl_tcb605f.yaml
+│   ├── joint_names_tl_tcb605l.yaml
+│   ├── joint_names_tl_tcb605lv.yaml
+│   ├── joint_names_tl_tcb605v.yaml
+│   ├── joint_names_tl_tcb610.yaml
+│   ├── joint_names_tl_tcb610v.yaml
+│   ├── joint_names_tl_tcb705.yaml
+│   ├── joint_names_tl_tcb705f.yaml
+│   ├── joint_names_tl_tcb705l.yaml
+│   ├── joint_names_tl_tcb705lv.yaml
+│   ├── joint_names_tl_tcb705v.yaml
+│   ├── joint_names_tl_tcb710.yaml
+│   └── joint_names_tl_tcb710v.yaml
 ├── doc                                      # 辅助文档、图片文件
 │   └── tl_description.png
 ├── launch                                   # 启动文件
@@ -262,7 +277,7 @@ ros2 launch tl_description tl_tcb605_description.launch.py
     ├── tl_tcb705lv.csv
     ├── tl_tcb705lv.urdf                     # tcb705lv机械臂urdf描述文件
     ├── tl_tcb705v.csv
-    ├── tl_tcb705v.urdf                      # tcb705c机械臂urdf描述文件
+    ├── tl_tcb705v.urdf                      # tcb705v机械臂urdf描述文件
     ├── tl_tcb710.csv
     ├── tl_tcb710.urdf                       # tcb710机械臂urdf描述文件
     ├── tl_tcb710v.csv

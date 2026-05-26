@@ -2,7 +2,7 @@
 
 ## 工作空间概述
 
-天链（TianLian）机械臂 ROS2 工作空间。`src/` 下包含 5 个功能包，使用标准 `colcon build` 构建流程。无 `package.json`、无 Node.js — 纯 ROS2（ament_cmake + ament_python）。
+天链（TianLian）机械臂 ROS2 工作空间。`src/` 下包含 7 个功能包，使用标准 `colcon build` 构建流程。无 `package.json`、无 Node.js — 纯 ROS2（ament_cmake + ament_python）。
 
 ## 构建命令
 
@@ -18,7 +18,7 @@ source install/setup.bash
 
 ```
 tl_ros2_interface  （基础：自定义 msg/srv，无依赖）
-  └─► tl_driver       （C++ 节点，链接 _nrc_host.so 专有库）
+  └─► tl_driver       （C++ 节点，链接 _tl_host.so 专有库）
   └─► tl_vision       （Python ament_python 包，同时依赖 tl_driver）
 tl_description     （独立：URDF + 网格 + RViz）
 tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
@@ -37,8 +37,8 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 - **构建类型**：ament_cmake（C++17）
 - **用途**：机械臂驱动 — 通过 TCP 与实体机械臂通信
 - **入口**：`src/tl_driver.cpp` → 单一 `tl_driver` 可执行文件
-- **专有库**：`lib/_nrc_host.so`（预编译共享库，不可修改）
-- **Python API**：`lib/nrc_interface.py` — 运行时通过 `sys.path` 加载的 Python 封装
+- **专有库**：`lib/_tl_host.so`（预编译共享库，不可修改）
+- **Python API**：`lib/tl_interface.py` — 运行时通过 `sys.path` 加载的 Python 封装
 - **配置**：`config/` 下按臂型命名的 YAML（如 `tl_tcb605_config.yaml`）
 - **启动**：
   - 通用：`ros2 launch tl_driver tl_driver.launch.py arm_type:=<arm_type>`
@@ -66,7 +66,7 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 - **入口点**（来自 `setup.py`）：
   - `yolo_node` — 订阅 RGB+深度图，运行 YOLO，发布 `/tl_vision/object_3d_pos_camera`
   - `calib_node` — 手眼标定（在线用 RealSense，或离线从 `.npz` 计算）
-  - `control_node` — 将相机坐标转换到基座坐标，通过 `nrc_interface` 控制机械臂
+  - `control_node` — 将相机坐标转换到基座坐标，通过 `tl_interface` 控制机械臂
   - `fk_test_node` — 正运动学测试 UI
 - **配置**：`config/yolo_node.yaml`、`config/control_node.yaml`、`config/calib_node.yaml`、`config/camera_params.yaml`
 - **启动**：`ros2 launch tl_vision bringup.launch.py`（启动 RealSense + yolo_node + control_node）
@@ -89,8 +89,8 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 
 ## 注意事项
 
-- **control_node 和 calib_node 均通过 `ament_index` 发现机制**加载 `nrc_interface`（`get_package_prefix('tl_driver')` + `lib/tl_driver`），开发/部署环境均适用。
-- **`_nrc_host.so`** 是预编译专有库，禁止尝试重新编译或修改。构建时链接，安装到 `lib/tl_driver/`。
+- **control_node 和 calib_node 均通过 `ament_index` 发现机制**加载 `tl_interface`（`get_package_prefix('tl_driver')` + `lib/tl_driver`），开发/部署环境均适用。
+- **`_tl_host.so`** 是预编译专有库，禁止尝试重新编译或修改。构建时链接，安装到 `lib/tl_driver/`。
 - **选择性构建时必须先构建 tl_ros2_interface**。不带 `--packages-select` 的 `colcon build` 会自动处理。
 - **机械臂位置单位**：NRC API 返回 mm；control_node 除以 1000 转换为米。欧拉角约定为 XYZ 内旋（scipy 中使用大写 `'XYZ'`）。
 - **control_node.yaml 中的 handeye_matrix** 是 16 个元素的扁平列表，表示 4×4 齐次变换矩阵（行优先）。默认为单位矩阵 — 必须替换为实际标定结果。

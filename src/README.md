@@ -65,7 +65,7 @@ TL 系列机械臂 ROS2 接口说明
 
 ```bash
 mkdir -p ~/tl_robot_ws/src
-cp -r tl_robot_ros2_py ~/tl_robot_ws/src
+cp -r tl_robot_ros2_cpp/src ~/tl_robot_ws/src
 cd ~/tl_robot_ws
 colcon build
 source install/setup.bash
@@ -78,7 +78,7 @@ source install/setup.bash
 当前工作空间包含 **7 个功能包**，每个功能包的作用如下：
 
 ```
-tl_robot_ros2_py/
+tl_robot_ros2_cpp/src/
 ├── tl_bringup/              # 启动文件
 │   ├── launch/              # 一键启动 launch 文件
 │   └── doc/
@@ -106,7 +106,7 @@ tl_robot_ros2_py/
 │   └── srv/                 # 41 个 srv 定义文件
 └── tl_vision/               # 手眼标定
     ├── config/              # 标定与检测参数
-    ├── launch/              # 标定
+    ├── launch/              # 标定、视觉抓取、控制等启动文件
     ├── model/               
     └── tl_vision/           # 节点源码
 ```
@@ -135,7 +135,7 @@ tl_robot_ros2_py/
 - **发布的话题：**
   - `/joint_states`（`sensor_msgs/JointState`）：关节状态
   - `/tcp_pose`（`CartesianPose`）：末端位姿
-  - `/arm_status`（`ArmStatus` 或 `String`）：机械臂运行状态
+  - `/arm_status`（`ArmStatus`）：机械臂运行状态
 
 - **提供的服务：**
   - 连接/断开：`/tl_driver/connect_arm`、`/tl_driver/disconnect_arm`
@@ -183,6 +183,7 @@ tl_robot_ros2_py/
 
 该功能包为 TL 系列机械臂提供**手眼标定（eye-in-hand）**与视觉引导抓取功能。包含以下 4 个节点：
 
+- **yolo_node**：YOLO 目标检测节点，订阅 RGB 图像和深度图，运行 YOLO 模型检测目标物体，发布物体在相机坐标系下的 3D 坐标
 - **calib_node**：手眼标定节点，支持在线（连接 RealSense 相机 + 机械臂实时采集）和离线（从 `.npz` 数据文件计算）两种模式
 - **control_node**：视觉引导抓取控制节点，结合手眼标定结果将物体坐标从相机坐标系转换到基座坐标系，控制机械臂抓取
 - **fk_test_node**：正运动学测试 UI 节点
