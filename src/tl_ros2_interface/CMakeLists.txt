@@ -17,7 +17,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   # msg
   "msg/ArmStatus.msg"                       
   "msg/MoveCommand.msg"                    
-  "msg/JobInsertMove.msg"
   "msg/CartesianPose.msg"
   "msg/ToolParam.msg"
   "msg/ModbusTCPParam.msg"
@@ -53,6 +52,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetDHParam.srv"
   "srv/GetAllJobFileName.srv"
   "srv/JobRun.srv"
+  "srv/JobInsertMove.srv"
   "srv/SetGlobalPos.srv"
   "srv/GetGlobalPos.srv"
   "srv/OpenServoJ.srv"

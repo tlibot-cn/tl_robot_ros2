@@ -9,7 +9,9 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <cstdint>
 
 // ROS2
 #include <rclcpp/rclcpp.hpp>
@@ -23,7 +25,6 @@
 // msg
 #include "tl_ros2_interface/msg/arm_status.hpp"
 #include "tl_ros2_interface/msg/move_command.hpp"
-#include "tl_ros2_interface/msg/job_insert_move.hpp"
 #include "tl_ros2_interface/msg/cartesian_pose.hpp"
 #include "tl_ros2_interface/msg/tool_param.hpp"
 #include "tl_ros2_interface/msg/modbus_tcp_param.hpp"
@@ -58,7 +59,6 @@
 #include "tl_ros2_interface/srv/get_current_coord.hpp"
 #include "tl_ros2_interface/srv/set_coord_num.hpp"
 #include "tl_ros2_interface/srv/get_coord_num.hpp"
-#include "tl_ros2_interface/srv/tool_hand_calib.hpp"
 #include "tl_ros2_interface/srv/set_digital_output.hpp"
 #include "tl_ros2_interface/srv/get_digital_input_output.hpp"
 #include "tl_ros2_interface/srv/modbus_write.hpp"
@@ -69,6 +69,7 @@
 #include "tl_ros2_interface/srv/get_dh_param.hpp"
 #include "tl_ros2_interface/srv/get_all_job_file_name.hpp"
 #include "tl_ros2_interface/srv/job_run.hpp"
+#include "tl_ros2_interface/srv/job_insert_move.hpp"
 #include "tl_ros2_interface/srv/set_global_pos.hpp"
 #include "tl_ros2_interface/srv/get_global_pos.hpp"
 #include "tl_ros2_interface/srv/open_servo_j.hpp"
@@ -99,9 +100,9 @@ public:
   bool disconnect();
   bool power_on();
   bool power_off();
-  bool init();
   bool is_connected();
   bool is_powered();
+  void init();
 
   // 服务
   void handle_connect_service(
@@ -260,10 +261,6 @@ public:
     const std::shared_ptr<tl_ros2_interface::srv::GetCoordNum::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetCoordNum::Response> response);
 
-  void handle_tool_hand_calib_service(
-    const std::shared_ptr<tl_ros2_interface::srv::ToolHandCalib::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::ToolHandCalib::Response> response);
-
   void handle_set_digital_output_service(
     const std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Response> response);
@@ -308,6 +305,22 @@ public:
     const std::shared_ptr<tl_ros2_interface::srv::JobRun::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::JobRun::Response> response);
 
+  void handle_job_insert_movej_service(
+    const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response);
+
+  void handle_job_insert_movel_service(
+    const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response);
+
+  void handle_job_insert_imove_service(
+    const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response);
+
+  void handle_job_insert_movec_service(
+    const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response);
+
   void handle_set_global_pos_service( 
     const std::shared_ptr<tl_ros2_interface::srv::SetGlobalPos::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::SetGlobalPos::Response> response);
@@ -347,18 +360,6 @@ public:
   void handle_movel_topic(
     const tl_ros2_interface::msg::MoveCommand::SharedPtr msg);
 
-  void handle_job_insert_movej_topic(
-    const tl_ros2_interface::msg::JobInsertMove::SharedPtr msg);
-
-  void handle_job_insert_movel_topic(
-    const tl_ros2_interface::msg::JobInsertMove::SharedPtr msg);
-
-  void handle_job_insert_imove_topic(
-    const tl_ros2_interface::msg::JobInsertMove::SharedPtr msg);
-
-  void handle_job_insert_movec_topic(
-    const tl_ros2_interface::msg::JobInsertMove::SharedPtr msg);
-
   void handle_set_servoj_pos_topic(
     const std_msgs::msg::Float64MultiArray::SharedPtr msg);
 
@@ -381,10 +382,10 @@ private:
   std::vector<std::string> arm_joints_;
   double publish_rate_ {100.0};
   int ndof_ {6};
-  
-  static inline int msg_id;
-  static inline std::string msg;
-  static inline bool msg_received;
+
+  rclcpp::CallbackGroup::SharedPtr service_group_;
+  rclcpp::CallbackGroup::SharedPtr topic_group_;
+  rclcpp::CallbackGroup::SharedPtr timer_group_;
 
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr connect_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr disconnect_service_;
@@ -425,7 +426,6 @@ private:
   rclcpp::Service<tl_ros2_interface::srv::GetCurrentCoord>::SharedPtr get_current_coord_service_;
   rclcpp::Service<tl_ros2_interface::srv::SetCoordNum>::SharedPtr set_coord_num_service_;
   rclcpp::Service<tl_ros2_interface::srv::GetCoordNum>::SharedPtr get_coord_num_service_;
-  rclcpp::Service<tl_ros2_interface::srv::ToolHandCalib>::SharedPtr tool_hand_calib_service_;
   rclcpp::Service<tl_ros2_interface::srv::SetDigitalOutput>::SharedPtr set_digital_output_service_;
   rclcpp::Service<tl_ros2_interface::srv::GetDigitalInputOutput>::SharedPtr get_digital_input_output_service_;
   rclcpp::Service<tl_ros2_interface::srv::ModbusWrite>::SharedPtr modbus_write_service_;
@@ -436,6 +436,10 @@ private:
   rclcpp::Service<tl_ros2_interface::srv::GetDHParam>::SharedPtr get_dh_param_service_;
   rclcpp::Service<tl_ros2_interface::srv::GetAllJobFileName>::SharedPtr get_all_job_filename_service_;
   rclcpp::Service<tl_ros2_interface::srv::JobRun>::SharedPtr job_run_service_;
+  rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_movej_service_;
+  rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_movel_service_;
+  rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_imove_service_;
+  rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_movec_service_;
   rclcpp::Service<tl_ros2_interface::srv::JobRun>::SharedPtr job_delete_service_;
   rclcpp::Service<tl_ros2_interface::srv::SetGlobalPos>::SharedPtr set_global_pos_service_;
   rclcpp::Service<tl_ros2_interface::srv::GetGlobalPos>::SharedPtr get_global_pos_service_;
@@ -452,10 +456,6 @@ private:
 
   rclcpp::Subscription<tl_ros2_interface::msg::MoveCommand>::SharedPtr movej_sub_;
   rclcpp::Subscription<tl_ros2_interface::msg::MoveCommand>::SharedPtr movel_sub_;
-  rclcpp::Subscription<tl_ros2_interface::msg::JobInsertMove>::SharedPtr job_insert_movej_sub_;
-  rclcpp::Subscription<tl_ros2_interface::msg::JobInsertMove>::SharedPtr job_insert_movel_sub_;
-  rclcpp::Subscription<tl_ros2_interface::msg::JobInsertMove>::SharedPtr job_insert_imove_sub_;
-  rclcpp::Subscription<tl_ros2_interface::msg::JobInsertMove>::SharedPtr job_insert_movec_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr set_servoj_pos_sub_;
 
   rclcpp::TimerBase::SharedPtr state_publish_timer_;

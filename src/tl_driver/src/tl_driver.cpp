@@ -1,6 +1,46 @@
 #include "tl_driver/tl_driver.h"
 
-inline const char * result_to_string(int ret)
+namespace
+{
+
+struct RobotStateMessageBuffer
+{
+  std::mutex mutex;
+  std::condition_variable cv;
+
+  int last_msg_id = -1;
+  std::string last_msg;
+  uint64_t seq = 0;
+};
+
+RobotStateMessageBuffer g_robot_state_msg_buffer;
+
+// 普通 C 风格函数指针回调
+void robot_state_recv_callback(int msg_id, const char* msg)
+{
+  {
+    std::lock_guard<std::mutex> lock(g_robot_state_msg_buffer.mutex);
+
+    g_robot_state_msg_buffer.last_msg_id = msg_id;
+    g_robot_state_msg_buffer.last_msg = msg ? msg : "";
+    ++g_robot_state_msg_buffer.seq;
+  }
+
+  g_robot_state_msg_buffer.cv.notify_all();
+
+  std::cout << "\033[32m"
+            << "id = " << msg_id
+            << ", msg = " << (msg ? msg : "")
+            << "\033[0m" << std::endl;
+}
+
+void receive_error_or_warning_message_callback(int messageType, const char* message, int messageCode)
+{
+  std::cout << "\033[31m" << "messageType = " << messageType <<  ", message = " 
+             << message << ", messageCode = " << messageCode << "\033[0m" << std::endl;
+}
+
+const char * result_to_string(int ret)
 {
   switch (ret)
   {
@@ -22,12 +62,8 @@ inline const char * result_to_string(int ret)
       return "UNKNOWN_ERROR";
   }
 }
+}  // namespace
 
-inline void receive_error_or_warning_message_callback(int messageType, const char* message, int messageCode)
-{
-  std::cout << "\033[31m" << "messageType = " << messageType <<  ", message = " 
-             << message << ", messageCode = " << messageCode << "\033[0m" << std::endl;
-}
 
 TL_Arm::TL_Arm()
 : rclcpp::Node("tl_driver")
@@ -46,6 +82,15 @@ TL_Arm::TL_Arm()
   arm_type_ = this->get_parameter("arm_type").as_string();
   arm_joints_ = this->get_parameter("arm_joints").as_string_array();
   ndof_ = arm_joints_.size();
+
+  // 多线程
+  service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+
+  topic_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  auto topic_group_option = rclcpp::SubscriptionOptions();
+  topic_group_option.callback_group = topic_group_;
+
+  timer_group_ = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
   
   // 服务
   connect_service_ = this->create_service<std_srvs::srv::Trigger>(
@@ -54,7 +99,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_connect_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   disconnect_service_ = this->create_service<std_srvs::srv::Trigger>(
     "/tl_driver/disconnect_arm",
@@ -62,7 +110,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_disconnect_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   poweron_service_ = this->create_service<std_srvs::srv::Trigger>(
     "/tl_driver/power_on",
@@ -70,7 +121,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_poweron_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   poweroff_service_ = this->create_service<std_srvs::srv::Trigger>(
     "/tl_driver/power_off",
@@ -78,7 +132,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_poweroff_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
     
   clear_error_service_ = this->create_service<std_srvs::srv::Trigger>(
     "/tl_driver/clear_error",
@@ -86,7 +143,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_clear_error_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   set_speed_service_ = this->create_service<tl_ros2_interface::srv::SetSpeed>(
     "/tl_driver/set_speed",
@@ -94,7 +154,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_set_speed_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_speed_service_ = this->create_service<tl_ros2_interface::srv::GetSpeed>(
     "/tl_driver/get_speed",
@@ -102,7 +165,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_speed_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   get_quat2rpy_service_ = this->create_service<tl_ros2_interface::srv::GetPosTransform>(
     "/tl_driver/get_quat2rpy",
@@ -110,7 +176,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_quat2rpy_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_rpy2quat_service_ = this->create_service<tl_ros2_interface::srv::GetPosTransform>(
     "/tl_driver/get_rpy2quat",
@@ -118,7 +187,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_rpy2quat_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_rpy2r_service_ = this->create_service<tl_ros2_interface::srv::GetPosTransform>(
     "/tl_driver/get_rpy2r",
@@ -126,7 +198,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_rpy2r_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_tr2r_service_ = this->create_service<tl_ros2_interface::srv::GetPosTransform>(
     "/tl_driver/get_tr2r",
@@ -134,7 +209,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_tr2r_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_r2tr_service_ = this->create_service<tl_ros2_interface::srv::GetPosTransform>(
     "/tl_driver/get_r2tr",
@@ -142,7 +220,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_r2tr_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   set_controller_ip_service_ = this->create_service<tl_ros2_interface::srv::SetControllerIP>(
     "/tl_driver/set_controller_ip",
@@ -150,7 +231,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_set_controller_ip_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_controller_id_service_ = this->create_service<std_srvs::srv::Trigger>(
     "/tl_driver/get_controller_id",
@@ -158,7 +242,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_controller_id_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   start_jogging_service_ = this->create_service<tl_ros2_interface::srv::Jogging>(
     "/tl_driver/start_jogging",
@@ -166,7 +253,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_start_jogging_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   stop_jogging_service_ = this->create_service<tl_ros2_interface::srv::Jogging>(
     "/tl_driver/stop_jogging",
@@ -174,7 +264,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_stop_jogging_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_robot_state_service_ = this->create_service<tl_ros2_interface::srv::GetRobotState>(
     "/tl_driver/get_robot_state",
@@ -182,7 +275,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_robot_state_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_library_version_service_ = this->create_service<std_srvs::srv::Trigger>(
     "/tl_driver/get_library_version",
@@ -190,7 +286,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_library_version_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_robot_joint_param_service_ = this->create_service<tl_ros2_interface::srv::GetRobotJointParam>(
     "/tl_driver/get_robot_joint_param",
@@ -198,7 +297,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_robot_joint_param_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   set_robot_joint_param_service_ = this->create_service<tl_ros2_interface::srv::SetRobotJointParam>(
     "/tl_driver/set_robot_joint_param",
@@ -206,7 +308,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_set_robot_joint_param_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_joint_temperature_service_ = this->create_service<tl_ros2_interface::srv::GetJointTemperature>(
     "/tl_driver/get_joint_temperature",
@@ -214,7 +319,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_joint_temperature_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_joint_voltage_service_ = this->create_service<tl_ros2_interface::srv::GetJointVoltage>(
     "/tl_driver/get_joint_voltage",
@@ -222,7 +330,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_joint_voltage_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_motor_current_service_ = this->create_service<tl_ros2_interface::srv::GetMotorCurrent>(
     "/tl_driver/get_motor_current",
@@ -230,7 +341,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_motor_current_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_joint_software_version_service_ = this->create_service<tl_ros2_interface::srv::GetJointSoftwareVersion>(
     "/tl_driver/get_joint_software_version",
@@ -238,7 +352,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_joint_software_version_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_nexmotion_lib_version_service_ = this->create_service<std_srvs::srv::Trigger>(
     "/tl_driver/get_nexmotion_lib_version",
@@ -246,7 +363,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_nexmotion_lib_version_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   restore_default_dh_param_service_ = this->create_service<tl_ros2_interface::srv::RestoreDefaultDHParam>(
     "/tl_driver/restore_default_dh_param",
@@ -254,7 +374,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_restore_default_dh_param_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   set_default_cartesian_param_service_ = this->create_service<std_srvs::srv::Trigger>(
     "/tl_driver/set_default_cartesian_param",
@@ -262,7 +385,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_set_default_cartesian_param_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   log_download_service_ = this->create_service<tl_ros2_interface::srv::LogDownload>(
     "/tl_driver/log_download",
@@ -270,7 +396,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_log_download_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   set_drag_mode_service_ = this->create_service<tl_ros2_interface::srv::SetDragMode>(
     "/tl_driver/set_drag_mode",
@@ -278,7 +407,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_set_drag_mode_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   get_drag_status_service_ = this->create_service<std_srvs::srv::Trigger>(     // 用不了
     "/tl_driver/get_drag_status",
@@ -286,7 +418,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_drag_status_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   track_save_service_ = this->create_service<tl_ros2_interface::srv::TrackSave>(
     "/tl_driver/track_save",
@@ -294,7 +429,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_track_save_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   track_playback_service_ = this->create_service<tl_ros2_interface::srv::TrackPlayback>(
     "/tl_driver/track_playback",
@@ -302,7 +440,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_track_playback_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   set_tool_param_service_ = this->create_service<tl_ros2_interface::srv::SetToolParam>(
     "/tl_driver/set_tool_param",
@@ -310,7 +451,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_set_tool_param_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   set_user_coord_service_ = this->create_service<tl_ros2_interface::srv::SetUserCoord>(
     "/tl_driver/set_user_coord",
@@ -318,7 +462,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_set_user_coord_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   set_axis_zero_pos_service_ = this->create_service<tl_ros2_interface::srv::SetAxisZeroPos>(
     "/tl_driver/set_axis_zero_pos",
@@ -326,7 +473,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_set_axis_zero_pos_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   set_current_coord_service_ = this->create_service<tl_ros2_interface::srv::SetCurrentCoord>(
     "/tl_driver/set_current_coord",
@@ -334,7 +484,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_set_current_coord_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   get_current_coord_service_ = this->create_service<tl_ros2_interface::srv::GetCurrentCoord>(
     "/tl_driver/get_current_coord",
@@ -342,7 +495,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_current_coord_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));    
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );    
 
   set_coord_num_service_ = this->create_service<tl_ros2_interface::srv::SetCoordNum>( 
     "/tl_driver/set_coord_num",
@@ -350,7 +506,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_set_coord_num_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   get_coord_num_service_ = this->create_service<tl_ros2_interface::srv::GetCoordNum>(
     "/tl_driver/get_coord_num",
@@ -358,15 +517,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_coord_num_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
-
-  tool_hand_calib_service_ = this->create_service<tl_ros2_interface::srv::ToolHandCalib>(
-    "/tl_driver/tool_hand_calib",
-    std::bind(
-      &TL_Arm::handle_tool_hand_calib_service,
-      this,
-      std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   set_digital_output_service_ = this->create_service<tl_ros2_interface::srv::SetDigitalOutput>(
     "/tl_driver/set_digital_output",
@@ -374,7 +528,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_set_digital_output_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_digital_input_output_service_ = this->create_service<tl_ros2_interface::srv::GetDigitalInputOutput>(
     "/tl_driver/get_digital_input_output",
@@ -382,7 +539,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_digital_input_output_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   modbus_write_service_ = this->create_service<tl_ros2_interface::srv::ModbusWrite>(
     "/tl_driver/modbus_write",
@@ -390,7 +550,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_modbus_write_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   modbus_read_service_ = this->create_service<tl_ros2_interface::srv::ModbusRead>(
     "/tl_driver/modbus_read",
@@ -398,7 +561,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_modbus_read_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   coord_transform_service_ = this->create_service<tl_ros2_interface::srv::CoordTransform>(
     "/tl_driver/coord_transform",
@@ -406,7 +572,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_coord_transform_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_pos_reachable_service_ = this->create_service<tl_ros2_interface::srv::GetPosReachable>(
     "/tl_driver/get_pos_reachable",
@@ -414,7 +583,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_pos_reachable_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   set_dh_param_service_ = this->create_service<tl_ros2_interface::srv::SetDHParam>(
     "/tl_driver/set_dh_param",
@@ -422,7 +594,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_set_dh_param_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_dh_param_service_ = this->create_service<tl_ros2_interface::srv::GetDHParam>(
     "/tl_driver/get_dh_param",
@@ -430,7 +605,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_dh_param_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   get_all_job_filename_service_ = this->create_service<tl_ros2_interface::srv::GetAllJobFileName>(
     "/tl_driver/get_all_job_filename",
@@ -438,7 +616,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_all_job_filename_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   job_run_service_ = this->create_service<tl_ros2_interface::srv::JobRun>(
     "/tl_driver/job_run",
@@ -446,15 +627,65 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_job_run_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));  
-      
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );  
+    
   job_delete_service_ = this->create_service<tl_ros2_interface::srv::JobRun>(
     "/tl_driver/job_delete",
     std::bind(
       &TL_Arm::handle_job_delete_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
+
+  job_insert_movej_service_ = this->create_service<tl_ros2_interface::srv::JobInsertMove>(
+    "/tl_driver/job_insert_moveJ",
+    std::bind(
+      &TL_Arm::handle_job_insert_movej_service,
+      this,
+      std::placeholders::_1,
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
+
+  job_insert_movel_service_ = this->create_service<tl_ros2_interface::srv::JobInsertMove>(
+    "/tl_driver/job_insert_moveL",
+    std::bind(
+      &TL_Arm::handle_job_insert_movel_service,
+      this,
+      std::placeholders::_1,
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
+
+  job_insert_imove_service_ = this->create_service<tl_ros2_interface::srv::JobInsertMove>(
+    "/tl_driver/job_insert_imove",
+    std::bind(
+      &TL_Arm::handle_job_insert_imove_service,
+      this,
+      std::placeholders::_1,
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
+
+  job_insert_movec_service_ = this->create_service<tl_ros2_interface::srv::JobInsertMove>(
+    "/tl_driver/job_insert_moveC",
+    std::bind(
+      &TL_Arm::handle_job_insert_movec_service,
+      this,
+      std::placeholders::_1,
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   set_global_pos_service_ = this->create_service<tl_ros2_interface::srv::SetGlobalPos>(
     "/tl_driver/set_global_pos",
@@ -462,7 +693,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_set_global_pos_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   get_global_pos_service_ = this->create_service<tl_ros2_interface::srv::GetGlobalPos>(
     "/tl_driver/get_global_pos",
@@ -470,7 +704,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_get_global_pos_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   set_current_mode_service_ = this->create_service<tl_ros2_interface::srv::SetCurrentMode>(
     "/tl_driver/set_current_mode",
@@ -478,7 +715,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_set_current_mode_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   open_servoj_service_ = this->create_service<tl_ros2_interface::srv::OpenServoJ>(
     "/tl_driver/open_servoj",
@@ -486,7 +726,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_open_servoj_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   close_servoj_service_ = this->create_service<std_srvs::srv::Trigger>(
     "/tl_driver/close_servoj",
@@ -494,7 +737,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_close_servoj_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   queue_motion_set_status_service_ = this->create_service<tl_ros2_interface::srv::QueueMotionSetStatus>(
     "/tl_driver/queue_motion_set_status",
@@ -502,7 +748,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_queue_motion_set_status_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   queue_motion_movej_service_ = this->create_service<tl_ros2_interface::srv::QueueMotionMoveJ>(
     "/tl_driver/queue_motion_movej",
@@ -510,7 +759,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_queue_motion_movej_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
 
   queue_motion_stop_service_ = this->create_service<std_srvs::srv::Trigger>(
     "/tl_driver/queue_motion_stop",
@@ -518,7 +770,10 @@ TL_Arm::TL_Arm()
       &TL_Arm::handle_queue_motion_stop_service,
       this,
       std::placeholders::_1,
-      std::placeholders::_2));
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   // 话题pub
   joint_state_pub_ =
@@ -535,50 +790,38 @@ TL_Arm::TL_Arm()
     this->create_subscription<tl_ros2_interface::msg::MoveCommand>(
     "/tl_driver/moveJ",
     10,
-    std::bind(&TL_Arm::handle_movej_topic, this, std::placeholders::_1));
+    std::bind(&TL_Arm::handle_movej_topic, this, std::placeholders::_1),
+    topic_group_option
+  );
 
   movel_sub_ =
     this->create_subscription<tl_ros2_interface::msg::MoveCommand>(
     "/tl_driver/moveL",
     10,
-    std::bind(&TL_Arm::handle_movel_topic, this, std::placeholders::_1));
-  
-  job_insert_movej_sub_ = 
-    this->create_subscription<tl_ros2_interface::msg::JobInsertMove>(
-    "/tl_driver/job_insert_moveJ",
-    10,
-    std::bind(&TL_Arm::handle_job_insert_movej_topic, this, std::placeholders::_1));
-
-  job_insert_movel_sub_ = 
-    this->create_subscription<tl_ros2_interface::msg::JobInsertMove>(
-    "/tl_driver/job_insert_moveL",
-    10,
-    std::bind(&TL_Arm::handle_job_insert_movel_topic, this, std::placeholders::_1));
-
-  job_insert_imove_sub_ = 
-    this->create_subscription<tl_ros2_interface::msg::JobInsertMove>(
-    "/tl_driver/job_insert_imove",
-    10,
-    std::bind(&TL_Arm::handle_job_insert_imove_topic, this, std::placeholders::_1));
-
-  job_insert_movec_sub_ = 
-    this->create_subscription<tl_ros2_interface::msg::JobInsertMove>(
-    "/tl_driver/job_insert_moveC",
-    10,
-    std::bind(&TL_Arm::handle_job_insert_movec_topic, this, std::placeholders::_1));
+    std::bind(&TL_Arm::handle_movel_topic, this, std::placeholders::_1),
+    topic_group_option
+  );
   
   set_servoj_pos_sub_ = 
     this->create_subscription<std_msgs::msg::Float64MultiArray>(
     "/tl_driver/set_servoj_pos",
     10,
-    std::bind(&TL_Arm::handle_set_servoj_pos_topic, this, std::placeholders::_1));
+    std::bind(&TL_Arm::handle_set_servoj_pos_topic, this, std::placeholders::_1),
+    topic_group_option
+  );
 
   auto period = std::chrono::duration_cast<std::chrono::milliseconds>(
     std::chrono::duration<double>(1.0 / publish_rate_));
 
   state_publish_timer_ =
-    this->create_wall_timer(period, std::bind(&TL_Arm::publish_arm_state, this));
-
+    this->create_wall_timer(
+      period, 
+      std::bind(&TL_Arm::publish_arm_state, this),
+      timer_group_
+  );
+  
+  // 初始化
+  init();
   RCLCPP_INFO (this->get_logger(),"%s_driver is running ",arm_type_.c_str());
 }
 
@@ -591,10 +834,18 @@ TL_Arm::~TL_Arm()
   }
 }
 
-bool TL_Arm::init()
+void TL_Arm::init()
 {
   RCLCPP_INFO(this->get_logger(), "Trying to connect to %s:%s,%s", arm_ip_.c_str(), arm_port_.c_str(), arm_port_aux_.c_str());
-  return connect() && power_on();
+  if (connect())
+  {
+    power_on();
+  }
+  else
+  {
+    rclcpp::shutdown();
+    exit(0);
+  }
 }
 
 bool TL_Arm::is_connected()
@@ -704,13 +955,7 @@ bool TL_Arm::connect()
     socket_fd_aux_,
     receive_error_or_warning_message_callback);
   
-  recv_message(socket_fd_aux_, [](int msg_id, const char* msg) {
-    TL_Arm::msg_id = msg_id;
-    TL_Arm::msg = msg;
-    TL_Arm::msg_received = true;
-    std::cout << "\033[32m" << "id = " << TL_Arm::msg_id << ", msg = " 
-              << TL_Arm::msg << "\033[0m" << std::endl;
-  });
+  recv_message(socket_fd_aux_, robot_state_recv_callback);
 
   RCLCPP_INFO(
     this->get_logger(),
@@ -728,8 +973,10 @@ bool TL_Arm::disconnect()
   }
 
   disconnect_robot(socket_fd_);
+  disconnect_robot(socket_fd_aux_);
 
   socket_fd_ = 0;
+  socket_fd_aux_ = 0;
   is_connected_ = false;
 
   return true;
@@ -740,7 +987,6 @@ void TL_Arm::handle_connect_service(
   std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
-
   if (is_connected())
   {
     response->success = true; // shc 26.5.19 修改：连接了就响应true
@@ -757,11 +1003,10 @@ void TL_Arm::handle_disconnect_service(
   std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
-
   if (!is_connected())
   {
-    response->success = true;  // shc 26.5.19 修改：断开了就响应true
-    response->message = "Arm already disconnected";
+    response->success = false;
+    response->message = "Arm is not connected";
     return;
   }
 
@@ -774,6 +1019,12 @@ void TL_Arm::handle_poweron_service(
   std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
+  if (!is_connected())
+  {
+    response->success = false;
+    response->message = "Arm is not connected";
+    return;
+  }
 
   if (is_powered())
   {
@@ -791,6 +1042,12 @@ void TL_Arm::handle_poweroff_service(
   std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
+  if (!is_connected())
+  {
+    response->success = false;
+    response->message = "Arm is not connected";
+    return;
+  }
 
   if (!is_powered_)
   {
@@ -808,7 +1065,6 @@ void TL_Arm::handle_clear_error_service(
   std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
-
   if (!is_connected())
   {
     response->success = false;
@@ -907,7 +1163,7 @@ void TL_Arm::handle_get_quat2rpy_service(
   {
     response->success = true;
     response->message = "Get quat2rpy successfully";
-    response->output = std::move(rpy);
+    response->output = rpy;
   }
   else
   {
@@ -940,7 +1196,7 @@ void TL_Arm::handle_get_rpy2quat_service(
   {
     response->success = true;
     response->message = "Get rpy2quat successfully";
-    response->output = std::move(quat);
+    response->output = quat;
   }
   else
   {
@@ -973,7 +1229,7 @@ void TL_Arm::handle_get_rpy2r_service(
   {
     response->success = true;
     response->message = "Get rpy2r successfully";
-    response->output = std::move(rot);
+    response->output = rot;
   }
   else
   {
@@ -1006,7 +1262,7 @@ void TL_Arm::handle_get_tr2r_service(
   {
     response->success = true;
     response->message = "Get tr2r successfully";
-    response->output = std::move(rot);
+    response->output = rot;
   }
   else
   {
@@ -1039,7 +1295,7 @@ void TL_Arm::handle_get_r2tr_service(
   {
     response->success = true;
     response->message = "Get r2tr successfully";
-    response->output = std::move(tr_matrix);
+    response->output = tr_matrix;
   }
   else
   {
@@ -1128,7 +1384,7 @@ void TL_Arm::handle_stop_jogging_service(
   response->message = response->success ? "Stop jogging successfully" : "Failed to stop jogging";
 }
 
-void TL_Arm::handle_get_robot_state_service(                      
+void TL_Arm::handle_get_robot_state_service(
   const std::shared_ptr<tl_ros2_interface::srv::GetRobotState::Request> request,
   std::shared_ptr<tl_ros2_interface::srv::GetRobotState::Response> response)
 {
@@ -1139,8 +1395,6 @@ void TL_Arm::handle_get_robot_state_service(
     return;
   }
 
-  TL_Arm::msg_received = false;
-
   RobotState param {};
   param.channel = request->channel;
   param.stop = request->stop;
@@ -1150,35 +1404,42 @@ void TL_Arm::handle_get_robot_state_service(
   param.position = request->position;
   param.dataildmotionpos = request->detail_motion_pos;
   param.posSum = request->pos_sum;
-  param.ioPort = std::move(request->io_port);
-  param.optional = std::move(request->optional);
+  param.ioPort = request->io_port;
+  param.optional = request->optional;
 
-  int ret = get_robot_state(socket_fd_aux_, param);
+  uint64_t start_seq = 0;
+  {
+    std::lock_guard<std::mutex> lock(g_robot_state_msg_buffer.mutex);
+    start_seq = g_robot_state_msg_buffer.seq;
+  }
+
+  int ret = get_robot_state(socket_fd_, param);
   if (ret != Result::SUCCESS)
   {
     response->success = false;
     response->message = "Failed to get robot state";
+    return;
   }
 
-  int elapsed_ms = 0, timeout_ms = 5000;
-  while (!TL_Arm::msg_received && elapsed_ms < timeout_ms) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-      elapsed_ms += 10;
-  }
+  std::unique_lock<std::mutex> lock(g_robot_state_msg_buffer.mutex);
 
-  if (TL_Arm::msg_received) 
-  {
-    if (TL_Arm::msg_id == MessageLists::ROBOT_STATE)
-    {
-      response->success = true;
-      response->message = TL_Arm::msg;
-    }
-  } 
-  else 
+  bool received = g_robot_state_msg_buffer.cv.wait_for(
+    lock,
+    std::chrono::seconds(5),
+    [start_seq]() {
+      return g_robot_state_msg_buffer.seq > start_seq &&
+             g_robot_state_msg_buffer.last_msg_id == MessageLists::ROBOT_STATE;
+    });
+
+  if (!received)
   {
     response->success = false;
-    response->message = "Timeout";
+    response->message = "Timeout waiting for robot state";
+    return;
   }
+
+  response->success = true;
+  response->message = g_robot_state_msg_buffer.last_msg;
 }
 
 void TL_Arm::handle_get_library_version_service(                      
@@ -1303,7 +1564,7 @@ void TL_Arm::handle_get_joint_temperature_service(
   {
     response->success = true;
     response->message = "Get joint temperatures successfully";
-    response->temperatures = std::move(temperatures);
+    response->temperatures = temperatures;
   }
   else
   {
@@ -1331,8 +1592,8 @@ void TL_Arm::handle_get_joint_voltage_service(
   {
     response->success = true;
     response->message = "Get joint voltage successfully";
-    response->joint_voltage = std::move(joint_voltage);
-    response->positioner_voltage = std::move(positioner_voltage);
+    response->joint_voltage = joint_voltage;
+    response->positioner_voltage = positioner_voltage;
   }
   else
   {
@@ -1359,7 +1620,7 @@ void TL_Arm::handle_get_motor_current_service(
   {
     response->success = true;
     response->message = "Get motor current successfully";
-    response->motor_current = std::move(motor_current);
+    response->motor_current = motor_current;
   }
   else
   {
@@ -1431,12 +1692,13 @@ void TL_Arm::handle_set_default_cartesian_param_service(
   std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
-  if (is_connected())
+  if (!is_connected())
   {
     response->success = false;
-    response->message = "Arm already connected";
+    response->message = "Arm is not connected";
     return;
   }
+
   int ret = set_default_cartesian_params(socket_fd_);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Set default cartesian param successfully" : "Failed to set default cartesian param";
@@ -1706,60 +1968,17 @@ void TL_Arm::handle_get_coord_num_service(
   }
 }
 
-void TL_Arm::handle_tool_hand_calib_service(
-  const std::shared_ptr<tl_ros2_interface::srv::ToolHandCalib::Request> request,
-  std::shared_ptr<tl_ros2_interface::srv::ToolHandCalib::Response> response)
-{
-
-  if (!is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (request->point_num < 1 || request->point_num > 7)
-  {
-    response->success = false;
-    response->message = "Invalid point number";
-    return;
-  }
-
-  int ret = -1;
-  if (request->point_num == 7) 
-  {
-    ret = tool_hand_7_point_calibrate(socket_fd_, request->point_num, request->tool_num);
-    if (ret == Result::SUCCESS)
-    {
-      ret = tool_hand_7_point_calibrate_caculate(socket_fd_, request->tool_num, request->point_num);
-      response->success = (ret == Result::SUCCESS);
-      response->message = response->success ? "Tool hand calibrate successfully" : "Failed to calibrate tool hand";
-    }
-    else
-    {
-      response->success = false;
-      response->message = "Failed to add calibrate point";
-    }
-  }
-  else
-  {
-    ret = tool_hand_7_point_calibrate(socket_fd_, request->point_num, request->tool_num);
-    response->success = (ret == Result::SUCCESS);
-    response->message = response->success ? "Calibrate point added successfully" : "Failed to add calibrate point";
-  }
-}
-
 void TL_Arm::handle_set_digital_output_service(
   const std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Request> request,
   std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Response> response)
 {
-
   if (!is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
+
   if (request->value < 0 || request->value > 1)
   {
     response->success = false;
@@ -1783,9 +2002,9 @@ void TL_Arm::handle_get_digital_input_output_service(
     response->message = "Arm is not connected";
     return;
   }
+
   std::vector<int> digitalInput;
   std::vector<int> digitalOutput;
-
   int ret = get_digital_input(socket_fd_, digitalInput);
   int ret1 = get_digital_output(socket_fd_, digitalOutput);
   if (ret == Result::SUCCESS && ret1 == Result::SUCCESS)
@@ -1854,7 +2073,7 @@ void TL_Arm::handle_modbus_write_service(
     return;
   }
 
-  std::vector<int> data = std::move(request->data);
+  std::vector<int> data = request->data;
   ret = modbus_write_multiple_holding_registers(socket_fd_, request->master_id, request->addr, data);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Modbus write successfully" : "Failed to write Modbus";
@@ -1916,7 +2135,7 @@ void TL_Arm::handle_modbus_read_service(
   ret = modbus_read_holding_registers(socket_fd_, request->master_id, request->addr, request->quantity, data);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Modbus read successfully" : "Failed to read Modbus";
-  response->data = std::move(data);
+  response->data = data;
 }
 
 void TL_Arm::handle_coord_transform_service(
@@ -1944,15 +2163,15 @@ void TL_Arm::handle_coord_transform_service(
     return;
   }
 
-  std::vector<double> originPos = std::move(request->origin_pos);
-  std::vector<double> referencePos = std::move(request->reference_pos);
+  std::vector<double> originPos = request->origin_pos;
+  std::vector<double> referencePos = request->reference_pos;
   std::vector<double> targetPos;
 
   int ret = get_origin_coord_to_target_coord(socket_fd_, request->origin_coord, originPos, 
                                               request->target_coord, targetPos, request->form, referencePos);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Coord transform successfully" : "Failed to transform coord";
-  response->target_pos = std::move(targetPos);
+  response->target_pos = targetPos;
 }
 
 void TL_Arm::handle_get_pos_reachable_service(
@@ -1973,7 +2192,7 @@ void TL_Arm::handle_get_pos_reachable_service(
     return;
   }
 
-  std::vector<double> queryPos = std::move(request->pos);
+  std::vector<double> queryPos = request->pos;
 
   bool result = false;
   int ret = get_pos_reachable(socket_fd_, queryPos, request->move_type, result);
@@ -1999,8 +2218,8 @@ void TL_Arm::handle_set_dh_param_service(
     response->message = "Arm is not connected";
     return;
   }
+
   RobotDHParam dh_param {};
-  
   dh_param.L1 = request->param.l1;
   dh_param.L2 = request->param.l2;
   dh_param.L3 = request->param.l3;
@@ -2205,6 +2424,142 @@ void TL_Arm::handle_job_delete_service(
   response->message = response->success ? "Job delete successfully" : "Failed to delete job";
 }
 
+void TL_Arm::handle_job_insert_movej_service(
+  const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
+  std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response)
+{
+  if (!is_connected())
+  {
+    response->success = false;
+    response->message = "Arm is not connected";
+    return;
+  }
+
+  MoveCmd cmd {};
+  cmd.targetPosType = static_cast<PosType>(PosType::data);
+  cmd.targetPosName = "";
+  cmd.coord = request->cmd.coord;
+  cmd.velocity = request->cmd.velocity;
+  cmd.velocitySync = request->cmd.velocity_sync;
+  cmd.acc = request->cmd.acc;
+  cmd.dec = request->cmd.dec;
+  cmd.pl = request->cmd.pl;
+  cmd.time = request->cmd.time;
+  cmd.toolNum = request->cmd.tool_num;
+  cmd.userNum = request->cmd.user_num;
+  cmd.posidtype = request->cmd.posidtype;
+  cmd.configuration = request->cmd.configuration;
+  cmd.spin = request->cmd.spin;
+  cmd.parasync = request->cmd.para_sync;
+  cmd.targetPosValue = request->cmd.target_pos_value;
+
+  int ret = job_insert_moveJ(socket_fd_, request->line, cmd);
+  response->success = (ret == Result::SUCCESS);
+  response->message = response->success ? "Job insert movej successfully" : "Failed to insert job movej";
+}
+
+void TL_Arm::handle_job_insert_movel_service(
+  const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
+  std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response)
+{
+  if (!is_connected())
+  {
+    response->success = false;
+    response->message = "Arm is not connected";
+    return;
+  }
+
+  MoveCmd cmd {};
+  cmd.targetPosType = static_cast<PosType>(PosType::data);
+  cmd.targetPosName = "";
+  cmd.coord = request->cmd.coord;
+  cmd.velocity = request->cmd.velocity;
+  cmd.velocitySync = request->cmd.velocity_sync;
+  cmd.acc = request->cmd.acc;
+  cmd.dec = request->cmd.dec;
+  cmd.pl = request->cmd.pl;
+  cmd.time = request->cmd.time;
+  cmd.toolNum = request->cmd.tool_num;
+  cmd.userNum = request->cmd.user_num;
+  cmd.posidtype = request->cmd.posidtype;
+  cmd.configuration = request->cmd.configuration;
+  cmd.spin = request->cmd.spin;
+  cmd.parasync = request->cmd.para_sync;
+  cmd.targetPosValue = request->cmd.target_pos_value;
+
+  int ret = job_insert_moveL(socket_fd_, request->line, cmd);
+  response->success = (ret == Result::SUCCESS);
+  response->message = response->success ? "Job insert movel successfully" : "Failed to insert job movel";
+}
+
+void TL_Arm::handle_job_insert_imove_service(
+  const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
+  std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response)
+{
+  if (!is_connected())
+  {
+    response->success = false;
+    response->message = "Arm is not connected";
+    return;
+  }
+
+  MoveCmd cmd {};
+  cmd.targetPosType = static_cast<PosType>(PosType::data);
+  cmd.targetPosName = "";
+  cmd.coord = request->cmd.coord;
+  cmd.velocity = request->cmd.velocity;
+  cmd.velocitySync = request->cmd.velocity_sync;
+  cmd.acc = request->cmd.acc;
+  cmd.dec = request->cmd.dec;
+  cmd.pl = request->cmd.pl;
+  cmd.time = request->cmd.time;
+  cmd.toolNum = request->cmd.tool_num;
+  cmd.userNum = request->cmd.user_num;
+  cmd.posidtype = request->cmd.posidtype;
+  cmd.configuration = request->cmd.configuration;
+  cmd.spin = request->cmd.spin;
+  cmd.parasync = request->cmd.para_sync;
+  cmd.targetPosValue = request->cmd.target_pos_value;
+
+  int ret = job_insert_imove(socket_fd_, request->line, cmd);
+  response->success = (ret == Result::SUCCESS);
+  response->message = response->success ? "Job insert imove successfully" : "Failed to insert job imove";
+}
+
+void TL_Arm::handle_job_insert_movec_service(
+  const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
+  std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response)
+{
+  if (!is_connected())
+  {
+    response->success = false;
+    response->message = "Arm is not connected";
+    return;
+  }
+
+  MoveCmd cmd {};
+  cmd.targetPosType = static_cast<PosType>(PosType::data);
+  cmd.targetPosName = "";
+  cmd.coord = request->cmd.coord;
+  cmd.velocity = request->cmd.velocity;
+  cmd.velocitySync = request->cmd.velocity_sync;
+  cmd.acc = request->cmd.acc;
+  cmd.dec = request->cmd.dec;
+  cmd.pl = request->cmd.pl;
+  cmd.time = request->cmd.time;
+  cmd.toolNum = request->cmd.tool_num;
+  cmd.userNum = request->cmd.user_num;
+  cmd.posidtype = request->cmd.posidtype;
+  cmd.configuration = request->cmd.configuration;
+  cmd.spin = request->cmd.spin;
+  cmd.parasync = request->cmd.para_sync;
+  cmd.targetPosValue = request->cmd.target_pos_value;
+
+  int ret = job_insert_moveC(socket_fd_, request->line, cmd);
+  response->success = (ret == Result::SUCCESS);
+  response->message = response->success ? "Job insert movec successfully" : "Failed to insert job movec";
+}
+
 void TL_Arm::handle_set_global_pos_service( 
   const std::shared_ptr<tl_ros2_interface::srv::SetGlobalPos::Request> request,
   std::shared_ptr<tl_ros2_interface::srv::SetGlobalPos::Response> response)
@@ -2266,7 +2621,7 @@ void TL_Arm::handle_get_global_pos_service(
   int ret = get_global_position(socket_fd_, request->pos_name, pos);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Get global pos successfully" : "Failed to get global pos";
-  response->pos = std::move(pos);
+  response->pos = pos;
 }
 
 void TL_Arm::handle_set_current_mode_service(
@@ -2303,9 +2658,9 @@ void TL_Arm::handle_open_servoj_service(
     return;
   }
 
-  std::vector<double> vmax = std::move(request->vmax);
-  std::vector<double> amax = std::move(request->amax);
-  std::vector<double> jmax = std::move(request->jmax);
+  std::vector<double> vmax = request->vmax;
+  std::vector<double> amax = request->amax;
+  std::vector<double> jmax = request->jmax;
 
   int ret = open_servoJ(socket_fd_aux_, vmax, amax, jmax);
   response->success = (ret == Result::SUCCESS);
@@ -2381,19 +2736,19 @@ void TL_Arm::handle_queue_motion_movej_service(
   cmd.configuration = request->cmd.configuration;
   cmd.spin = request->cmd.spin;
   cmd.parasync = request->cmd.para_sync;
-  cmd.targetPosValue = std::move(request->cmd.target_pos_value);
+  cmd.targetPosValue = request->cmd.target_pos_value;
 
   int ret = queue_motion_push_back_moveJ(socket_fd_, cmd);
   if (ret != Result::SUCCESS)
   {
     response->success = false;
-    response->message = "Failed to push back queue motion moveJ";
+    response->message = "Failed to push back queue motion movej";
     return;
   }
 
   ret = queue_motion_send_to_controller(socket_fd_, request->is_continue);
   response->success = (ret == Result::SUCCESS);
-  response->message = response->success ? "Queue motion moveJ execute successfully" : "Failed to execute queue motion moveJ";
+  response->message = response->success ? "Queue motion movej execute successfully" : "Failed to execute queue motion movej";
 }
 
 void TL_Arm::handle_queue_motion_stop_service(
@@ -2401,7 +2756,7 @@ void TL_Arm::handle_queue_motion_stop_service(
   std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
-  if (socket_fd_ <= 0)
+  if (!is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -2425,7 +2780,7 @@ void TL_Arm::handle_queue_motion_stop_service(
   
   ret = queue_motion_stop_not_power_off(socket_fd_);
   response->success = (ret == Result::SUCCESS);
-  response->message = response->success ? "Queue motion moveJ stop successfully" : "Failed to stop queue motion moveJ";
+  response->message = response->success ? "Queue motion movej stop successfully" : "Failed to stop queue motion movej";
 }
 
 void TL_Arm::handle_movej_topic(
@@ -2453,7 +2808,7 @@ void TL_Arm::handle_movej_topic(
   cmd.configuration = msg->configuration;
   cmd.spin = msg->spin;
   cmd.parasync = msg->para_sync;
-  cmd.targetPosValue = std::move(msg->target_pos_value);
+  cmd.targetPosValue = msg->target_pos_value;
 
   int ret = robot_movej(socket_fd_, cmd);
 
@@ -2485,147 +2840,11 @@ void TL_Arm::handle_movel_topic(
   cmd.configuration = msg->configuration;
   cmd.spin = msg->spin;
   cmd.parasync = msg->para_sync;
-  cmd.targetPosValue = std::move(msg->target_pos_value);
+  cmd.targetPosValue = msg->target_pos_value;
 
   int ret = robot_movel(socket_fd_, cmd);
 
   RCLCPP_INFO(this->get_logger(), "[MoveL]: result=%s", result_to_string(ret));
-}
-
-void TL_Arm::handle_job_insert_movej_topic(
-  const tl_ros2_interface::msg::JobInsertMove::SharedPtr msg)
-{
-  if (!is_connected())
-  {
-    RCLCPP_WARN(this->get_logger(), "[JobInsertMoveJ]: arm is not connected");
-    return;
-  }
-
-  int line = msg->line;
-
-  MoveCmd cmd {};
-  cmd.targetPosType = static_cast<PosType>(PosType::data);
-  cmd.targetPosName = "";
-  cmd.coord = msg->cmd.coord;
-  cmd.velocity = msg->cmd.velocity;
-  cmd.velocitySync = msg->cmd.velocity_sync;
-  cmd.acc = msg->cmd.acc;
-  cmd.dec = msg->cmd.dec;
-  cmd.pl = msg->cmd.pl;
-  cmd.time = msg->cmd.time;
-  cmd.toolNum = msg->cmd.tool_num;
-  cmd.userNum = msg->cmd.user_num;
-  cmd.posidtype = msg->cmd.posidtype;
-  cmd.configuration = msg->cmd.configuration;
-  cmd.spin = msg->cmd.spin;
-  cmd.parasync = msg->cmd.para_sync;
-  cmd.targetPosValue = std::move(msg->cmd.target_pos_value);
-
-  int ret = job_insert_moveJ(socket_fd_, line, cmd);
-
-  RCLCPP_INFO(this->get_logger(), "[JobInsertMoveJ]: result=%s", result_to_string(ret));
-}
-
-void TL_Arm::handle_job_insert_movel_topic(
-  const tl_ros2_interface::msg::JobInsertMove::SharedPtr msg)
-{
-  if (!is_connected())
-  {
-    RCLCPP_WARN(this->get_logger(), "[JobInsertMoveL]: arm is not connected");
-    return;
-  }
-
-  int line = msg->line;
-
-  MoveCmd cmd {};
-  cmd.targetPosType = static_cast<PosType>(PosType::data);
-  cmd.targetPosName = "";
-  cmd.coord = msg->cmd.coord;
-  cmd.velocity = msg->cmd.velocity;
-  cmd.velocitySync = msg->cmd.velocity_sync;
-  cmd.acc = msg->cmd.acc;
-  cmd.dec = msg->cmd.dec;
-  cmd.pl = msg->cmd.pl;
-  cmd.time = msg->cmd.time;
-  cmd.toolNum = msg->cmd.tool_num;
-  cmd.userNum = msg->cmd.user_num;
-  cmd.posidtype = msg->cmd.posidtype;
-  cmd.configuration = msg->cmd.configuration;
-  cmd.spin = msg->cmd.spin;
-  cmd.parasync = msg->cmd.para_sync;
-  cmd.targetPosValue = std::move(msg->cmd.target_pos_value);
-
-  int ret = job_insert_moveL(socket_fd_, line, cmd);
-
-  RCLCPP_INFO(this->get_logger(), "[JobInsertMoveL]: result=%s", result_to_string(ret));
-}
-
-void TL_Arm::handle_job_insert_imove_topic(
-  const tl_ros2_interface::msg::JobInsertMove::SharedPtr msg)
-{
-  if (!is_connected())
-  {
-    RCLCPP_WARN(this->get_logger(), "[JobInsertIMove]: arm is not connected");
-    return;
-  }
-
-  int line = msg->line;
-
-  MoveCmd cmd {};
-  cmd.targetPosType = static_cast<PosType>(PosType::data);
-  cmd.targetPosName = "";
-  cmd.coord = msg->cmd.coord;
-  cmd.velocity = msg->cmd.velocity;
-  cmd.velocitySync = msg->cmd.velocity_sync;
-  cmd.acc = msg->cmd.acc;
-  cmd.dec = msg->cmd.dec;
-  cmd.pl = msg->cmd.pl;
-  cmd.time = msg->cmd.time;
-  cmd.toolNum = msg->cmd.tool_num;
-  cmd.userNum = msg->cmd.user_num;
-  cmd.posidtype = msg->cmd.posidtype;
-  cmd.configuration = msg->cmd.configuration;
-  cmd.spin = msg->cmd.spin;
-  cmd.parasync = msg->cmd.para_sync;
-  cmd.targetPosValue = std::move(msg->cmd.target_pos_value);
-
-  int ret = job_insert_imove(socket_fd_, line, cmd);
-
-  RCLCPP_INFO(this->get_logger(), "[JobInsertIMove]: result=%s", result_to_string(ret));
-}
-
-void TL_Arm::handle_job_insert_movec_topic(
-  const tl_ros2_interface::msg::JobInsertMove::SharedPtr msg)
-{
-  if (!is_connected())
-  {
-    RCLCPP_WARN(this->get_logger(), "[JobInsertMoveC]: arm is not connected");
-    return;
-  }
-
-  int line = msg->line;
-
-  MoveCmd cmd {};
-  cmd.targetPosType = static_cast<PosType>(PosType::data);
-  cmd.targetPosName = "";
-  cmd.coord = msg->cmd.coord;
-  cmd.velocity = msg->cmd.velocity;
-  cmd.velocitySync = msg->cmd.velocity_sync;
-  cmd.acc = msg->cmd.acc;
-  cmd.dec = msg->cmd.dec;
-  cmd.pl = msg->cmd.pl;
-  cmd.time = msg->cmd.time;
-  cmd.toolNum = msg->cmd.tool_num;
-  cmd.userNum = msg->cmd.user_num;
-  cmd.posidtype = msg->cmd.posidtype;
-  cmd.configuration = msg->cmd.configuration;
-  cmd.spin = msg->cmd.spin;
-  cmd.parasync = msg->cmd.para_sync;
-  cmd.targetPosValue = std::move(msg->cmd.target_pos_value);
-
-  int ret = job_insert_moveC(socket_fd_, line, cmd);
-
-  RCLCPP_INFO(this->get_logger(), "[JobInsertMoveC]: result=%s", result_to_string(ret));
 }
 
 /**
@@ -2636,19 +2855,20 @@ void TL_Arm::handle_set_servoj_pos_topic(
 {
   if (!is_connected())
   {
-    RCLCPP_WARN(this->get_logger(), "[SetServoJPos]: arm is not connected");
+    RCLCPP_WARN(this->get_logger(), "[ServoJ]: arm is not connected");
     return;
   }
 
-  std::vector<double> pos = std::move(msg->data); 
+  std::vector<double> pos = msg->data; 
   int ret = set_servoJ_pos(socket_fd_aux_, pos);
-  RCLCPP_INFO(this->get_logger(), "[SetServoJPos]: result=%s", result_to_string(ret));
+  RCLCPP_INFO(this->get_logger(), "[ServoJ]: result=%s", result_to_string(ret));
 }
 
 void TL_Arm::publish_arm_state()
 {
   if (!is_connected())
   {
+    RCLCPP_WARN(this->get_logger(), "[Pub]: arm is not connected");
     return;
   }
 
@@ -2754,25 +2974,11 @@ void TL_Arm::publish_running_status()
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-
-  int exit_code = EXIT_SUCCESS;
-  {
-    auto node = std::make_shared<TL_Arm>();
-
-    if (!node->init())
-    {
-      exit_code = EXIT_FAILURE;
-    }
-    else
-    {
-      rclcpp::spin(node);
-    }
-  }
-
-  if (rclcpp::ok())
-  {
-    rclcpp::shutdown();
-  }
-
-  return exit_code;
+  auto thread_num = std::max(4u, std::thread::hardware_concurrency());
+  rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(),thread_num,true);
+  auto node = std::make_shared<TL_Arm>();
+  executor.add_node(node);
+  executor.spin();
+  rclcpp::shutdown();
+  return EXIT_SUCCESS;
 }
