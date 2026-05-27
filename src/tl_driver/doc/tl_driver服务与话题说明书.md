@@ -8,6 +8,7 @@
 | :---: | :---- | :---: |
 |V1.0 | 2026-4-29 | 拟制 |
 |V1.1 | 2024-5-9  | 修订（添加[查询机械臂状态](#查询机械臂状态)、[查询库版本信息](#查询库版本信息)、[查询关节参数](#查询关节参数)、[设置关节参数](#设置关节参数)、[查询关节温度](#查询关节温度)、[查询关节电压](#查询关节电压)、[查询电机电流](#查询电机电流)、[查询关节软件版本号](#查询关节软件版本号)、<br>[查询算法库版本](#查询算法库版本)、[设置机械臂默认DH参数](#设置机械臂默认DH参数)、[设置机械臂默认笛卡尔参数](#设置机械臂默认笛卡尔参数)、[日志下载](#日志下载)、[查询运行速度](#查询运行速度)、[设置坐标系编号](#设置坐标系编号)、[设置机械臂DH参数](#设置机械臂DH参数)、<br>[四元数转欧拉角](#四元数转欧拉角)、[欧拉角转四元数](#欧拉角转四元数)、[欧拉角转旋转矩阵](#欧拉角转旋转矩阵)、[位姿转旋转矩阵](#位姿转旋转矩阵)、[旋转矩阵转位姿](#旋转矩阵转位姿)、[旋转矩阵转位姿](#旋转矩阵转位姿)、[设置控制器有线网口IP](#设置控制器有线网口IP)、<br>[查询控制器序列号ID](#查询控制器序列号ID)、[查询当前坐标系](#查询当前坐标系)等接口|
+|V1.2 | 2026-5-27 | 修订（job_insert_* 接口从话题改为服务、移除 tool_hand_calib、新增 [删除作业文件](#删除作业文件) 服务、新增 [查询机械臂运行状态](#查询机械臂运行状态) 话题）|
 
 </div>
 
@@ -37,6 +38,7 @@
 * 3.15[查询机械臂DH参数](#查询机械臂DH参数)
 * 3.16[查询所有作业文件名称](#查询所有作业文件名称)
 * 3.17[查询目标位姿可达状态](#查询目标位姿可达状态)
+* 3.18[查询机械臂运行状态](#查询机械臂运行状态)
 * 4[机械臂基础功能设置接口](#机械臂基础功能设置接口)
 * 4.1[设置运行速度](#设置运行速度)
 * 4.2[设置控制器有线网口IP](#设置控制器有线网口IP)
@@ -51,15 +53,15 @@
 * 5.3[向作业文件插入一条增量指令IMove](#向作业文件插入一条增量指令IMove)
 * 5.4[向作业文件插入一条moveC关节运动](#向作业文件插入一条moveC关节运动)
 * 5.5[运行作业文件](#运行作业文件)
+* 5.6[删除作业文件](#删除作业文件)
 * 6[实时运动控制接口](#实时运动控制接口)
 * 6.1[MoveJ运动控制](#MoveJ运动控制)
 * 6.2[MoveL运动控制](#MoveL运动控制)
 * 7[坐标系与工具管理接口](#坐标系与工具管理接口)
 * 7.1[设置工具手参数](#设置工具手参数)
-* 7.2[工具手参数标定](#工具手参数标定)
-* 7.3[设置用户坐标系](#设置用户坐标系)
-* 7.4[设置坐标系编号](#设置坐标系编号)
-* 7.5[设置当前坐标系](#设置当前坐标系)
+* 7.2[设置用户坐标系](#设置用户坐标系)
+* 7.3[设置坐标系编号](#设置坐标系编号)
+* 7.4[设置当前坐标系](#设置当前坐标系)
 * 8[示教操作接口](#示教操作接口)
 * 8.1[开始点动](#开始点动)
 * 8.2[停止点动](#停止点动)
@@ -332,6 +334,17 @@ ros2 service call /tl_driver/get_pos_reachable tl_ros2_interface/srv/GetPosReach
     pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -57.14, -32.93, 19.74, -89.89, -19.77, 0.0], move_type: "MOVJ"
 }'
 ```
+### 查询机械臂运行状态
+| 功能描述 | 查询机械臂当前运行状态 |
+| :---: | :---- |
+| 通信机制 | ROS2话题 |
+| 参数说明 | 无参数 |
+| 返回值 | 机械臂运行状态（ArmStatus.msg）<br>string run_state：运行状态（STOP-停止  PAUSE-暂停  RUNNING-运行中） |
+#### 命令示例
+```
+ros2 topic echo /arm_status
+```
+
 ## 机械臂基础功能设置接口
 ### 设置运行速度
 | 功能描述 | 设置机械臂运行速度 |
@@ -446,13 +459,13 @@ ros2 service call /tl_driver/set_dh_param tl_ros2_interface/srv/SetDHParam \
 ### 向作业文件插入一条moveJ关节运动
 | 功能描述 | 向作业文件插入一条moveJ关节运动 |
 | :---: | :---- |
-| 通信机制 | ROS2话题 |
-| 参数说明 | JobInsertMove.msg（作业文件插入运动控制参数）<br>int32 line：插入行序号<br>MoveCommand cmd：运动指令 |
-| 返回值 | 无返回值 |
+| 通信机制 | ROS2服务 |
+| 参数说明 | JobInsertMove.srv<br>int32 line：插入行序号<br>MoveCommand cmd：运动指令 |
+| 返回值 | true-插入成功，false-插入失败 |
 #### 命令示例
 targetPosType=0为自定义数组 posInfo[14] [0]坐标系 0：关节 1：直角 2：工具 3：用户 [1]:0 角度制 1弧度制 [2]形态 [3]工具手坐标序号 [4]用户坐标序号 [5][6] 备用 [7-13] 点位信息
 ```
-ros2 topic pub --once /tl_driver/job_insert_moveJ tl_ros2_interface/msg/JobInsertMove "{
+ros2 service call /tl_driver/job_insert_moveJ tl_ros2_interface/srv/JobInsertMove "{
   line: 1,
   cmd: {
     target_pos_value: [
@@ -480,7 +493,7 @@ ros2 topic pub --once /tl_driver/job_insert_moveJ tl_ros2_interface/msg/JobInser
 targetPosType=1,需要设置targetPosName为"P0001",默认中间三个0
 此时target_pos_value根据实际机械臂轴数来设定参数数量，输入关节角度
 ```
-ros2 topic pub --once /tl_driver/job_insert_moveJ tl_ros2_interface/msg/JobInsertMove "{
+ros2 service call /tl_driver/job_insert_moveJ tl_ros2_interface/srv/JobInsertMove "{
   line: 1,
   cmd: {
     target_pos_value: [
@@ -508,12 +521,12 @@ ros2 topic pub --once /tl_driver/job_insert_moveJ tl_ros2_interface/msg/JobInser
 ### 向作业文件插入一条moveL关节运动
 | 功能描述 | 向作业文件插入一条moveL关节运动 |
 | :---: | :---- |
-| 通信机制 | ROS2话题 |
-| 参数说明 | JobInsertMove.msg<br>int32 line：插入行序号<br>MoveCommand cmd：运动指令 |
-| 返回值 | 无返回值 |
+| 通信机制 | ROS2服务 |
+| 参数说明 | JobInsertMove.srv<br>int32 line：插入行序号<br>MoveCommand cmd：运动指令 |
+| 返回值 | true-插入成功，false-插入失败 |
 #### 命令示例
 ```
-ros2 topic pub --once /tl_driver/job_insert_moveL tl_ros2_interface/msg/JobInsertMove "{
+ros2 service call /tl_driver/job_insert_moveL tl_ros2_interface/srv/JobInsertMove "{
   line: 1,
   cmd: {
     target_pos_value: [
@@ -541,12 +554,12 @@ ros2 topic pub --once /tl_driver/job_insert_moveL tl_ros2_interface/msg/JobInser
 ### 向作业文件插入一条增量指令IMove
 | 功能描述 | 向作业文件插入一条增量指令IMove |
 | :---: | :---- |
-| 通信机制 | ROS2话题 |
-| 参数说明 | JobInsertMove.msg<br>int32 line：插入行序号<br>MoveCommand cmd：运动指令 |
-| 返回值 | 无返回值 |
+| 通信机制 | ROS2服务 |
+| 参数说明 | JobInsertMove.srv<br>int32 line：插入行序号<br>MoveCommand cmd：运动指令 |
+| 返回值 | true-插入成功，false-插入失败 |
 #### 命令示例
 ```
-ros2 topic pub --once /tl_driver/job_insert_imove tl_ros2_interface/msg/JobInsertMove "{
+ros2 service call /tl_driver/job_insert_imove tl_ros2_interface/srv/JobInsertMove "{
   line: 1,
   cmd: {
     target_pos_value: [
@@ -574,12 +587,12 @@ ros2 topic pub --once /tl_driver/job_insert_imove tl_ros2_interface/msg/JobInser
 ### 向作业文件插入一条moveC关节运动
 | 功能描述 | 向作业文件插入一条moveC关节运动 |
 | :---: | :---- |
-| 通信机制 | ROS2话题 |
-| 参数说明 | JobInsertMove.msg<br>int32 line：插入行序号<br>MoveCommand cmd：运动指令 |
-| 返回值 | 无返回值 |
+| 通信机制 | ROS2服务 |
+| 参数说明 | JobInsertMove.srv<br>int32 line：插入行序号<br>MoveCommand cmd：运动指令 |
+| 返回值 | true-插入成功，false-插入失败 |
 #### 命令示例
 ```
-ros2 topic pub --once /tl_driver/job_insert_moveC tl_ros2_interface/msg/JobInsertMove "{
+ros2 service call /tl_driver/job_insert_moveC tl_ros2_interface/srv/JobInsertMove "{
   line: 1,
   cmd: {
     target_pos_value: [
@@ -613,6 +626,16 @@ ros2 topic pub --once /tl_driver/job_insert_moveC tl_ros2_interface/msg/JobInser
 #### 命令示例
 ```
 ros2 service call /tl_driver/job_run tl_ros2_interface/srv/JobRun "{job_name: '回零点'}"
+```
+### 删除作业文件
+| 功能描述 | 删除作业文件 |
+| :---: | :---- |
+| 通信机制 | ROS2服务 |
+| 参数说明 | JobRun.srv<br>string job_name：作业名称|
+| 返回值 | true-删除成功，false-删除失败|
+#### 命令示例
+```
+ros2 service call /tl_driver/job_delete tl_ros2_interface/srv/JobRun "{job_name: '回零点'}"
 ```
 ## 实时运动控制接口
 ### MoveJ运动控制
@@ -698,16 +721,6 @@ ros2 service call /tl_driver/set_tool_param tl_ros2_interface/srv/SetToolParam \
         payload_mass_center_z: 10.0
     }
 }'
-```
-### 工具手参数标定
-| 功能描述 | 工具手参数标定 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 参数说明 | ToolHandCalib.srv<br>int32 tool_num：工具坐标系序号<br>int32 point_num：标定点数 |
-| 返回值 | true-标定成功，false-标定失败|
-#### 命令示例
-```
-ros2 service call /tl_driver/tool_hand_calib tl_ros2_interface/srv/ToolHandCalib "{tool_num: 3}"
 ```
 ### 设置用户坐标系
 | 功能描述 | 设置用户坐标系相关参数 |
