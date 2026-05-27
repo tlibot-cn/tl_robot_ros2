@@ -26,12 +26,10 @@ TL 系列机械臂 ROS2 接口说明
   * 3.4 [Gazebo 仿真 tl_gazebo](#34-gazebo-仿真-tl_gazebo)
   * 3.5 [MoveIt2 配置 tl_moveit2_config](#35-moveit2-配置-tl_moveit2_config)
   * 3.6 [ROS消息接口 tl_ros2_interface](#36-ros消息接口-tl_ros2_interface)
-  * 3.7 [手眼标定 tl_vision](#37-手眼标定-tl_vision)
 * 4 [功能运行](#4-功能运行)
   * 4.1 [运行真实机械臂](#41-运行真实机械臂)
   * 4.2 [运行 MoveIt2 + RViz 虚拟控制](#42-运行-moveit2--rviz-虚拟控制)
   * 4.3 [运行 Gazebo 仿真机械臂](#43-运行-gazebo-仿真机械臂)
-  * 4.4 [运行手眼标定](#44-运行手眼标定)
 * 5 [安全注意事项](#5-安全注意事项)
 * 6 [许可与联系](#6-许可与联系)
 
@@ -102,13 +100,8 @@ tl_robot_ros2_cpp/src/
 │   ├── ...                    └── launch/ (demo、move_group、rviz)
 │   └── tl_tcb710v_config/
 ├── tl_ros2_interface/       # ROS2 消息与服务接口
-│   ├── msg/                 # 12 个 msg 定义文件
-│   └── srv/                 # 41 个 srv 定义文件
-└── tl_vision/               # 手眼标定
-    ├── config/              # 标定与检测参数
-    ├── launch/              # 标定、视觉抓取、控制等启动文件
-    ├── model/               
-    └── tl_vision/           # 节点源码
+    ├── msg/                 # 12 个 msg 定义文件
+    └── srv/                 # 41 个 srv 定义文件
 ```
 
 ### 3.1 启动 tl_bringup
@@ -179,14 +172,6 @@ tl_robot_ros2_cpp/src/
 
 详细说明请参考 [tl_ros2_interface/README.md](tl_ros2_interface/README.md)。
 
-### 3.7 手眼标定 tl_vision
-
-该功能包为 TL 系列机械臂提供**手眼标定（eye-in-hand）**与视觉引导抓取功能。包含以下 4 个节点：
-
-- **yolo_node**：YOLO 目标检测节点，订阅 RGB 图像和深度图，运行 YOLO 模型检测目标物体，发布物体在相机坐标系下的 3D 坐标
-- **calib_node**：手眼标定节点，支持在线（连接 RealSense 相机 + 机械臂实时采集）和离线（从 `.npz` 数据文件计算）两种模式
-- **control_node**：视觉引导抓取控制节点，结合手眼标定结果将物体坐标从相机坐标系转换到基座坐标系，控制机械臂抓取
-- **fk_test_node**：正运动学测试 UI 节点
 
 详细说明请参考 [tl_vision/README.md](tl_vision/README.md)。
 
@@ -237,15 +222,6 @@ ros2 launch tl_tcb605_config demo.launch.py
 ```bash
 source ~/tl_robot_ws/install/setup.bash
 ros2 launch tl_gazebo gazebo_tcb605_demo.launch.py
-```
-
-### 4.4 运行手眼标定
-
-使用如下指令启动手眼标定节点（需要连接 RealSense 相机和机械臂）：
-
-```bash
-source ~/tl_robot_ws/install/setup.bash
-ros2 launch tl_vision hand_in_eye_calib.launch.py arm_type:=tcb710
 ```
 
 ## 5 安全注意事项
