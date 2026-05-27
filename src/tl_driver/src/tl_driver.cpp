@@ -720,6 +720,17 @@ TL_Arm::TL_Arm()
     service_group_
   );
 
+  get_current_mode_service_ = this->create_service<tl_ros2_interface::srv::GetCurrentMode>(
+    "/tl_driver/get_current_mode",
+    std::bind(
+      &TL_Arm::handle_get_current_mode_service,
+      this,
+      std::placeholders::_1,
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
+
   open_servoj_service_ = this->create_service<tl_ros2_interface::srv::OpenServoJ>(
     "/tl_driver/open_servoj",
     std::bind(
@@ -972,12 +983,13 @@ bool TL_Arm::disconnect()
     return true;
   }
 
+  is_connected_ = false;
+  
   disconnect_robot(socket_fd_);
   disconnect_robot(socket_fd_aux_);
 
   socket_fd_ = 0;
   socket_fd_aux_ = 0;
-  is_connected_ = false;
 
   return true;
 }
@@ -2645,6 +2657,25 @@ void TL_Arm::handle_set_current_mode_service(
   int ret = set_current_mode(socket_fd_, request->mode);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Set current mode successfully" : "Failed to set current mode";
+}
+
+void TL_Arm::handle_get_current_mode_service(
+  const std::shared_ptr<tl_ros2_interface::srv::GetCurrentMode::Request> request,
+  std::shared_ptr<tl_ros2_interface::srv::GetCurrentMode::Response> response)
+{
+  (void)request;
+  if (!is_connected())
+  {
+    response->success = false;
+    response->message = "Arm is not connected";
+    return;
+  }
+
+  int mode = -1;
+  int ret = get_current_mode(socket_fd_, mode);
+  response->mode = mode;
+  response->success = (ret == Result::SUCCESS);
+  response->message = response->success ? "Get current mode successfully" : "Failed to get current mode";
 }
 
 void TL_Arm::handle_open_servoj_service(

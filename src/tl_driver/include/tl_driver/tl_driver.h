@@ -74,6 +74,7 @@
 #include "tl_ros2_interface/srv/get_global_pos.hpp"
 #include "tl_ros2_interface/srv/open_servo_j.hpp"
 #include "tl_ros2_interface/srv/set_current_mode.hpp"
+#include "tl_ros2_interface/srv/get_current_mode.hpp"
 #include "tl_ros2_interface/srv/queue_motion_set_status.hpp"
 #include "tl_ros2_interface/srv/queue_motion_move_j.hpp"
 
@@ -333,6 +334,10 @@ public:
     const std::shared_ptr<tl_ros2_interface::srv::SetCurrentMode::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::SetCurrentMode::Response> response);
 
+  void handle_get_current_mode_service(
+    const std::shared_ptr<tl_ros2_interface::srv::GetCurrentMode::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::GetCurrentMode::Response> response);
+
   void handle_open_servoj_service(
     const std::shared_ptr<tl_ros2_interface::srv::OpenServoJ::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::OpenServoJ::Response> response);
@@ -444,6 +449,7 @@ private:
   rclcpp::Service<tl_ros2_interface::srv::SetGlobalPos>::SharedPtr set_global_pos_service_;
   rclcpp::Service<tl_ros2_interface::srv::GetGlobalPos>::SharedPtr get_global_pos_service_;
   rclcpp::Service<tl_ros2_interface::srv::SetCurrentMode>::SharedPtr set_current_mode_service_;
+  rclcpp::Service<tl_ros2_interface::srv::GetCurrentMode>::SharedPtr get_current_mode_service_;
   rclcpp::Service<tl_ros2_interface::srv::OpenServoJ>::SharedPtr open_servoj_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr close_servoj_service_;
   rclcpp::Service<tl_ros2_interface::srv::QueueMotionSetStatus>::SharedPtr queue_motion_set_status_service_;

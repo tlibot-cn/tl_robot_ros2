@@ -36,14 +36,22 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 ### tl_driver
 - **构建类型**：ament_cmake（C++17）
 - **用途**：机械臂驱动 — 通过 TCP 与实体机械臂通信
-- **入口**：`src/tl_driver.cpp` → 单一 `tl_driver` 可执行文件
-- **专有库**：`lib/_tl_host.so`（预编译共享库，不可修改）
-- **Python API**：`lib/tl_interface.py` — 运行时通过 `sys.path` 加载的 Python 封装
-- **配置**：`config/` 下按臂型命名的 YAML（如 `tl_tcb605_config.yaml`）
+- **入口**：`src/tl_driver.cpp` → 单一 `tl_driver` 可执行文件；`main()` 使用 `MultiThreadedExecutor`（线程数 `max(4, hardware_concurrency)`）匹配回调组架构
+- **专有库**：`lib/arm/`（ARM 架构）和 `lib/x86/`（x86 架构）下的预编译 `.so`，不可修改：
+  - 核心：`_tl_host.so`、`libtl_host.so`
+  - 外设：`libservoJ_wrapper.so`、`libmodbus_wrapper.so`、`libmath_wrapper.so`
+- **Python API**：`lib/arm/tl_interface.py`、`lib/x86/tl_interface.py` — 运行时通过 `sys.path` 加载的 Python 封装
+- **配置**：`config/` 下按臂型命名的 YAML（如 `tl_tcb605_config.yaml`）。关键参数：`arm_ip`、`arm_port`（TCP 主端口）、`arm_port_aux`（TCP 辅助端口）、`arm_type`、`arm_joints`
 - **启动**：
   - 通用：`ros2 launch tl_driver tl_driver.launch.py arm_type:=<arm_type>`
   - 快捷：`ros2 launch tl_driver tl_tcb710_driver.launch.py`（每种臂型一个专用文件，如 `tl_tcbXXX_driver.launch.py`）
 - **默认机械臂 IP**：`192.168.1.13`，端口 `6001` — 如需修改，改对应配置 YAML
+- **回调组架构**（`TL_Arm` 构造函数中创建 3 组）：
+  - `service_group_`（`MutuallyExclusive`）— 全部 63 个服务，保证服务回调串行执行
+  - `topic_group_`（`MutuallyExclusive`）— 3 个话题订阅，保证话题回调串行执行
+  - `timer_group_`（`Reentrant`）— 状态发布定时器（100 Hz），允许定时器回调并发
+- **话题**：发布 `joint_states`、`tcp_pose`、`arm_status`；订阅 `moveJ`、`moveL`、`set_servoj_pos`（详见下方关键话题表）
+- **安全行为**：`init()` 中若 `connect()` 失败，节点会调用 `rclcpp::shutdown()` 并 exit
 
 ### tl_description
 - **构建类型**：ament_cmake
@@ -83,6 +91,11 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 | 话题 | 发布者 | 订阅者 | 类型 |
 |------|--------|--------|------|
 | `/joint_states` | tl_driver（真实）/ joint_state_publisher_gui（仿真） | tl_description | `sensor_msgs/JointState` |
+| `/tcp_pose` | tl_driver | — | `tl_ros2_interface/CartesianPose` |
+| `/arm_status` | tl_driver | — | `tl_ros2_interface/ArmStatus` |
+| `/tl_driver/moveJ` | — | tl_driver | `tl_ros2_interface/MoveCommand` |
+| `/tl_driver/moveL` | — | tl_driver | `tl_ros2_interface/MoveCommand` |
+| `/tl_driver/set_servoj_pos` | — | tl_driver | `std_msgs/Float64MultiArray` |
 | `/tl_vision/object_3d_pos_camera` | yolo_node | control_node | `tl_ros2_interface/ObjectInfo` |
 | `/tl_vision/object_3d_pos_base` | control_node | — | `tl_ros2_interface/ObjectInfo` |
 | `/tf`、`/tf_static` | tl_description（robot_state_publisher） | — | `tf2_msgs/TFMessage` |
@@ -91,6 +104,7 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 
 - **control_node 和 calib_node 均通过 `ament_index` 发现机制**加载 `tl_interface`（`get_package_prefix('tl_driver')` + `lib/tl_driver`），开发/部署环境均适用。
 - **`_tl_host.so`** 是预编译专有库，禁止尝试重新编译或修改。构建时链接，安装到 `lib/tl_driver/`。
+- **tl_driver 使用 `MultiThreadedExecutor`** 驱动 3 个回调组（`service_group_`、`topic_group_`、`timer_group_`），保证服务/话题串行、定时器并发。这是回调组架构正常工作的必要条件。
 - **选择性构建时必须先构建 tl_ros2_interface**。不带 `--packages-select` 的 `colcon build` 会自动处理。
 - **机械臂位置单位**：NRC API 返回 mm；control_node 除以 1000 转换为米。欧拉角约定为 XYZ 内旋（scipy 中使用大写 `'XYZ'`）。
 - **control_node.yaml 中的 handeye_matrix** 是 16 个元素的扁平列表，表示 4×4 齐次变换矩阵（行优先）。默认为单位矩阵 — 必须替换为实际标定结果。
@@ -124,6 +138,10 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 - 服务句柄变量命名：`{service_name}_service_`（如 `connect_service_`、`set_speed_service_`）
 - 话题订阅变量命名：`{topic_name}_sub_`（如 `movej_sub_`、`movel_sub_`）
 - 话题发布变量命名：`{topic_name}_pub_`（如 `joint_state_pub_`、`tcp_pose_pub_`）
+- 以下为已知例外（历史遗留，服务/话题名与变量名不完全对应）：
+  - `connect_service_` 对应 `/tl_driver/connect_arm`（非 `connect_arm_service_`）
+  - `poweron_service_` / `poweroff_service_` 对应 `/tl_driver/power_on` / `power_off`
+  - `running_status_pub_` 发布到 `/arm_status`（非 `arm_status_pub_`）
 
 ### Python 命名规范
 

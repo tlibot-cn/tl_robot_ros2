@@ -1,4 +1,4 @@
-# 设置当前坐标系
+# 设置当前模式
 int32 mode
 ---
 bool success

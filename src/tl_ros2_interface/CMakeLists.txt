@@ -57,6 +57,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetGlobalPos.srv"
   "srv/OpenServoJ.srv"
   "srv/SetCurrentMode.srv"
+  "srv/GetCurrentMode.srv"
   "srv/QueueMotionSetStatus.srv"
   "srv/QueueMotionMoveJ.srv"
   "srv/GetRobotState.srv"

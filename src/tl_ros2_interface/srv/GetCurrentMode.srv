@@ -1,0 +1,5 @@
+# 获取当前模式
+---
+int32 mode
+bool success
+string message
