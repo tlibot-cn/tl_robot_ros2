@@ -183,7 +183,7 @@ tl_robot_ros2_cpp/src/
 
 ```bash
 source ~/tl_robot_ws/install/setup.bash
-ros2 launch tl_bringup tl_tcb605_bringup.launch.py 
+ros2 launch tl_bringup tl_<arm_type>_bringup.launch.py 
 ```
 
 `<arm_type>` 需要使用实际机械臂型号替换，可选项为：
