@@ -1,0 +1,7 @@
+# 当前线速度和关节速度
+---
+bool success
+string message
+float64 line_speed
+float64[] joint_speed
+float64[] joint_speed_sync

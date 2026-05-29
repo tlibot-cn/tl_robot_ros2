@@ -77,6 +77,8 @@
 #include "tl_ros2_interface/srv/get_current_mode.hpp"
 #include "tl_ros2_interface/srv/queue_motion_set_status.hpp"
 #include "tl_ros2_interface/srv/queue_motion_move_j.hpp"
+#include "tl_ros2_interface/srv/get_current_motor_torque.hpp"
+#include "tl_ros2_interface/srv/get_current_line_joint_speed.hpp"
 
 // lib
 #include "tl_interface.h"
@@ -358,6 +360,14 @@ public:
     const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response);
 
+  void handle_get_current_motor_torque_service(
+    const std::shared_ptr<tl_ros2_interface::srv::GetCurrentMotorTorque::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::GetCurrentMotorTorque::Response> response);
+
+  void handle_get_current_line_joint_speed_service(
+    const std::shared_ptr<tl_ros2_interface::srv::GetCurrentLineJointSpeed::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::GetCurrentLineJointSpeed::Response> response);
+
   // 话题
   void handle_movej_topic(
     const tl_ros2_interface::msg::MoveCommand::SharedPtr msg);
@@ -455,6 +465,8 @@ private:
   rclcpp::Service<tl_ros2_interface::srv::QueueMotionSetStatus>::SharedPtr queue_motion_set_status_service_;
   rclcpp::Service<tl_ros2_interface::srv::QueueMotionMoveJ>::SharedPtr queue_motion_movej_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr queue_motion_stop_service_;
+  rclcpp::Service<tl_ros2_interface::srv::GetCurrentMotorTorque>::SharedPtr get_current_motor_torque_service_;
+  rclcpp::Service<tl_ros2_interface::srv::GetCurrentLineJointSpeed>::SharedPtr get_current_line_joint_speed_service_;
 
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   rclcpp::Publisher<tl_ros2_interface::msg::CartesianPose>::SharedPtr tcp_pose_pub_;

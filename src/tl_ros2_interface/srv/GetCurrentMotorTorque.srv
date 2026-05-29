@@ -1,0 +1,6 @@
+# 当前电机力矩
+---
+bool success
+string message
+int32[] motor_torque
+int32[] motor_torque_sync

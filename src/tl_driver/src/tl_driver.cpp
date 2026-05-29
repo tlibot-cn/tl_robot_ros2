@@ -785,6 +785,28 @@ TL_Arm::TL_Arm()
     rmw_qos_profile_services_default,
     service_group_
   );
+
+  get_current_motor_torque_service_ = this->create_service<tl_ros2_interface::srv::GetCurrentMotorTorque>(
+    "/tl_driver/get_current_motor_torque",
+    std::bind(
+      &TL_Arm::handle_get_current_motor_torque_service,
+      this,
+      std::placeholders::_1,
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
+
+  get_current_line_joint_speed_service_ = this->create_service<tl_ros2_interface::srv::GetCurrentLineJointSpeed>(
+    "/tl_driver/get_current_line_joint_speed",
+    std::bind(
+      &TL_Arm::handle_get_current_line_joint_speed_service,
+      this,
+      std::placeholders::_1,
+      std::placeholders::_2),
+    rmw_qos_profile_services_default,
+    service_group_
+  );
   
   // 话题pub
   joint_state_pub_ =
@@ -2812,6 +2834,68 @@ void TL_Arm::handle_queue_motion_stop_service(
   ret = queue_motion_stop_not_power_off(socket_fd_);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Queue motion movej stop successfully" : "Failed to stop queue motion movej";
+}
+
+void TL_Arm::handle_get_current_motor_torque_service(
+  const std::shared_ptr<tl_ros2_interface::srv::GetCurrentMotorTorque::Request> request,
+  std::shared_ptr<tl_ros2_interface::srv::GetCurrentMotorTorque::Response> response)
+{
+  (void)request;
+
+  if (!is_connected())
+  {
+    response->success = false;
+    response->message = "Arm is not connected";
+    return;
+  }
+
+  std::vector<int> motor_torque{};
+  std::vector<int> motor_torque_sync{};
+  Result ret = get_current_motor_torque(socket_fd_, motor_torque, motor_torque_sync);
+  if (ret == Result::SUCCESS)
+  {
+    response->success = true;
+    response->message = "Get current motor torque successfully";
+    response->motor_torque = motor_torque;
+    response->motor_torque_sync = motor_torque_sync;
+  }
+  else
+  {
+    response->success = false;
+    response->message = "Failed to get current motor torque";
+  }
+}
+
+void TL_Arm::handle_get_current_line_joint_speed_service(
+  const std::shared_ptr<tl_ros2_interface::srv::GetCurrentLineJointSpeed::Request> request,
+  std::shared_ptr<tl_ros2_interface::srv::GetCurrentLineJointSpeed::Response> response)
+{
+  (void)request;
+
+  if (!is_connected())
+  {
+    response->success = false;
+    response->message = "Arm is not connected";
+    return;
+  }
+
+  double line_speed{0.0};
+  std::vector<double> joint_speed{};
+  std::vector<double> joint_speed_sync{};
+  Result ret = get_current_line_speed_and_joint_speed(socket_fd_, line_speed, joint_speed, joint_speed_sync);
+  if (ret == Result::SUCCESS)
+  {
+    response->success = true;
+    response->message = "Get current line and joint speed successfully";
+    response->line_speed = line_speed;
+    response->joint_speed = joint_speed;
+    response->joint_speed_sync = joint_speed_sync;
+  }
+  else
+  {
+    response->success = false;
+    response->message = "Failed to get current line and joint speed";
+  }
 }
 
 void TL_Arm::handle_movej_topic(

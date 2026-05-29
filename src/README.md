@@ -91,7 +91,8 @@ src/
   - 电源控制：`/tl_driver/power_on`、`/tl_driver/power_off`
   - 速度控制：`/tl_driver/set_speed`、`/tl_driver/get_speed`
   - 点动控制：`/tl_driver/start_jogging`、`/tl_driver/stop_jogging`
-  - 状态查询：`/tl_driver/get_robot_state`、`/tl_driver/get_joint_temperature`、`/tl_driver/get_joint_voltage`、`/tl_driver/get_motor_current`
+  - 状态查询：`/tl_driver/get_robot_state`、`/tl_driver/get_joint_temperature`、`/tl_driver/get_joint_voltage`、`/tl_driver/get_motor_current`、`/tl_driver/get_current_motor_torque`、`/tl_driver/get_current_line_joint_speed`
+  - 模式控制：`/tl_driver/set_current_mode`、`/tl_driver/get_current_mode`
   - 坐标系设置：`/tl_driver/set_tool_param`、`/tl_driver/set_user_coord`
   - Modbus 通信：`/tl_driver/modbus_write`、`/tl_driver/modbus_read`
   - 轨迹录制与回放：`/tl_driver/track_save`、`/tl_driver/track_playback`

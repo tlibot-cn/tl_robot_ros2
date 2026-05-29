@@ -73,6 +73,9 @@ TL 系列机械臂 ROS2 接口说明
 * 5.39 [工具手参数标定ToolHandCalib_srv](#工具手参数标定ToolHandCalib_srv)
 * 5.40 [拖拽轨迹回放TrackPlayback_srv](#拖拽轨迹回放TrackPlayback_srv)
 * 5.41 [拖拽轨迹保存TrackSave_srv](#拖拽轨迹保存TrackSave_srv)
+* 5.42 [当前电机力矩GetCurrentMotorTorque_srv](#当前电机力矩GetCurrentMotorTorque_srv)
+* 5.43 [当前线速度和关节速度GetCurrentLineJointSpeed_srv](#当前线速度和关节速度GetCurrentLineJointSpeed_srv)
+* 5.44 [查询当前运行模式GetCurrentMode_srv](#查询当前运行模式GetCurrentMode_srv)
 
 ## tl_ros2_interface功能包说明
 tl_ros2_interface 功能包为 TL 系列机械臂在 ROS2 框架下提供消息（msg）和服务（srv）接口定义，供上层驱动或应用调用。该包本身没有可执行程序，主要作用为定义协议数据结构和服务接口。
@@ -103,6 +106,9 @@ tl_ros2_interface/
 │   ├── GetAllJobFileName.srv
 │   ├── GetCoordNum.srv
 │   ├── GetCurrentCoord.srv
+│   ├── GetCurrentLineJointSpeed.srv
+│   ├── GetCurrentMode.srv
+│   ├── GetCurrentMotorTorque.srv
 │   ├── GetDHParam.srv
 │   ├── GetDigitalInputOutput.srv
 │   ├── GetGlobalPos.srv
@@ -913,6 +919,42 @@ string message
 - 保存轨迹
 - traj_name: 轨迹名称
 - 返回: success/message
+
+### 当前电机力矩GetCurrentMotorTorque_srv
+```
+
+---
+bool success
+string message
+int32[] motor_torque
+int32[] motor_torque_sync
+```
+- 查询当前电机力矩
+- 返回: success/message/motor_torque（当前电机力矩）/motor_torque_sync（同步轴电机力矩）
+
+### 当前线速度和关节速度GetCurrentLineJointSpeed_srv
+```
+
+---
+bool success
+string message
+float64 line_speed
+float64[] joint_speed
+float64[] joint_speed_sync
+```
+- 查询当前线速度和关节速度
+- 返回: success/message/line_speed（当前线速度）/joint_speed（关节速度）/joint_speed_sync（同步轴关节速度）
+
+### 查询当前运行模式GetCurrentMode_srv
+```
+
+---
+bool success
+string message
+int32 mode
+```
+- 查询当前运行模式
+- 返回: success/message/mode（当前模式：0-示教 1-远程 2-运行）
 
 ## 说明与后续
 - 若需更详细的字段含义或示例用法，可提交 issue 或说明需要的具体消息/服务，文档将补充字段示例与使用场景。
