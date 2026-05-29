@@ -2,7 +2,7 @@
 
 ## 工作空间概述
 
-天链（TianLian）机械臂 ROS2 工作空间。`src/` 下包含 7 个功能包，使用标准 `colcon build` 构建流程。无 `package.json`、无 Node.js — 纯 ROS2（ament_cmake + ament_python）。
+天链（TianLian）机械臂 ROS2 工作空间。`src/` 下包含 6 个功能包，使用标准 `colcon build` 构建流程。无 `package.json`、无 Node.js — 纯 ROS2（ament_cmake + ament_python）。
 
 ## 构建命令
 
@@ -19,8 +19,9 @@ source install/setup.bash
 ```
 tl_ros2_interface  （基础：自定义 msg/srv，无依赖）
   └─► tl_driver       （C++ 节点，链接 _tl_host.so 专有库）
-  └─► tl_vision       （Python ament_python 包，同时依赖 tl_driver）
 tl_description     （独立：URDF + 网格 + RViz）
+  └─► tl_gazebo       （Gazebo 仿真，依赖 tl_description）
+  └─► tl_moveit2_config（MoveIt2 配置集合，依赖 tl_description）
 tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 ```
 
@@ -28,7 +29,7 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 
 ### tl_ros2_interface
 - **构建类型**：ament_cmake
-- **用途**：定义所有自定义 ROS2 接口（12 个 `.msg`，41 个 `.srv`）
+- **用途**：定义所有自定义 ROS2 接口（11 个 `.msg`，45 个 `.srv`）
 - **关键消息**：`ObjectInfo`、`ArmStatus`、`CartesianPose`、`MoveCommand`
 - **关键服务**：`GetCurrentCoord`、`SetSpeed`、`Jogging`、`ModbusRead/Write`、`JobRun`
 - **必须最先构建** — 其他包依赖其生成的头文件（colcon 会自动处理构建顺序）
@@ -38,8 +39,8 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 - **用途**：机械臂驱动 — 通过 TCP 与实体机械臂通信
 - **入口**：`src/tl_driver.cpp` → 单一 `tl_driver` 可执行文件；`main()` 使用 `MultiThreadedExecutor`（线程数 `max(4, hardware_concurrency)`）匹配回调组架构
 - **专有库**：`lib/arm/`（ARM 架构）和 `lib/x86/`（x86 架构）下的预编译 `.so`，不可修改：
-  - 核心：`_tl_host.so`、`libtl_host.so`
-  - 外设：`libservoJ_wrapper.so`、`libmodbus_wrapper.so`、`libmath_wrapper.so`
+  - `lib/arm/` 包含完整外围库：`libtl_host.so`、`libservoJ_wrapper.so`、`libmodbus_wrapper.so`、`libmath_wrapper.so`
+  - `lib/x86/` 仅含 `_tl_host.so`，外围库在 x86 平台通过动态加载机制获取
 - **Python API**：`lib/arm/tl_interface.py`、`lib/x86/tl_interface.py` — 运行时通过 `sys.path` 加载的 Python 封装
 - **配置**：`config/` 下按臂型命名的 YAML（如 `tl_tcb605_config.yaml`）。关键参数：`arm_ip`、`arm_port`（TCP 主端口）、`arm_port_aux`（TCP 辅助端口）、`arm_type`、`arm_joints`
 - **启动**：
@@ -68,17 +69,18 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 - **启动**：`ros2 launch tl_bringup tl_<arm_type>_bringup.launch.py`
 - **每种臂型一个启动文件**（共 14 个，如 `tl_tcb605_bringup.launch.py`）
 
-### tl_vision
-- **构建类型**：ament_python（纯 Python，非 ament_cmake）
-- **用途**：YOLO 目标检测 + 手眼标定 + 抓取控制
-- **入口点**（来自 `setup.py`）：
-  - `yolo_node` — 订阅 RGB+深度图，运行 YOLO，发布 `/tl_vision/object_3d_pos_camera`
-  - `calib_node` — 手眼标定（在线用 RealSense，或离线从 `.npz` 计算）
-  - `control_node` — 将相机坐标转换到基座坐标，通过 `tl_interface` 控制机械臂
-  - `fk_test_node` — 正运动学测试 UI
-- **配置**：`config/yolo_node.yaml`、`config/control_node.yaml`、`config/calib_node.yaml`、`config/camera_params.yaml`
-- **启动**：`ros2 launch tl_vision bringup.launch.py`（启动 RealSense + yolo_node + control_node）
-- **hand_eye_calibration-main-1/**：独立标定脚本（非 ROS2 节点），直接用 `python` 运行
+### tl_gazebo
+- **构建类型**：ament_cmake
+- **用途**：在 Gazebo 仿真环境中加载机械臂模型，通过 ros2_control 控制虚拟机械臂
+- **启动**：`ros2 launch tl_gazebo gazebo_<arm_type>_demo.launch.py`
+- **配合 MoveIt2**：`ros2 launch tl_<arm_type>_config gazebo_moveit_demo_<arm_type>.launch.py`
+
+### tl_moveit2_config
+- **构建类型**：ament_cmake（14 个子功能包集合，每个型号一套）
+- **用途**：MoveIt2 运动规划配置，包含 SRDF、关节限位、运动学求解器（KDL）、控制器配置
+- **启动**：
+  - 虚拟控制：`ros2 launch tl_<arm_type>_config demo.launch.py`
+- **配置**：每个子包包含 `config/`（initial_positions、joint_limits、kinematics、srdf 等）和 `launch/`（demo、move_group、rviz 等）
 
 ## 支持的臂型
 
@@ -96,19 +98,15 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 | `/tl_driver/moveJ` | — | tl_driver | `tl_ros2_interface/MoveCommand` |
 | `/tl_driver/moveL` | — | tl_driver | `tl_ros2_interface/MoveCommand` |
 | `/tl_driver/set_servoj_pos` | — | tl_driver | `std_msgs/Float64MultiArray` |
-| `/tl_vision/object_3d_pos_camera` | yolo_node | control_node | `tl_ros2_interface/ObjectInfo` |
-| `/tl_vision/object_3d_pos_base` | control_node | — | `tl_ros2_interface/ObjectInfo` |
+
 | `/tf`、`/tf_static` | tl_description（robot_state_publisher） | — | `tf2_msgs/TFMessage` |
 
 ## 注意事项
 
-- **control_node 和 calib_node 均通过 `ament_index` 发现机制**加载 `tl_interface`（`get_package_prefix('tl_driver')` + `lib/tl_driver`），开发/部署环境均适用。
 - **`_tl_host.so`** 是预编译专有库，禁止尝试重新编译或修改。构建时链接，安装到 `lib/tl_driver/`。
 - **tl_driver 使用 `MultiThreadedExecutor`** 驱动 3 个回调组（`service_group_`、`topic_group_`、`timer_group_`），保证服务/话题串行、定时器并发。这是回调组架构正常工作的必要条件。
 - **选择性构建时必须先构建 tl_ros2_interface**。不带 `--packages-select` 的 `colcon build` 会自动处理。
-- **机械臂位置单位**：NRC API 返回 mm；control_node 除以 1000 转换为米。欧拉角约定为 XYZ 内旋（scipy 中使用大写 `'XYZ'`）。
-- **control_node.yaml 中的 handeye_matrix** 是 16 个元素的扁平列表，表示 4×4 齐次变换矩阵（行优先）。默认为单位矩阵 — 必须替换为实际标定结果。
-- **tl_vision/hand_eye_calibration-main-1/** 是独立 Python 工具，不属于 ROS2 包。直接用 `python compute_in_hand.py` 或 `python compute_to_hand.py` 运行。
+- **机械臂位置单位**：NRC API 返回 mm；ROS2 层使用时需注意单位转换。欧拉角约定为 XYZ 内旋（scipy 中使用大写 `'XYZ'`）。
 - **无自动化测试**，仅有 ament 代码风格检查脚手架。`test/` 目录只包含 `ament_copyright`、`ament_flake8`、`ament_pep257`。
 - **开发环境通过 Docker 搭建**（Docker 配置不在本仓库中）。构建和运行均在容器内进行。
 
@@ -147,17 +145,17 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 
 | 元素 | 规范 | 示例 |
 |------|------|------|
-| **文件名** | snake_case | `control_node.py`、`yolo_node.py`、`calib_node.py` |
-| **类名** | PascalCase | `ObjectToBaseNode`、`YOLODemo`、`HandEyeCalibrationNode` |
-| **ROS 节点类** | PascalCase，继承 `Node` | `class ObjectToBaseNode(Node)` |
+| **文件名** | snake_case | `control_node.py`、`calib_node.py` |
+| **类名** | PascalCase | `HandEyeCalibrationNode`、`TLDemoNode` |
+| **ROS 节点类** | PascalCase，继承 `Node` | `class TLDemoNode(Node)` |
 | **实例变量** | snake_case | `robot_ip`、`camera_object_topic`、`base_frame_id` |
 | **私有方法** | 下划线前缀 + snake_case | `_tcp_pose_callback`、`_wait_for_services` |
 | **公开方法** | snake_case | `safe_log_info`、`get_robot_pose`、`pose_to_tool_rt` |
 | **ROS 参数键** | snake_case | `'arm_ip'`、`'camera_width'`、`'handeye_matrix'` |
-| **ROS 话题名** | snake_case（小写） | `/tl_vision/object_3d_pos_camera`、`/tcp_pose` |
+| **ROS 话题名** | snake_case（小写） | `/joint_states`、`/tcp_pose` |
 | **ROS 服务名** | snake_case（小写） | `/tl_driver/connect_arm`、`/tl_driver/power_on` |
-| **入口点函数** | snake_case | `yolo_node`、`calib_node`、`control_node`、`fk_test_node` |
-| **console_scripts** | snake_case（与文件名对应） | `yolo_node = tl_vision.yolo_node:main` |
+| **入口点函数** | snake_case | `demo_node`、`control_node` |
+| **console_scripts** | snake_case（与文件名对应） | `demo_node = tl_driver.demo_node:main` |
 | **标准库导入** | 常用别名 | `import numpy as np`、`import cv2` |
 | **ROS 客户端** | 下划线前缀 + `_cli` 后缀 | `self._connect_cli`、`self._power_on_cli` |
 | **订阅者** | 下划线前缀 + `_sub` 后缀 | `self._tcp_pose_sub` |
@@ -165,7 +163,7 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 ### ROS 话题/服务命名规范
 
 - 所有话题和服务名使用 **snake_case（小写+下划线）**
-- 包名前缀：`/tl_driver/`、`/tl_vision/`、`/tl_driver/`
+- 包名前缀：`/tl_driver/`
 - 示例话题： `/joint_states`、`/tcp_pose`、`/arm_status`
 - 示例服务： `/tl_driver/connect_arm`、`/tl_driver/set_speed`
 
@@ -173,18 +171,11 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 
 ```
 tl_driver/
-├── src/tl_driver.cpp          # 主节点实现（camelCase 方法）
+├── src/tl_driver.cpp              # 主节点实现（camelCase 方法）
 ├── include/tl_driver/tl_driver.h  # 头文件（类定义）
-├── launch/tl_driver.launch.py # 通用启动文件
-├── launch/tl_tcbXXX_driver.launch.py # 各臂型快捷启动
-└── config/*.yaml              # 配置文件
-
-tl_vision/
-├── tl_vision/
-│   ├── control_node.py        # snake_case 文件名
-│   ├── yolo_node.py
-│   └── calib_node.py
-└── launch/*.launch.py
+├── launch/tl_driver.launch.py     # 通用启动文件
+├── launch/tl_tcbXXX_driver.launch.py  # 各臂型快捷启动
+└── config/*.yaml                  # 配置文件
 ```
 
 ## Sisyphus 后台任务超时规避

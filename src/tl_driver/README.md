@@ -24,7 +24,7 @@ tl_driver功能包在机械臂ROS2功能包中是十分重要的，该功能包�
 ### tl_driver功能包编译
 
 ```bash
-cd ~/tl_robot
+cd ~/tl_robot_ros2_cpp
 colcon build
 source install/setup.bash
 ```
@@ -183,7 +183,7 @@ tl_driver:
 │       └── tl_interface.py
 ├── package.xml
 ├── README.md
-├── README_update.md             
+├── 修改说明.md
 ├── src                        # 驱动代码源文件
 │   └── tl_driver.cpp
 └── test                       # 测试脚本

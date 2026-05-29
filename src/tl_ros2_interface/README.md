@@ -22,15 +22,14 @@ TL 系列机械臂 ROS2 接口说明
 * 4.1 [机械臂运行状态ArmStatus_msg](#机械臂运行状态ArmStatus_msg)
 * 4.2 [直角坐标系位姿CartesianPose_msg](#直角坐标系位姿CartesianPose_msg)
 * 4.3 [作业文件名JobFileName_msg](#作业文件名JobFileName_msg)
-* 4.4 [插入运动指令JobInsertMove_msg](#插入运动指令JobInsertMove_msg)
-* 4.5 [ModbusMaster参数ModbusMasterParam_msg](#ModbusMaster参数ModbusMasterParam_msg)
-* 4.6 [ModbusRTU参数ModbusRTUParam_msg](#ModbusRTU参数ModbusRTUParam_msg)
-* 4.7 [ModbusTCP参数ModbusTCPParam_msg](#ModbusTCP参数ModbusTCPParam_msg)
-* 4.8 [运动指令MoveCommand_msg](#运动指令MoveCommand_msg)
-* 4.9 [目标检测结果ObjectInfo_msg](#目标检测结果ObjectInfo_msg)
-* 4.10 [机器人DH参数RobotDHParam_msg](#机器人DH参数RobotDHParam_msg)
-* 4.11 [机械臂关节参数RobotJointParam_msg](#机械臂关节参数RobotJointParam_msg)
-* 4.12 [工具参数ToolParam_msg](#工具参数ToolParam_msg)
+* 4.4 [ModbusMaster参数ModbusMasterParam_msg](#ModbusMaster参数ModbusMasterParam_msg)
+* 4.5 [ModbusRTU参数ModbusRTUParam_msg](#ModbusRTU参数ModbusRTUParam_msg)
+* 4.6 [ModbusTCP参数ModbusTCPParam_msg](#ModbusTCP参数ModbusTCPParam_msg)
+* 4.7 [运动指令MoveCommand_msg](#运动指令MoveCommand_msg)
+* 4.8 [目标检测结果ObjectInfo_msg](#目标检测结果ObjectInfo_msg)
+* 4.9 [机器人DH参数RobotDHParam_msg](#机器人DH参数RobotDHParam_msg)
+* 4.10 [机械臂关节参数RobotJointParam_msg](#机械臂关节参数RobotJointParam_msg)
+* 4.11 [工具参数ToolParam_msg](#工具参数ToolParam_msg)
 * 5 [tl_ros2_interface服务（srv）说明](#tl_ros2_interface服务srv说明)
 * 5.1 [坐标转换CoordTransform_srv](#坐标转换CoordTransform_srv)
 * 5.2 [所有作业文件名GetAllJobFileName_srv](#所有作业文件名GetAllJobFileName_srv)
@@ -48,34 +47,35 @@ TL 系列机械臂 ROS2 接口说明
 * 5.14 [关节参数GetRobotJointParam_srv](#关节参数GetRobotJointParam_srv)
 * 5.15 [机械臂运行状态GetRobotState_srv](#机械臂运行状态GetRobotState_srv)
 * 5.16 [获取机械臂运行速度GetSpeed_srv](#获取机械臂运行速度GetSpeed_srv)
-* 5.17 [运行指定作业文件JobRun_srv](#运行指定作业文件JobRun_srv)
-* 5.18 [机械臂点动Jogging_srv](#机械臂点动Jogging_srv)
-* 5.19 [下载日志LogDownload_srv](#下载日志LogDownload_srv)
-* 5.20 [写ModbusModbusWrite_srv](#写ModbusModbusWrite_srv)
-* 5.21 [读ModbusModbusRead_srv](#读ModbusModbusRead_srv)
-* 5.22 [关节跟踪OpenServoJ_srv](#关节跟踪OpenServoJ_srv)
-* 5.23 [MoveJ队列运动QueueMotionMoveJ_srv](#MoveJ队列运动QueueMotionMoveJ_srv)
-* 5.24 [MoveJ队列运动模式QueueMotionSetStatus_srv](#MoveJ队列运动模式QueueMotionSetStatus_srv)
-* 5.25 [机械臂默认DH参数RestoreDefaultDHParam_srv](#机械臂默认DH参数RestoreDefaultDHParam_srv)
-* 5.26 [设置关节零点SetAxisZeroPos_srv](#设置关节零点SetAxisZeroPos_srv)
-* 5.27 [控制器有线网口IP设置SetControllerIP_srv](#控制器有线网口IP设置SetControllerIP_srv)
-* 5.28 [设置坐标系编号SetCoordNum_srv](#设置坐标系编号SetCoordNum_srv)
-* 5.29 [设置当前坐标系SetCurrentCoord_srv](#设置当前坐标系SetCurrentCoord_srv)
-* 5.30 [设置当前运行模式SetCurrentMode_srv](#设置当前运行模式SetCurrentMode_srv)
-* 5.31 [设置机械臂DH参数SetDHParam_srv](#设置机械臂DH参数SetDHParam_srv)
-* 5.32 [设置数字输出SetDigitalOutput_srv](#设置数字输出SetDigitalOutput_srv)
-* 5.33 [设置拖拽模式SetDragMode_srv](#设置拖拽模式SetDragMode_srv)
-* 5.34 [设置全局位点SetGlobalPos_srv](#设置全局位点SetGlobalPos_srv)
-* 5.35 [设置关节参数SetRobotJointParam_srv](#设置关节参数SetRobotJointParam_srv)
-* 5.36 [设置运行速度SetSpeed_srv](#设置运行速度SetSpeed_srv)
-* 5.37 [设置工具手参数SetToolParam_srv](#设置工具手参数SetToolParam_srv)
-* 5.38 [设置用户坐标系SetUserCoord_srv](#设置用户坐标系SetUserCoord_srv)
-* 5.39 [工具手参数标定ToolHandCalib_srv](#工具手参数标定ToolHandCalib_srv)
-* 5.40 [拖拽轨迹回放TrackPlayback_srv](#拖拽轨迹回放TrackPlayback_srv)
-* 5.41 [拖拽轨迹保存TrackSave_srv](#拖拽轨迹保存TrackSave_srv)
-* 5.42 [当前电机力矩GetCurrentMotorTorque_srv](#当前电机力矩GetCurrentMotorTorque_srv)
-* 5.43 [当前线速度和关节速度GetCurrentLineJointSpeed_srv](#当前线速度和关节速度GetCurrentLineJointSpeed_srv)
-* 5.44 [查询当前运行模式GetCurrentMode_srv](#查询当前运行模式GetCurrentMode_srv)
+* 5.17 [插入运动指令JobInsertMove_srv](#插入运动指令JobInsertMove_srv)
+* 5.18 [运行指定作业文件JobRun_srv](#运行指定作业文件JobRun_srv)
+* 5.19 [机械臂点动Jogging_srv](#机械臂点动Jogging_srv)
+* 5.20 [下载日志LogDownload_srv](#下载日志LogDownload_srv)
+* 5.21 [写ModbusModbusWrite_srv](#写ModbusModbusWrite_srv)
+* 5.22 [读ModbusModbusRead_srv](#读ModbusModbusRead_srv)
+* 5.23 [关节跟踪OpenServoJ_srv](#关节跟踪OpenServoJ_srv)
+* 5.24 [MoveJ队列运动QueueMotionMoveJ_srv](#MoveJ队列运动QueueMotionMoveJ_srv)
+* 5.25 [MoveJ队列运动模式QueueMotionSetStatus_srv](#MoveJ队列运动模式QueueMotionSetStatus_srv)
+* 5.26 [机械臂默认DH参数RestoreDefaultDHParam_srv](#机械臂默认DH参数RestoreDefaultDHParam_srv)
+* 5.27 [设置关节零点SetAxisZeroPos_srv](#设置关节零点SetAxisZeroPos_srv)
+* 5.28 [控制器有线网口IP设置SetControllerIP_srv](#控制器有线网口IP设置SetControllerIP_srv)
+* 5.29 [设置坐标系编号SetCoordNum_srv](#设置坐标系编号SetCoordNum_srv)
+* 5.30 [设置当前坐标系SetCurrentCoord_srv](#设置当前坐标系SetCurrentCoord_srv)
+* 5.31 [设置当前运行模式SetCurrentMode_srv](#设置当前运行模式SetCurrentMode_srv)
+* 5.32 [设置机械臂DH参数SetDHParam_srv](#设置机械臂DH参数SetDHParam_srv)
+* 5.33 [设置数字输出SetDigitalOutput_srv](#设置数字输出SetDigitalOutput_srv)
+* 5.34 [设置拖拽模式SetDragMode_srv](#设置拖拽模式SetDragMode_srv)
+* 5.35 [设置全局位点SetGlobalPos_srv](#设置全局位点SetGlobalPos_srv)
+* 5.36 [设置关节参数SetRobotJointParam_srv](#设置关节参数SetRobotJointParam_srv)
+* 5.37 [设置运行速度SetSpeed_srv](#设置运行速度SetSpeed_srv)
+* 5.38 [设置工具手参数SetToolParam_srv](#设置工具手参数SetToolParam_srv)
+* 5.39 [设置用户坐标系SetUserCoord_srv](#设置用户坐标系SetUserCoord_srv)
+* 5.40 [工具手参数标定ToolHandCalib_srv](#工具手参数标定ToolHandCalib_srv)
+* 5.41 [拖拽轨迹回放TrackPlayback_srv](#拖拽轨迹回放TrackPlayback_srv)
+* 5.42 [拖拽轨迹保存TrackSave_srv](#拖拽轨迹保存TrackSave_srv)
+* 5.43 [当前电机力矩GetCurrentMotorTorque_srv](#当前电机力矩GetCurrentMotorTorque_srv)
+* 5.44 [当前线速度和关节速度GetCurrentLineJointSpeed_srv](#当前线速度和关节速度GetCurrentLineJointSpeed_srv)
+* 5.45 [查询当前运行模式GetCurrentMode_srv](#查询当前运行模式GetCurrentMode_srv)
 
 ## tl_ros2_interface功能包说明
 tl_ros2_interface 功能包为 TL 系列机械臂在 ROS2 框架下提供消息（msg）和服务（srv）接口定义，供上层驱动或应用调用。该包本身没有可执行程序，主要作用为定义协议数据结构和服务接口。
@@ -92,7 +92,6 @@ tl_ros2_interface/
 │   ├── ArmStatus.msg
 │   ├── CartesianPose.msg
 │   ├── JobFileName.msg
-│   ├── JobInsertMove.msg
 │   ├── ModbusMasterParam.msg
 │   ├── ModbusRTUParam.msg
 │   ├── ModbusTCPParam.msg
@@ -122,6 +121,7 @@ tl_ros2_interface/
 │   ├── GetRobotState.srv
 │   ├── GetSpeed.srv
 │   ├── JobRun.srv
+│   ├── JobInsertMove.srv
 │   ├── Jogging.srv
 │   ├── LogDownload.srv
 │   ├── ModbusRead.srv
@@ -146,7 +146,6 @@ tl_ros2_interface/
 │   ├── ToolHandCalib.srv
 │   ├── TrackPlayback.srv
 │   ├── TrackSave.srv
-│   └── ...
 ```
 
 ## tl_ros2_interface消息（msg）说明
@@ -180,15 +179,6 @@ string[] file_name
 ```
 __msg成员__
 - file_name: 作业文件名数组
-
-### 插入运动指令JobInsertMove_msg
-```
-int32 line
-MoveCommand cmd
-```
-__msg成员__
-- line: 插入的行号
-- cmd: MoveCommand 类型的运动指令
 
 ### ModbusMaster参数ModbusMasterParam_msg
 ```
@@ -601,6 +591,19 @@ string message
 float64 speed
 ```
 - 返回当前全局速度设置
+
+### 插入运动指令JobInsertMove_srv
+```
+int32 line
+tl_ros2_interface/MoveCommand cmd
+---
+bool success
+string message
+```
+- 向作业文件插入一条运动指令
+- line: 插入的行序号
+- cmd: 运动指令（MoveCommand 类型）
+- 返回: success/message
 
 ### 运行指定作业文件JobRun_srv
 ```
