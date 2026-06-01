@@ -90,7 +90,7 @@ TL_Arm::TL_Arm()
   auto topic_group_option = rclcpp::SubscriptionOptions();
   topic_group_option.callback_group = topic_group_;
 
-  timer_group_ = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+  timer_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   
   // 服务
   connect_service_ = this->create_service<std_srvs::srv::Trigger>(
