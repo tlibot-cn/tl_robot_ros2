@@ -9,18 +9,26 @@
 
 using json = nlohmann::json;
 
+// 位置缩放系数：VR 手柄移动 1m → 机械臂末端移动 0.5m
 static constexpr double POS_SCALE = 0.5;
+// 位置死区：手柄位移小于此值（单位：m）视为无效，避免微小抖动
 static constexpr double POS_DEADZONE = 0.005;
+// 单步最大位置增量（单位：mm），防止异常跳变
 static constexpr double MAX_POS_DELTA_MM = 300.0;
+// 奇异点判定角度（单位：度），J6/J7 超过此值触发减速保护
 static constexpr double SINGULAR_ANGLE = 160.0;
+// 奇异点区域内的速度缩放系数，降至正常的 20%
 static constexpr double SINGULAR_SCALE = 0.2;
+// 关节跳变检测阈值（单位：度），相邻两次指令差超过此值则拒绝执行
 static constexpr double JOINT_JUMP_THRESHOLD = 30.0;
+// 控制循环周期（单位：秒），100Hz
 static constexpr double CONTROL_PERIOD_S = 0.01;
+// 手柄握紧阈值，超过此值才触发遥操作
 static constexpr double GRIP_THRESHOLD = 0.9;
 static constexpr double DEG_TO_RAD = M_PI / 180.0;
 static constexpr double RAD_TO_DEG = 180.0 / M_PI;
-static constexpr double LOG_INTERVAL_S = 1.0;
 
+// 默认关节限位（单位：度），第 6/7 轴范围较窄防止自碰撞
 static const std::vector<std::pair<double, double>> DEFAULT_JOINT_LIMITS = {
   {-180, 180}, {-180, 180}, {-180, 180}, {-180, 180},
   {-180, 180}, {-170, 170}, {-170, 170}
@@ -59,6 +67,7 @@ TL_Teleop::TL_Teleop()
   for (int i = 0; i < arm_joints_; ++i) {
     joint_names_.push_back("joint" + std::to_string(i + 1));
     latest_target_joints_.push_back(0.0);
+    // servoJ 运动参数：速度(°/s) / 加速度(°/s²) / 加加速度(°/s³)
     servo_vmax_.push_back(80.0);
     servo_amax_.push_back(3000.0);
     servo_jmax_.push_back(50000.0);
@@ -112,6 +121,8 @@ void TL_Teleop::on_pxrea_client_cb(void * context,
     case PXREADeviceStateJson: {
       auto & dsj = *reinterpret_cast<PXREADevStateJson *>(userData);
       try {
+        // PXREA SDK 的 JSON 是双层嵌套结构，外层 value 字段包含内层 JSON 字符串
+        // 格式：{"value": "{\"Controller\": {\"right\": {\"pose\": \"...\", \"grip\": 0.0, ...}}}"}
         json data = json::parse(dsj.stateJson);
         if (!data.contains("value")) {
           break;
@@ -122,8 +133,11 @@ void TL_Teleop::on_pxrea_client_cb(void * context,
         }
         auto & right = value["Controller"]["right"];
 
+        // pose 格式: "x,y,z,qx,qy,qz,qw"（逗号分隔的七个浮点数，m 和 无量纲）
         auto pose = parse_pose_str(right["pose"].get<std::string>());
+        // grip 值域 [0, 1]，0=完全松开，1=完全握紧
         double grip = right.value("grip", 0.0);
+        // primaryButton 是 VR 手柄 A 键，用于复位到零点
         bool a_button = right.value("primaryButton", false);
 
         self->vr_state_.update(pose, grip, a_button);
@@ -138,6 +152,7 @@ void TL_Teleop::on_pxrea_client_cb(void * context,
   }
 }
 
+// 将 VR 姿态字符串解析为数组，格式: "x,y,z,qx,qy,qz,qw"（分别表示位置 m 和四元数）
 std::array<double, 7> TL_Teleop::parse_pose_str(const std::string & s)
 {
   std::array<double, 7> result{};
@@ -158,6 +173,7 @@ bool TL_Teleop::connect_arm()
     return true;
   }
 
+  // 双端口连接：6001 用于指令通信，7000 用于 servoJ 高频位置流
   socket_fd_ = connect_robot(arm_ip_, arm_port_);
   socket_fd_aux_ = connect_robot(arm_ip_, arm_port_aux_);
 
@@ -174,6 +190,7 @@ bool TL_Teleop::connect_arm()
   RCLCPP_INFO(get_logger(), "Connected to arm at %s:%s,%s",
     arm_ip_.c_str(), arm_port_.c_str(), arm_port_aux_.c_str());
 
+  // 等待 500ms 确保 TCP 连接稳定后再发送后续指令
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
   return true;
 }
@@ -200,11 +217,13 @@ bool TL_Teleop::init_servo()
     return false;
   }
 
+  // 伺服初始化流程：就绪 → 运行模式 → 设速 → 上电 → 启动 servoJ
   int ret = set_servo_state(socket_fd_, 1);
   if (ret != Result::SUCCESS) {
     RCLCPP_ERROR(get_logger(), "set_servo_state(1) failed: %d", ret);
     return false;
   }
+  // 等待 1s 让伺服状态切换生效
   std::this_thread::sleep_for(std::chrono::seconds(1));
 
   ret = set_current_mode(socket_fd_, 2);
@@ -219,6 +238,9 @@ bool TL_Teleop::init_servo()
     return false;
   }
 
+  // 上电状态机：根据当前伺服状态决定上电路径，确保安全
+  // 0=未就绪 → 先就绪再上电   1=已就绪 → 直接上电
+  // 2=错误态 → 清除错误后上电   3=已上电 → 跳过
   int state = -1;
   get_servo_state(socket_fd_, state);
   switch (state) {
@@ -240,6 +262,7 @@ bool TL_Teleop::init_servo()
       break;
   }
 
+  // 再次读取状态确认上电成功
   get_servo_state(socket_fd_, state);
   if (state == 3) {
     is_powered_ = true;
@@ -266,13 +289,17 @@ void TL_Teleop::close_servo()
   if (!arm_connected_) {
     return;
   }
+  // 下电顺序：先关 servoJ → 下电 → 等待 → 设为未就绪
   close_servoJ(socket_fd_aux_);
   set_servo_poweroff(socket_fd_);
+  // 等待 1s 确保下电指令执行完毕
   std::this_thread::sleep_for(std::chrono::seconds(1));
   set_servo_state(socket_fd_, 0);
   RCLCPP_INFO(get_logger(), "Servo closed");
 }
 
+// 获取当前笛卡尔位姿，coord=1 表示笛卡尔坐标系
+// 返回值: [x(mm), y(mm), z(mm), rx(rad), ry(rad), rz(rad), ...]
 std::vector<double> TL_Teleop::get_arm_cartesian_pose()
 {
   std::lock_guard<std::mutex> lock(arm_mutex_);
@@ -288,6 +315,9 @@ std::vector<double> TL_Teleop::get_arm_cartesian_pose()
   return pos;
 }
 
+// 逆运动学：笛卡尔位姿 → 关节角度
+// originCoord=1 笛卡尔, targetCoord=0 关节
+// 输入: x,y,z(mm), rx,ry,rz(rad)  |  输出: 关节角度(度)
 std::vector<double> TL_Teleop::get_inverse_kinematics(
   double x, double y, double z, double rx, double ry, double rz)
 {
@@ -307,6 +337,8 @@ std::vector<double> TL_Teleop::get_inverse_kinematics(
   return target_pos;
 }
 
+// 使用机械臂 SDK 内置函数将 RPY(rad) 转为四元数 [w, x, y, z]
+// 失败时返回单位四元数（表示无旋转）
 std::array<double, 4> TL_Teleop::get_rpy2quat_sdk(double rx, double ry, double rz)
 {
   std::lock_guard<std::mutex> lock(arm_mutex_);
@@ -323,6 +355,8 @@ std::array<double, 4> TL_Teleop::get_rpy2quat_sdk(double rx, double ry, double r
   return {quat[0], quat[1], quat[2], quat[3]};
 }
 
+// 将关节角度裁剪到限位范围内，防止运动超出机械臂物理限制
+// 输入/输出单位：度
 std::vector<double> TL_Teleop::clamp_joints(const std::vector<double> & joints)
 {
   std::vector<double> clamped;
@@ -334,6 +368,8 @@ std::vector<double> TL_Teleop::clamp_joints(const std::vector<double> & joints)
   return clamped;
 }
 
+// 关节跳变检测：新指令与上一帧差值超过阈值则拒绝，防止异常指令或通信错误
+// 阈值单位：度
 bool TL_Teleop::joints_safe(const std::vector<double> & new_joints)
 {
   if (last_joints_.empty()) {
@@ -369,6 +405,8 @@ void TL_Teleop::servoJ_send(const std::vector<double> & joint_target)
   }
 }
 
+// 四元数乘法：q1 * q2，表示先旋转 q2 再旋转 q1
+// 约定：[w, x, y, z] 顺序
 std::array<double, 4> TL_Teleop::quat_multiply(
   const std::array<double, 4> & q1, const std::array<double, 4> & q2)
 {
@@ -382,11 +420,13 @@ std::array<double, 4> TL_Teleop::quat_multiply(
   };
 }
 
+// 四元数共轭（逆），用于计算旋转差值
 std::array<double, 4> TL_Teleop::quat_inverse(const std::array<double, 4> & q)
 {
   return {q[0], -q[1], -q[2], -q[3]};
 }
 
+// 四元数 → RPY 欧拉角（XYZ 内旋格式），返回值单位：rad
 std::array<double, 3> TL_Teleop::quat2rpy(const std::array<double, 4> & q)
 {
   double w = q[0], x = q[1], y = q[2], z = q[3];
@@ -406,6 +446,7 @@ std::array<double, 3> TL_Teleop::quat2rpy(const std::array<double, 4> & q)
 
 void TL_Teleop::control_loop()
 {
+  // 基准点：握下扳机瞬间的机械臂笛卡尔位置（mm）
   double base_x = 0.0, base_y = 0.0, base_z = 0.0;
 
   while (running_) {
@@ -419,7 +460,7 @@ void TL_Teleop::control_loop()
     double x = pose[0], y = pose[1], z = pose[2];
     double qx = pose[3], qy = pose[4], qz = pose[5], qw = pose[6];
 
-    // A button: zero out and reset home
+    // A 键：将所有关节复位到零点，清除 home 状态
     if (a_button && arm_connected_) {
       std::vector<double> zero_joints(arm_joints_, 0.0);
       servoJ_send(zero_joints);
@@ -434,11 +475,15 @@ void TL_Teleop::control_loop()
 
     if (grip > GRIP_THRESHOLD && arm_connected_) {
       if (!vr_homed_) {
+        // 刚握下扳机时，记录当前机械臂位姿作为基准点
+        // 后续手柄位移以此刻为原点，避免绝对坐标系漂移
         auto cart = get_arm_cartesian_pose();
         if (!cart.empty() && cart.size() >= 6) {
           base_x = cart[0]; base_y = cart[1]; base_z = cart[2];
           double base_rx = cart[3], base_ry = cart[4], base_rz = cart[5];
+          // 将当前位姿的 RPY 通过 SDK 转为四元数，作为角度基准
           auto arm_quat = get_rpy2quat_sdk(base_rx, base_ry, base_rz);
+          // VR 手柄当前姿态（qx,qy,qz,qw 顺序）
           std::array<double, 4> current_vr_quat = {qx, qy, qz, qw};
           {
             std::lock_guard<std::mutex> lock(teleop_mutex_);
@@ -450,6 +495,7 @@ void TL_Teleop::control_loop()
         }
       }
     } else {
+      // 松开扳机则取消 home，下次握下时重新标定
       std::lock_guard<std::mutex> lock(teleop_mutex_);
       vr_homed_ = false;
     }
@@ -470,6 +516,7 @@ void TL_Teleop::control_loop()
         vr_hq = vr_home_quat_;
       }
 
+      // 手柄当前位置相对于 home 的偏移（m）
       double dx = x - home_pose[0];
       double dy = y - home_pose[1];
       double dz = z - home_pose[2];
@@ -477,7 +524,7 @@ void TL_Teleop::control_loop()
       if (std::abs(dy) < pos_deadzone_) dy = 0.0;
       if (std::abs(dz) < pos_deadzone_) dz = 0.0;
 
-      // Singular guard
+      // 奇异点保护：J6 或 J7 接近 180° 时大幅降低运动速度，防止关节速度爆炸
       double scale = 1.0;
       {
         std::lock_guard<std::mutex> alock(arm_mutex_);
@@ -489,6 +536,10 @@ void TL_Teleop::control_loop()
         }
       }
 
+      // VR 手柄坐标系 → 机械臂基座坐标系映射
+      // VR: X右 Y上 Z前  |  机械臂: X前 Y左 Z上
+      // 映射关系：X_arm = -Z_vr, Y_arm = -X_vr, Z_arm = Y_vr
+      // 手柄单位 m → 机械臂单位 mm（×1000），再乘位置缩放系数
       double arm_delta_X = -dz * 1000.0 * pos_scale_ * scale;
       double arm_delta_Y = -dx * 1000.0 * pos_scale_ * scale;
       double arm_delta_Z =  dy * 1000.0 * pos_scale_ * scale;
@@ -500,7 +551,8 @@ void TL_Teleop::control_loop()
       double target_y = base_y + arm_delta_Y;
       double target_z = base_z + arm_delta_Z;
 
-      // Ensure shortest quaternion rotation
+      // 取最短旋转路径：若当前 quat 与 home quat 点积为负，翻转其中一个
+      // 避免 360°→0° 走长路
       std::array<double, 4> vr_quat_wxyz = {qw, qx, qy, qz};
       std::array<double, 4> vr_home_wxyz = {vr_hq[3], vr_hq[0], vr_hq[1], vr_hq[2]};
 
@@ -517,16 +569,17 @@ void TL_Teleop::control_loop()
       auto vr_inv = quat_inverse(vr_home_wxyz);
       auto vr_delta = quat_multiply(vr_quat_wxyz, vr_inv);
 
-      // Remap: [wd, -zd, -xd, yd] matches Python reference
+      // VR 四元数 → 机械臂四元数坐标系映射：[w, -z, -x, y]
+      // 对应 Python 参考实现中的坐标轴重排
       std::array<double, 4> vr_delta_mapped = {
         vr_delta[0], -vr_delta[2], -vr_delta[1], vr_delta[3]
       };
       auto target_quat = quat_multiply(vr_delta_mapped, arm_q);
 
-      // Convert target quaternion to RPY for IK
+      // 目标四元数 → RPY → 逆运动学求解
       auto rpy = quat2rpy(target_quat);
       double target_rx = rpy[0];
-      double target_ry = -rpy[1];  // Negate pitch per Python reference
+      double target_ry = -rpy[1];
       double target_rz = rpy[2];
 
       auto ik = get_inverse_kinematics(
@@ -536,6 +589,7 @@ void TL_Teleop::control_loop()
       }
     }
 
+    // 固定频率控制：100Hz，睡眠补足剩余时间
     auto t1 = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration<double>(t1 - t0).count();
     double sleep_time = CONTROL_PERIOD_S - elapsed;
@@ -552,6 +606,7 @@ void TL_Teleop::publish_joints()
   msg.header.stamp = get_clock()->now();
   msg.name = joint_names_;
 
+  // 关节角度从度转为弧度后发布到 /joint_states，供 rviz / tf 等订阅
   std::lock_guard<std::mutex> lock(joints_mutex_);
   msg.position.resize(latest_target_joints_.size());
   for (size_t i = 0; i < latest_target_joints_.size(); ++i) {
@@ -594,6 +649,9 @@ int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<TL_Teleop>();
+
+  // 控制循环在单独线程运行，避免 100Hz 循环阻塞 ROS2 spin
+  // 主线程负责 ROS2 回调（/joint_states 定时发布）
   std::thread control_thread([&node]() {
     node->run_control_loop();
   });
