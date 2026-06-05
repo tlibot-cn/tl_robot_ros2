@@ -2,7 +2,7 @@
 
 ## 工作空间概述
 
-天链（TianLian）机械臂 ROS2 工作空间。`src/` 下包含 6 个功能包，使用标准 `colcon build` 构建流程。无 `package.json`、无 Node.js — 纯 ROS2（ament_cmake + ament_python）。
+天链（TianLian）机械臂 ROS2 工作空间。`src/` 下包含 7 个功能包，使用标准 `colcon build` 构建流程。无 `package.json`、无 Node.js — 纯 ROS2（ament_cmake + ament_python）。
 
 ## 构建命令
 
@@ -19,6 +19,7 @@ source install/setup.bash
 ```
 tl_ros2_interface  （基础：自定义 msg/srv，无依赖）
   └─► tl_driver       （C++ 节点，链接 _tl_host.so 专有库）
+  └─► tl_teleop       （遥操作 C++ 节点，PXR EA SDK，依赖接口消息）
 tl_description     （独立：URDF + 网格 + RViz）
   └─► tl_gazebo       （Gazebo 仿真，依赖 tl_description）
   └─► tl_moveit2_config（MoveIt2 配置集合，依赖 tl_description）
@@ -53,6 +54,26 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
   - `timer_group_`（`Reentrant`）— 状态发布定时器（100 Hz），允许定时器回调并发
 - **话题**：发布 `joint_states`、`tcp_pose`、`arm_status`；订阅 `moveJ`、`moveL`、`set_servoj_pos`（详见下方关键话题表）
 - **安全行为**：`init()` 中若 `connect()` 失败，节点会调用 `rclcpp::shutdown()` 并 exit
+
+### tl_teleop
+- **构建类型**：ament_cmake（C++17）
+- **用途**：遥操作节点 — 通过 PXREA Robot SDK（预编译 `.so`）与遥操作设备通信，同时在 ROS2 层面通过 `tl_ros2_interface` 的消息与服务与 `tl_driver` 交互
+- **专有库**：`lib/arm/`（ARM 架构）和 `lib/x86/`（x86 架构）下的预编译 `libPXREARobotSDK.so`，不可修改
+- **SDK 头文件**：`lib/include/PXREARobotSDK.h` — C 风格 API，使用 `uint64_t`（需 `#include <stdint.h>`）
+- **依赖**：`rclcpp` + `tl_ros2_interface` — 不直接链接 `tl_driver`，运行时通过话题/服务通信
+- **构建状态**：骨架已搭建（`package.xml` + `CMakeLists.txt`），源文件待实现
+- **文件组织**：
+  ```
+  tl_teleop/
+  ├── src/                        # 遥操作节点源码（待实现）
+  ├── include/tl_teleop/          # 头文件（待实现）
+  ├── lib/
+  │   ├── include/PXREARobotSDK.h # PXREA SDK C API 头文件
+  │   ├── arm/libPXREARobotSDK.so # ARM 架构预编译库
+  │   └── x86/libPXREARobotSDK.so # x86 架构预编译库
+  ├── CMakeLists.txt
+  └── package.xml
+  ```
 
 ### tl_description
 - **构建类型**：ament_cmake
