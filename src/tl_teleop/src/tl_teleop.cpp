@@ -25,8 +25,7 @@ static constexpr double JOINT_JUMP_THRESHOLD = 30.0;
 static constexpr double CONTROL_PERIOD_S = 0.01;
 // 手柄握紧阈值，超过此值才触发遥操作
 static constexpr double GRIP_THRESHOLD = 0.9;
-static constexpr double DEG_TO_RAD = M_PI / 180.0;
-static constexpr double RAD_TO_DEG = 180.0 / M_PI;
+
 
 // 默认关节限位（单位：度），第 6/7 轴范围较窄防止自碰撞
 static const std::vector<std::pair<double, double>> DEFAULT_JOINT_LIMITS = {
@@ -37,9 +36,6 @@ static const std::vector<std::pair<double, double>> DEFAULT_JOINT_LIMITS = {
 TL_Teleop::TL_Teleop()
 : Node("tl_teleop")
 {
-  declare_parameter("arm_ip", "192.168.1.13");
-  declare_parameter("arm_port", "6001");
-  declare_parameter("arm_port_aux", "7000");
   declare_parameter("arm_joints", 7);
   declare_parameter("pos_scale", POS_SCALE);
   declare_parameter("pos_deadzone", POS_DEADZONE);
@@ -48,11 +44,7 @@ TL_Teleop::TL_Teleop()
   declare_parameter("singular_scale", SINGULAR_SCALE);
   declare_parameter("joint_jump_threshold", JOINT_JUMP_THRESHOLD);
   declare_parameter("servo_speed", 25);
-  declare_parameter("publish_rate", 20.0);
 
-  arm_ip_ = get_parameter("arm_ip").as_string();
-  arm_port_ = get_parameter("arm_port").as_string();
-  arm_port_aux_ = get_parameter("arm_port_aux").as_string();
   arm_joints_ = get_parameter("arm_joints").as_int();
   pos_scale_ = get_parameter("pos_scale").as_double();
   pos_deadzone_ = get_parameter("pos_deadzone").as_double();
@@ -61,35 +53,39 @@ TL_Teleop::TL_Teleop()
   singular_scale_ = get_parameter("singular_scale").as_double();
   joint_jump_threshold_ = get_parameter("joint_jump_threshold").as_double();
   servo_speed_ = get_parameter("servo_speed").as_int();
-  publish_rate_ = get_parameter("publish_rate").as_double();
 
   joint_limits_ = DEFAULT_JOINT_LIMITS;
   for (int i = 0; i < arm_joints_; ++i) {
-    joint_names_.push_back("joint" + std::to_string(i + 1));
-    latest_target_joints_.push_back(0.0);
-    // servoJ 运动参数：速度(°/s) / 加速度(°/s²) / 加加速度(°/s³)
     servo_vmax_.push_back(80.0);
     servo_amax_.push_back(3000.0);
     servo_jmax_.push_back(50000.0);
   }
 
-  joint_state_pub_ = create_publisher<sensor_msgs::msg::JointState>("/joint_states", 10);
+  power_on_client_ = create_client<std_srvs::srv::Trigger>("/tl_driver/power_on");
+  power_off_client_ = create_client<std_srvs::srv::Trigger>("/tl_driver/power_off");
+  clear_error_client_ = create_client<std_srvs::srv::Trigger>("/tl_driver/clear_error");
+  set_speed_client_ = create_client<tl_ros2_interface::srv::SetSpeed>("/tl_driver/set_speed");
+  set_current_mode_client_ = create_client<tl_ros2_interface::srv::SetCurrentMode>("/tl_driver/set_current_mode");
+  open_servoj_client_ = create_client<tl_ros2_interface::srv::OpenServoJ>("/tl_driver/open_servoj");
+  close_servoj_client_ = create_client<std_srvs::srv::Trigger>("/tl_driver/close_servoj");
+  coord_transform_client_ = create_client<tl_ros2_interface::srv::CoordTransform>("/tl_driver/coord_transform");
+  get_rpy2quat_client_ = create_client<tl_ros2_interface::srv::GetPosTransform>("/tl_driver/get_rpy2quat");
 
-  auto publish_ms = static_cast<int64_t>(1000.0 / publish_rate_);
-  publish_timer_ = create_wall_timer(
-    std::chrono::milliseconds(publish_ms),
-    std::bind(&TL_Teleop::publish_joints, this));
+  servoj_pos_pub_ = create_publisher<std_msgs::msg::Float64MultiArray>("/tl_driver/set_servoj_pos", 10);
 
-  RCLCPP_INFO(get_logger(), "TL_Teleop node initialized (arm_ip=%s, arm_port=%s, arm_port_aux=%s)",
-    arm_ip_.c_str(), arm_port_.c_str(), arm_port_aux_.c_str());
+  tcp_pose_sub_ = create_subscription<tl_ros2_interface::msg::CartesianPose>(
+    "/tcp_pose", 10,
+    [this](const tl_ros2_interface::msg::CartesianPose::SharedPtr msg) {
+      std::lock_guard<std::mutex> lock(tcp_pose_mutex_);
+      latest_tcp_pose_ = *msg;
+      tcp_pose_received_ = true;
+    });
+
+  RCLCPP_INFO(get_logger(), "TL_Teleop node initialized");
 }
 
 TL_Teleop::~TL_Teleop()
 {
-  running_ = false;
-  close_servo();
-  disconnect_arm();
-  PXREADeinit();
   RCLCPP_INFO(get_logger(), "TL_Teleop destroyed");
 }
 
@@ -165,194 +161,136 @@ std::array<double, 7> TL_Teleop::parse_pose_str(const std::string & s)
   return result;
 }
 
-bool TL_Teleop::connect_arm()
-{
-  std::lock_guard<std::mutex> lock(arm_mutex_);
-  if (arm_connected_) {
-    RCLCPP_INFO(get_logger(), "Arm already connected");
-    return true;
-  }
-
-  // 双端口连接：6001 用于指令通信，7000 用于 servoJ 高频位置流
-  socket_fd_ = connect_robot(arm_ip_, arm_port_);
-  socket_fd_aux_ = connect_robot(arm_ip_, arm_port_aux_);
-
-  if (socket_fd_ <= 0 || socket_fd_aux_ <= 0) {
-    RCLCPP_ERROR(get_logger(), "Failed to connect to arm at %s:%s,%s",
-      arm_ip_.c_str(), arm_port_.c_str(), arm_port_aux_.c_str());
-    socket_fd_ = 0;
-    socket_fd_aux_ = 0;
-    arm_connected_ = false;
-    return false;
-  }
-
-  arm_connected_ = true;
-  RCLCPP_INFO(get_logger(), "Connected to arm at %s:%s,%s",
-    arm_ip_.c_str(), arm_port_.c_str(), arm_port_aux_.c_str());
-
-  // 等待 500ms 确保 TCP 连接稳定后再发送后续指令
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
-  return true;
-}
-
-void TL_Teleop::disconnect_arm()
-{
-  std::lock_guard<std::mutex> lock(arm_mutex_);
-  if (!arm_connected_) {
-    return;
-  }
-  disconnect_robot(socket_fd_);
-  disconnect_robot(socket_fd_aux_);
-  socket_fd_ = 0;
-  socket_fd_aux_ = 0;
-  arm_connected_ = false;
-  RCLCPP_INFO(get_logger(), "Disconnected from arm");
-}
-
 bool TL_Teleop::init_servo()
 {
-  std::lock_guard<std::mutex> lock(arm_mutex_);
-  if (!arm_connected_) {
-    RCLCPP_ERROR(get_logger(), "Cannot init servo: arm not connected");
+  // 1. Set current mode to 2 (run mode)
+  auto mode_req = std::make_shared<tl_ros2_interface::srv::SetCurrentMode::Request>();
+  mode_req->mode = 2;
+  auto mode_future = set_current_mode_client_->async_send_request(mode_req);
+  if (mode_future.wait_for(std::chrono::seconds(5)) == std::future_status::timeout) {
+    RCLCPP_ERROR(get_logger(), "set_current_mode timeout");
+    return false;
+  }
+  if (!mode_future.get()->success) {
+    RCLCPP_ERROR(get_logger(), "set_current_mode failed: %s", mode_future.get()->message.c_str());
     return false;
   }
 
-  // 伺服初始化流程：就绪 → 运行模式 → 设速 → 上电 → 启动 servoJ
-  int ret = set_servo_state(socket_fd_, 1);
-  if (ret != Result::SUCCESS) {
-    RCLCPP_ERROR(get_logger(), "set_servo_state(1) failed: %d", ret);
+  // 2. Set speed
+  auto speed_req = std::make_shared<tl_ros2_interface::srv::SetSpeed::Request>();
+  speed_req->speed = servo_speed_;
+  auto speed_future = set_speed_client_->async_send_request(speed_req);
+  if (speed_future.wait_for(std::chrono::seconds(5)) == std::future_status::timeout) {
+    RCLCPP_ERROR(get_logger(), "set_speed timeout");
     return false;
   }
-  // 等待 1s 让伺服状态切换生效
-  std::this_thread::sleep_for(std::chrono::seconds(1));
-
-  ret = set_current_mode(socket_fd_, 2);
-  if (ret != Result::SUCCESS) {
-    RCLCPP_ERROR(get_logger(), "set_current_mode(2) failed: %d", ret);
-    return false;
-  }
-
-  ret = set_speed(socket_fd_, servo_speed_);
-  if (ret != Result::SUCCESS) {
-    RCLCPP_ERROR(get_logger(), "set_speed(%d) failed: %d", servo_speed_, ret);
+  if (!speed_future.get()->success) {
+    RCLCPP_ERROR(get_logger(), "set_speed failed");
     return false;
   }
 
-  // 上电状态机：根据当前伺服状态决定上电路径，确保安全
-  // 0=未就绪 → 先就绪再上电   1=已就绪 → 直接上电
-  // 2=错误态 → 清除错误后上电   3=已上电 → 跳过
-  int state = -1;
-  get_servo_state(socket_fd_, state);
-  switch (state) {
-    case 0:
-      set_servo_state(socket_fd_, 1);
-      set_servo_poweron(socket_fd_);
-      break;
-    case 1:
-      set_servo_poweron(socket_fd_);
-      break;
-    case 2:
-      clear_error(socket_fd_);
-      set_servo_state(socket_fd_, 1);
-      set_servo_poweron(socket_fd_);
-      break;
-    case 3:
-      RCLCPP_INFO(get_logger(), "[PowerOn]: already power on");
-      is_powered_ = true;
-      break;
+  // 3. Power on (tl_driver handles the full state machine internally)
+  auto power_req = std::make_shared<std_srvs::srv::Trigger::Request>();
+  auto power_future = power_on_client_->async_send_request(power_req);
+  if (power_future.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
+    RCLCPP_ERROR(get_logger(), "power_on timeout");
+    return false;
   }
-
-  // 再次读取状态确认上电成功
-  get_servo_state(socket_fd_, state);
-  if (state == 3) {
-    is_powered_ = true;
-    RCLCPP_INFO(get_logger(), "[PowerOn]: successfully power on, servo_state = %d", state);
-  } else {
-    RCLCPP_ERROR(get_logger(), "[PowerOn]: failed to power on, servo_state = %d", state);
+  if (!power_future.get()->success) {
+    RCLCPP_ERROR(get_logger(), "power_on failed: %s", power_future.get()->message.c_str());
     return false;
   }
 
-  ret = open_servoJ(socket_fd_aux_, servo_vmax_, servo_amax_, servo_jmax_);
-  if (ret != Result::SUCCESS) {
-    RCLCPP_ERROR(get_logger(), "open_servoJ failed: %d", ret);
+  // 4. Open ServoJ
+  auto servoj_req = std::make_shared<tl_ros2_interface::srv::OpenServoJ::Request>();
+  servoj_req->vmax = servo_vmax_;
+  servoj_req->amax = servo_amax_;
+  servoj_req->jmax = servo_jmax_;
+  auto servoj_future = open_servoj_client_->async_send_request(servoj_req);
+  if (servoj_future.wait_for(std::chrono::seconds(5)) == std::future_status::timeout) {
+    RCLCPP_ERROR(get_logger(), "open_servoj timeout");
+    return false;
+  }
+  if (!servoj_future.get()->success) {
+    RCLCPP_ERROR(get_logger(), "open_servoj failed");
     return false;
   }
 
-  RCLCPP_INFO(get_logger(), "ServoJ initialized");
+  RCLCPP_INFO(get_logger(), "ServoJ initialized via tl_driver services");
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   return true;
 }
 
 void TL_Teleop::close_servo()
 {
-  std::lock_guard<std::mutex> lock(arm_mutex_);
-  if (!arm_connected_) {
-    return;
-  }
-  // 下电顺序：先关 servoJ → 下电 → 等待 → 设为未就绪
-  close_servoJ(socket_fd_aux_);
-  set_servo_poweroff(socket_fd_);
-  // 等待 1s 确保下电指令执行完毕
-  std::this_thread::sleep_for(std::chrono::seconds(1));
-  set_servo_state(socket_fd_, 0);
-  RCLCPP_INFO(get_logger(), "Servo closed");
+  // 非阻塞发送：shutdown 期间 executor 可能已停止，不能 wait_for
+  // tl_driver 自身析构时会处理下电/断连，此处仅尽最大努力
+  auto close_req = std::make_shared<std_srvs::srv::Trigger::Request>();
+  close_servoj_client_->async_send_request(close_req);
+
+  auto power_req = std::make_shared<std_srvs::srv::Trigger::Request>();
+  power_off_client_->async_send_request(power_req);
+
+  RCLCPP_INFO(get_logger(), "Servo close requested via tl_driver services");
 }
 
-// 获取当前笛卡尔位姿，coord=1 表示笛卡尔坐标系
-// 返回值: [x(mm), y(mm), z(mm), rx(rad), ry(rad), rz(rad), ...]
 std::vector<double> TL_Teleop::get_arm_cartesian_pose()
 {
-  std::lock_guard<std::mutex> lock(arm_mutex_);
-  if (!arm_connected_) {
+  std::lock_guard<std::mutex> lock(tcp_pose_mutex_);
+  if (!tcp_pose_received_) {
     return {};
   }
-  std::vector<double> pos;
-  int ret = get_current_position(socket_fd_, 1, pos);
-  if (ret != Result::SUCCESS || pos.size() < 6) {
-    RCLCPP_WARN(get_logger(), "get_current_position failed: %d", ret);
-    return {};
-  }
-  return pos;
+  // tl_driver 发布的 /tcp_pose：position 单位 mm（直接从 SDK 透传），rpy 单位 rad
+  return {
+    latest_tcp_pose_.position.x,
+    latest_tcp_pose_.position.y,
+    latest_tcp_pose_.position.z,
+    latest_tcp_pose_.rpy.x,
+    latest_tcp_pose_.rpy.y,
+    latest_tcp_pose_.rpy.z
+  };
 }
 
-// 逆运动学：笛卡尔位姿 → 关节角度
-// originCoord=1 笛卡尔, targetCoord=0 关节
-// 输入: x,y,z(mm), rx,ry,rz(rad)  |  输出: 关节角度(度)
 std::vector<double> TL_Teleop::get_inverse_kinematics(
   double x, double y, double z, double rx, double ry, double rz)
 {
-  std::lock_guard<std::mutex> lock(arm_mutex_);
-  if (!arm_connected_) {
+  auto req = std::make_shared<tl_ros2_interface::srv::CoordTransform::Request>();
+req->origin_coord = 1;  // 笛卡尔坐标系
+req->target_coord = 0;  // 关节坐标系
+  req->form = 0;
+  req->origin_pos = {x, y, z, rx, ry, rz, 0.0};
+  req->reference_pos = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+
+  auto future = coord_transform_client_->async_send_request(req);
+  if (future.wait_for(std::chrono::milliseconds(500)) == std::future_status::timeout) {
+    RCLCPP_WARN(get_logger(), "coord_transform (IK) timeout");
     return {};
   }
-
-  std::vector<double> origin_pos = {x, y, z, rx, ry, rz, 0.0};
-  std::vector<double> target_pos(7, 0.0);
-
-  int ret = get_origin_coord_to_target_coord(
-    socket_fd_, 1, origin_pos, 0, target_pos);
-  if (ret != Result::SUCCESS) {
+  auto resp = future.get();
+  if (!resp->success) {
+    RCLCPP_WARN(get_logger(), "coord_transform (IK) failed: %s", resp->message.c_str());
     return {};
   }
-  return target_pos;
+  return resp->target_pos;
 }
 
-// 使用机械臂 SDK 内置函数将 RPY(rad) 转为四元数 [w, x, y, z]
-// 失败时返回单位四元数（表示无旋转）
 std::array<double, 4> TL_Teleop::get_rpy2quat_sdk(double rx, double ry, double rz)
 {
-  std::lock_guard<std::mutex> lock(arm_mutex_);
-  if (!arm_connected_) {
-    return {1.0, 0.0, 0.0, 0.0};
-  }
+  auto req = std::make_shared<tl_ros2_interface::srv::GetPosTransform::Request>();
+  req->input = {rx, ry, rz};
 
-  std::vector<double> rpy = {rx, ry, rz};
-  std::vector<double> quat(4, 0.0);
-  int ret = get_rpy2quat(socket_fd_, rpy, quat);
-  if (ret != Result::SUCCESS) {
+  auto future = get_rpy2quat_client_->async_send_request(req);
+  if (future.wait_for(std::chrono::seconds(5)) == std::future_status::timeout) {
+    RCLCPP_WARN(get_logger(), "get_rpy2quat timeout");
     return {1.0, 0.0, 0.0, 0.0};
   }
-  return {quat[0], quat[1], quat[2], quat[3]};
+  auto resp = future.get();
+  if (!resp->success || resp->output.size() < 4) {
+    RCLCPP_WARN(get_logger(), "get_rpy2quat failed");
+    return {1.0, 0.0, 0.0, 0.0};
+  }
+  // get_rpy2quat 返回值顺序: [w, x, y, z]
+  return {resp->output[0], resp->output[1], resp->output[2], resp->output[3]};
 }
 
 // 将关节角度裁剪到限位范围内，防止运动超出机械臂物理限制
@@ -389,20 +327,14 @@ bool TL_Teleop::joints_safe(const std::vector<double> & new_joints)
 
 void TL_Teleop::servoJ_send(const std::vector<double> & joint_target)
 {
-  std::lock_guard<std::mutex> lock(arm_mutex_);
-  if (!arm_connected_) {
-    return;
-  }
   auto clamped = clamp_joints(joint_target);
   if (!joints_safe(clamped)) {
     return;
   }
-  set_servoJ_pos(socket_fd_aux_, clamped);
 
-  {
-    std::lock_guard<std::mutex> jlock(joints_mutex_);
-    latest_target_joints_ = clamped;
-  }
+  auto msg = std_msgs::msg::Float64MultiArray();
+  msg.data = clamped;
+  servoj_pos_pub_->publish(msg);
 }
 
 // 四元数乘法：q1 * q2，表示先旋转 q2 再旋转 q1
@@ -461,7 +393,7 @@ void TL_Teleop::control_loop()
     double qx = pose[3], qy = pose[4], qz = pose[5], qw = pose[6];
 
     // A 键：将所有关节复位到零点，清除 home 状态
-    if (a_button && arm_connected_) {
+    if (a_button) {
       std::vector<double> zero_joints(arm_joints_, 0.0);
       servoJ_send(zero_joints);
       {
@@ -473,7 +405,7 @@ void TL_Teleop::control_loop()
       continue;
     }
 
-    if (grip > GRIP_THRESHOLD && arm_connected_) {
+    if (grip > GRIP_THRESHOLD) {
       if (!vr_homed_) {
         // 刚握下扳机时，记录当前机械臂位姿作为基准点
         // 后续手柄位移以此刻为原点，避免绝对坐标系漂移
@@ -506,7 +438,7 @@ void TL_Teleop::control_loop()
       homed = vr_homed_;
     }
 
-    if (homed && arm_connected_) {
+    if (homed) {
       std::array<double, 7> home_pose;
       std::array<double, 4> arm_q, vr_hq;
       {
@@ -527,7 +459,7 @@ void TL_Teleop::control_loop()
       // 奇异点保护：J6 或 J7 接近 180° 时大幅降低运动速度，防止关节速度爆炸
       double scale = 1.0;
       {
-        std::lock_guard<std::mutex> alock(arm_mutex_);
+        std::lock_guard<std::mutex> lock(teleop_mutex_);
         if (!last_joints_.empty() && last_joints_.size() >= 7) {
           if (std::abs(last_joints_[5]) > singular_angle_ ||
               std::abs(last_joints_[6]) > singular_angle_) {
@@ -569,10 +501,9 @@ void TL_Teleop::control_loop()
       auto vr_inv = quat_inverse(vr_home_wxyz);
       auto vr_delta = quat_multiply(vr_quat_wxyz, vr_inv);
 
-      // VR 四元数 → 机械臂四元数坐标系映射：[w, -z, -x, y]
-      // 对应 Python 参考实现中的坐标轴重排
+      // VR 四元数 → 机械臂四元数坐标系映射：[w, -z, -x, -y]
       std::array<double, 4> vr_delta_mapped = {
-        vr_delta[0], -vr_delta[2], -vr_delta[1], vr_delta[3]
+        vr_delta[0], -vr_delta[3], -vr_delta[1], -vr_delta[2]
       };
       auto target_quat = quat_multiply(vr_delta_mapped, arm_q);
 
@@ -600,21 +531,6 @@ void TL_Teleop::control_loop()
   }
 }
 
-void TL_Teleop::publish_joints()
-{
-  auto msg = sensor_msgs::msg::JointState();
-  msg.header.stamp = get_clock()->now();
-  msg.name = joint_names_;
-
-  // 关节角度从度转为弧度后发布到 /joint_states，供 rviz / tf 等订阅
-  std::lock_guard<std::mutex> lock(joints_mutex_);
-  msg.position.resize(latest_target_joints_.size());
-  for (size_t i = 0; i < latest_target_joints_.size(); ++i) {
-    msg.position[i] = latest_target_joints_[i] * DEG_TO_RAD;
-  }
-  joint_state_pub_->publish(msg);
-}
-
 void TL_Teleop::run_control_loop()
 {
   RCLCPP_INFO(get_logger(), "Initializing PXREA SDK...");
@@ -625,12 +541,14 @@ void TL_Teleop::run_control_loop()
   }
   RCLCPP_INFO(get_logger(), "PXREA SDK initialized");
 
-  RCLCPP_INFO(get_logger(), "Connecting to arm...");
-  if (!connect_arm()) {
-    RCLCPP_ERROR(get_logger(), "Arm connection failed, shutting down");
+  // 等待 tl_driver 服务就绪
+  RCLCPP_INFO(get_logger(), "Waiting for tl_driver services...");
+  if (!power_on_client_->wait_for_service(std::chrono::seconds(30))) {
+    RCLCPP_ERROR(get_logger(), "tl_driver services not available after 30s, shutting down");
     rclcpp::shutdown();
     return;
   }
+  RCLCPP_INFO(get_logger(), "tl_driver services available");
 
   if (!init_servo()) {
     RCLCPP_ERROR(get_logger(), "Servo init failed, shutting down");
@@ -642,24 +560,34 @@ void TL_Teleop::run_control_loop()
 
   control_loop();
 
+  close_servo();
   PXREADeinit();
 }
 
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
+
   auto node = std::make_shared<TL_Teleop>();
 
   // 控制循环在单独线程运行，避免 100Hz 循环阻塞 ROS2 spin
-  // 主线程负责 ROS2 回调（/joint_states 定时发布）
+  // 主线程负责 ROS2 回调（服务调用、话题订阅）
   std::thread control_thread([&node]() {
     node->run_control_loop();
   });
-  rclcpp::spin(node);
+
+  rclcpp::executors::SingleThreadedExecutor exec;
+  exec.add_node(node);
+  exec.spin();
+
   node->stop();
   if (control_thread.joinable()) {
     control_thread.join();
   }
+
+  // 处理 close_servo() 可能排队的服务请求
+  exec.spin_some();
+
   rclcpp::shutdown();
   return 0;
 }

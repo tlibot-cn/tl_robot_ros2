@@ -10,11 +10,18 @@
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/msg/joint_state.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
+#include <std_srvs/srv/trigger.hpp>
 #include <nlohmann/json.hpp>
 
 #include "PXREARobotSDK.h"
-#include "tl_interface.h"
+
+#include <tl_ros2_interface/msg/cartesian_pose.hpp>
+#include <tl_ros2_interface/srv/set_speed.hpp>
+#include <tl_ros2_interface/srv/set_current_mode.hpp>
+#include <tl_ros2_interface/srv/open_servo_j.hpp>
+#include <tl_ros2_interface/srv/coord_transform.hpp>
+#include <tl_ros2_interface/srv/get_pos_transform.hpp>
 
 struct VRState
 {
@@ -54,12 +61,6 @@ public:
   void stop() { running_ = false; }
 
 private:
-  SOCKETFD socket_fd_{0};
-  SOCKETFD socket_fd_aux_{0};
-  bool arm_connected_{false};
-  bool is_powered_{false};
-  std::mutex arm_mutex_;
-
   VRState vr_state_;
   std::atomic<bool> pxrea_ready_{false};
 
@@ -70,12 +71,6 @@ private:
   std::vector<double> last_joints_;
   std::mutex teleop_mutex_;
 
-  std::vector<double> latest_target_joints_;
-  std::mutex joints_mutex_;
-
-  std::string arm_ip_;
-  std::string arm_port_;
-  std::string arm_port_aux_;
   int arm_joints_{7};
   double pos_scale_{0.5};
   double pos_deadzone_{0.005};
@@ -90,16 +85,28 @@ private:
   std::vector<double> servo_jmax_;
   int servo_speed_{25};
 
-  double publish_rate_{20.0};
+  // ROS2 service clients
+  rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr power_on_client_;
+  rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr power_off_client_;
+  rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr clear_error_client_;
+  rclcpp::Client<tl_ros2_interface::srv::SetSpeed>::SharedPtr set_speed_client_;
+  rclcpp::Client<tl_ros2_interface::srv::SetCurrentMode>::SharedPtr set_current_mode_client_;
+  rclcpp::Client<tl_ros2_interface::srv::OpenServoJ>::SharedPtr open_servoj_client_;
+  rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr close_servoj_client_;
+  rclcpp::Client<tl_ros2_interface::srv::CoordTransform>::SharedPtr coord_transform_client_;
+  rclcpp::Client<tl_ros2_interface::srv::GetPosTransform>::SharedPtr get_rpy2quat_client_;
 
-  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
-  rclcpp::TimerBase::SharedPtr publish_timer_;
-  std::vector<std::string> joint_names_;
+  // Topic publisher
+  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr servoj_pos_pub_;
+
+  // Topic subscriber + cache
+  rclcpp::Subscription<tl_ros2_interface::msg::CartesianPose>::SharedPtr tcp_pose_sub_;
+  tl_ros2_interface::msg::CartesianPose latest_tcp_pose_;
+  std::mutex tcp_pose_mutex_;
+  bool tcp_pose_received_{false};
 
   std::atomic<bool> running_{true};
 
-  bool connect_arm();
-  void disconnect_arm();
   bool init_servo();
   void close_servo();
   std::vector<double> get_arm_cartesian_pose();
@@ -117,8 +124,6 @@ private:
   static std::array<double, 3> quat2rpy(const std::array<double, 4> & q);
 
   void control_loop();
-
-  void publish_joints();
 
   static std::array<double, 7> parse_pose_str(const std::string & s);
 };
