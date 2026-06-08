@@ -56,6 +56,13 @@ tl_teleop 的 PXREA Robot SDK 依赖 **XRobotToolKit-PC_Service** 作为 PC 端�
 
 **下载地址**：[XRoboToolkit-PC-Service v1.0.0](https://github.com/XR-Robotics/XRoboToolkit-PC-Service/releases/tag/v1.0.0)
 
+根据平台架构选择对应的安装包：
+
+| 架构 | 安装包 |
+|------|--------|
+| ARM64 | `XRoboToolkit-PC-Service-headless_1.0.0.0_arm64.deb` |
+| x86_64 | `XRoboToolkit_PC_Service_1.0.0_ubuntu_22.04_amd64.deb` |
+
 安装并启动 XRobotToolKit-PC_Service 后，再启动 tl_teleop 节点，PXREA SDK 才能正常连接 VR 设备并接收手柄位姿数据。
 
 ## tl_teleop功能包使用
@@ -74,7 +81,7 @@ tl_teleop 依赖 XRobotToolKit-PC_Service 和 tl_driver，启动前需**按顺�
 **第一步：启动 XRobotToolKit-PC_Service**
 
 ```bash
-source /opt/apps/roboticsservice/run3D.sh
+source /opt/apps/roboticsservice/runService.sh
 ```
 
 该命令启动 PC 端后台服务，PXREA SDK 通过该服务与 VR 遥操作设备通信。
