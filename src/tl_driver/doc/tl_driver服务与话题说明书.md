@@ -11,7 +11,7 @@
 |V1.2 | 2026-5-27 | 修订（job_insert_* 接口从话题改为服务、移除 tool_hand_calib、新增 [删除作业文件](#删除作业文件) 服务、新增 [查询机械臂运行状态](#查询机械臂运行状态) 话题）|
 |V1.3 | 2026-5-27 | 修订（新增 [查询当前运行模式](#查询当前运行模式) 服务，补漏 `get_current_mode`）|
 |V1.4 | 2026-5-29 | 修订（新增 [查询当前电机力矩](#查询当前电机力矩)、[查询当前线速度和关节速度](#查询当前线速度和关节速度) 服务）|
-|V1.5 | 2026-6-8  | 修订（详细化全部接口的输入输出参数说明，补全单位、范围、注意事项；优化参数表格式；修复锚点链接；编号统一改为从1开始）|
+|V1.5 | 2026-6-8  | 修订（详细化全部接口的输入输出参数说明，补全单位、范围、注意事项；优化参数表格式；修复锚点链接）|
 
 </div>
 
@@ -110,17 +110,17 @@
 ### 1.1 坐标系编号
 | 编号 | 含义 | 说明 |
 | :---: | :--- | :--- |
-| 1 | 关节坐标系（Joint） | 以各关节角度表示位置，单位：度（°）或弧度（rad） |
-| 2 | 直角坐标系（Cartesian/Base） | 以基座为原点，位置(X,Y,Z)单位mm，姿态(RX,RY,RZ)单位rad |
-| 3 | 工具坐标系（Tool） | 以工具末端为参考的坐标系 |
-| 4 | 用户坐标系（User） | 用户自定义的坐标系 |
+| 0 | 关节坐标系（Joint） | 以各关节角度表示位置，单位：度（°）或弧度（rad） |
+| 1 | 直角坐标系（Cartesian/Base） | 以基座为原点，位置(X,Y,Z)单位mm，姿态(RX,RY,RZ)单位rad |
+| 2 | 工具坐标系（Tool） | 以工具末端为参考的坐标系 |
+| 3 | 用户坐标系（User） | 用户自定义的坐标系 |
 
 ### 1.2 运行模式编号
 | 编号 | 含义 |
 | :---: | :--- |
-| 1 | 示教模式（手动操作） |
-| 2 | 远程模式 |
-| 3 | 运行模式（自动运行作业） |
+| 0 | 示教模式（手动操作） |
+| 1 | 远程模式 |
+| 2 | 运行模式（自动运行作业） |
 
 ### 1.3 返回值约定
 - 所有 ROS2 服务的响应均包含 `bool success` 和 `string message` 字段
@@ -339,10 +339,10 @@ ros2 service call /tl_driver/get_controller_id std_srvs/srv/Trigger "{}"
 |--------|------|------|------|
 | channel | int32 | — | 查询通道编号 |
 | stop | bool | — | `true` = 停止持续发送，`false` = 不停止 |
-| mode | int32 | 1 或 2 | 查询模式：`1` = 只回复一次，`2` = 持续回复 |
-| interval | int32 | 10～60000 | 持续回复时间间隔（mode=2时有效），单位：ms |
+| mode | int32 | 0 或 1 | 查询模式：`0` = 只回复一次，`1` = 持续回复 |
+| interval | int32 | 10～60000 | 持续回复时间间隔（mode=1时有效），单位：ms |
 | io_state | bool | — | `true` = 查询IO状态，`false` = 不查询 |
-| position | int32 | 1 或 2 | 位置类型：`1` = 关节坐标，`2` = 直角坐标 |
+| position | int32 | 0 或 1 | 位置类型：`0` = 关节坐标，`1` = 直角坐标 |
 | detail_motion_pos | bool | — | `true` = 查询运动点位详情，`false` = 不查询 |
 | pos_sum | int32 | — | 每帧数据回复的点位数目（detail_motion_pos=true时有效） |
 | io_port | string[] | — | 指定IO端口列表，如 `["DI1","DO1"]`，数量不可大于IO实际个数 |
@@ -544,7 +544,7 @@ ros2 service call /tl_driver/get_nexmotion_lib_version std_srvs/srv/Trigger "{}"
 |--------|------|------|------|
 | success | bool | — | `true` = 查询成功，`false` = 查询失败 |
 | message | string | — | 失败时包含错误描述 |
-| coord | int32 | 1～4 | 坐标系序号：1=关节，2=直角，3=工具，4=用户 |
+| coord | int32 | 0～3 | 坐标系序号：0=关节，1=直角，2=工具，3=用户 |
 #### 命令示例
 ```
 ros2 service call /tl_driver/get_current_coord tl_ros2_interface/srv/GetCurrentCoord "{}"
@@ -846,8 +846,8 @@ ros2 service call /tl_driver/set_default_cartesian_param std_srvs/srv/Trigger "{
 **输入参数**
 | 参数名 | 类型 | 范围 | 说明 |
 |--------|------|------|------|
-| origin_coord | int32 | 1～4 | 源坐标系编号 |
-| target_coord | int32 | 1～4 | 目标坐标系编号 |
+| origin_coord | int32 | 0～3 | 源坐标系编号 |
+| target_coord | int32 | 0～3 | 目标坐标系编号 |
 | form | int32 | — | 转换形态/模式 |
 | origin_pos | float64[] | — | 原始坐标系下的位姿数据 |
 | reference_pos | float64[] | — | 参考位姿数据 |
@@ -906,10 +906,10 @@ ros2 service call /tl_driver/set_dh_param tl_ros2_interface/srv/SetDHParam \
 
 | 字段名 | 类型 | 单位 | 范围 | 说明 |
 |--------|------|------|------|------|
-| target_pos_value | float64[] | — | — | 14维位置数组：[0]坐标系 [1]单位制(1=度,2=弧度) [2]形态 [3]工具序号 [4]用户序号 [5][6]备用 [7~13]点位信息 |
+| target_pos_value | float64[] | — | — | 14维位置数组：[0]坐标系 [1]单位制(0=度,1=弧度) [2]形态 [3]工具序号 [4]用户序号 [5][6]备用 [7~13]点位信息 |
 | target_pos_name | string | — | — | 目标位姿变量名，如 `"P0001"`（target_pos_type=1时使用） |
 | target_pos_type | int32 | — | 1 或 2 | 位姿类型：`1` = 自定义数组，`2` = 变量模式（使用target_pos_name） |
-| coord | int32 | — | 1～4 | 坐标系：1=关节，2=直角，3=工具，4=用户 |
+| coord | int32 | — | 0～3 | 坐标系：0=关节，1=直角，2=工具，3=用户 |
 | velocity | float64 | % | 1～100 | 运动速度百分比 |
 | velocity_sync | float64 | % | 1～100 | 同步轴速度百分比 |
 | acc | float64 | % | 1～100 | 加速度百分比 |
@@ -944,7 +944,7 @@ ros2 service call /tl_driver/set_dh_param tl_ros2_interface/srv/SetDHParam \
 
 > **注意**：target_pos_type=0时使用target_pos_value自定义数组；target_pos_type=1时需设置target_pos_name为 `"P0001"` 格式，target_pos_value仅填关节角度。
 #### 命令示例
-targetPosType=0为自定义数组，posInfo[14]：[0]坐标系 1=关节 2=直角 3=工具 4=用户，[1] 1=角度制 2=弧度制，[2]形态，[3]工具手坐标序号，[4]用户坐标序号，[5][6]备用，[7-13]点位信息
+targetPosType=0为自定义数组，posInfo[14]：[0]坐标系 0=关节 1=直角 2=工具 3=用户，[1] 0=角度制 1=弧度制，[2]形态，[3]工具手坐标序号，[4]用户坐标序号，[5][6]备用，[7-13]点位信息
 ```
 ros2 service call /tl_driver/job_insert_moveJ tl_ros2_interface/srv/JobInsertMove "{
   line: 1,
@@ -1006,7 +1006,7 @@ ros2 service call /tl_driver/job_insert_moveJ tl_ros2_interface/srv/JobInsertMov
 | 服务名 | `/tl_driver/job_insert_moveL` |
 | 服务类型 | `tl_ros2_interface/srv/JobInsertMove` |
 
-**输入参数** 同 §6.1，区别：`cmd.coord=2`（直角坐标系），target_pos_value为[X(mm), Y, Z, RX(rad), RY, RZ]。
+**输入参数** 同 §6.1，区别：`cmd.coord=1`（直角坐标系），target_pos_value为[X(mm), Y, Z, RX(rad), RY, RZ]。
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
@@ -1088,7 +1088,7 @@ ros2 service call /tl_driver/job_insert_imove tl_ros2_interface/srv/JobInsertMov
 | 服务名 | `/tl_driver/job_insert_moveC` |
 | 服务类型 | `tl_ros2_interface/srv/JobInsertMove` |
 
-**输入参数** 同 §6.2（coord=2，直角坐标系）。
+**输入参数** 同 §6.2（coord=1，直角坐标系）。
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
@@ -1175,10 +1175,10 @@ ros2 service call /tl_driver/job_delete tl_ros2_interface/srv/JobRun "{job_name:
 **输入参数**
 | 参数名 | 类型 | 单位 | 范围 | 说明 |
 |--------|------|------|------|------|
-| target_pos_value | float64[] | — | — | 14维位置数组（coord=1关节坐标系时为各关节目标角度） |
+| target_pos_value | float64[] | — | — | 14维位置数组（coord=0关节坐标系时为各关节目标角度） |
 | target_pos_name | string | — | — | 目标位姿名称（通常留空） |
 | target_pos_type | int32 | — | 1 | 目标位姿类型（实时运动固定为1） |
-| coord | int32 | — | 1 | 坐标系（固定为关节坐标系） |
+| coord | int32 | — | 0 | 坐标系（固定为关节坐标系） |
 | velocity | float64 | % | 1～100 | 运动速度百分比 |
 | velocity_sync | float64 | % | 1～100 | 同步轴速度百分比 |
 | acc | float64 | % | 1～100 | 加速度百分比 |
@@ -1228,7 +1228,7 @@ ros2 topic pub --once /tl_driver/moveJ tl_ros2_interface/msg/MoveCommand \
 **输入参数** 同 MoveJ，区别如下：
 | 参数名 | 类型 | 单位 | 值 | 说明 |
 |--------|------|------|------|------|
-| coord | int32 | — | 2 | 坐标系（固定为直角坐标系） |
+| coord | int32 | — | 1 | 坐标系（固定为直角坐标系） |
 | target_pos_value | float64[] | mm, rad | — | [X(mm), Y(mm), Z(mm), RX(rad), RY(rad), RZ(rad), 0]（7维） |
 
 其余参数同 [MoveJ运动控制](#movej运动控制)。
@@ -1391,7 +1391,7 @@ ros2 service call /tl_driver/set_coord_num tl_ros2_interface/srv/SetCoordNum "{t
 **输入参数**
 | 参数名 | 类型 | 范围 | 说明 |
 |--------|------|------|------|
-| coord | int32 | 1～4 | 坐标系序号：1=关节，2=直角，3=工具，4=用户 |
+| coord | int32 | 0～3 | 坐标系序号：0=关节，1=直角，2=工具，3=用户 |
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
@@ -1400,7 +1400,7 @@ ros2 service call /tl_driver/set_coord_num tl_ros2_interface/srv/SetCoordNum "{t
 | message | string | 失败时包含错误描述 |
 #### 命令示例
 ```
-ros2 service call /tl_driver/set_current_coord tl_ros2_interface/srv/SetCurrentCoord "{coord: 1}"
+ros2 service call /tl_driver/set_current_coord tl_ros2_interface/srv/SetCurrentCoord "{coord: 0}"
 ```
 ## 9 示教操作接口
 ### 9.1 开始点动
@@ -1458,7 +1458,7 @@ ros2 service call /tl_driver/stop_jogging tl_ros2_interface/srv/Jogging "{axis: 
 **输入参数**
 | 参数名 | 类型 | 范围 | 说明 |
 |--------|------|------|------|
-| mode | int32 | 1～4 | 拖拽模式：1=关闭，2=3D鼠标，3=力矩模式，4=位置模式 |
+| mode | int32 | 0～3 | 拖拽模式：0=关闭（无），1=3D鼠标，2=力矩模式，3=位置模式 |
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
@@ -1591,7 +1591,7 @@ ros2 service call /tl_driver/set_axis_zero_pos tl_ros2_interface/srv/SetAxisZero
 |--------|------|------|
 | success | bool | `true` = 查询成功，`false` = 查询失败 |
 | message | string | 失败时包含错误描述 |
-| pos_info | float64[] | 14维位点数据：[0]坐标系 [1]单位制(1=度,2=弧度) [2]形态 [3]工具序号 [4]用户序号 [5][6]备用 [7~13]位点信息 |
+| pos_info | float64[] | 14维位点数据：[0]坐标系 [1]单位制(0=度,1=弧度) [2]形态 [3]工具序号 [4]用户序号 [5][6]备用 [7~13]位点信息 |
 #### 命令示例
 ```
 ros2 service call /tl_driver/get_global_pos tl_ros2_interface/srv/GetGlobalPos "{pos_name: 'GP0002'}"
@@ -1633,7 +1633,7 @@ ros2 service call /tl_driver/set_global_pos tl_ros2_interface/srv/SetGlobalPos \
 **输入参数**
 | 参数名 | 类型 | 范围 | 说明 |
 |--------|------|------|------|
-| mode | int32 | 1～3 | 模式序号：1=示教模式，2=远程模式，3=运行模式 |
+| mode | int32 | 0～2 | 模式序号：0=示教模式，1=远程模式，2=运行模式 |
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
@@ -1642,7 +1642,7 @@ ros2 service call /tl_driver/set_global_pos tl_ros2_interface/srv/SetGlobalPos \
 | message | string | 失败时包含错误描述 |
 #### 命令示例
 ```
-ros2 service call /tl_driver/set_current_mode tl_ros2_interface/srv/SetCurrentMode "{mode: 2}"
+ros2 service call /tl_driver/set_current_mode tl_ros2_interface/srv/SetCurrentMode "{mode: 1}"
 ```
 ### 12.2 查询当前运行模式
 | 功能描述 | 查询控制器当前运行模式 |
@@ -1659,7 +1659,7 @@ ros2 service call /tl_driver/set_current_mode tl_ros2_interface/srv/SetCurrentMo
 |--------|------|------|------|
 | success | bool | — | `true` = 查询成功，`false` = 查询失败 |
 | message | string | — | 失败时包含错误描述 |
-| mode | int32 | 1～3 | 当前模式：1=示教，2=远程，3=运行 |
+| mode | int32 | 0～2 | 当前模式：0=示教，1=远程，2=运行 |
 #### 命令示例
 ```
 ros2 service call /tl_driver/get_current_mode tl_ros2_interface/srv/GetCurrentMode "{}"
