@@ -14,61 +14,61 @@ def launch_setup(context, *args, **kwargs):
 
     configs = {
         'tcb605': {
-            'urdf': os.path.join(pkg_share, 'urdf', 'tl_tcb605.urdf'),
-            'rviz': os.path.join(pkg_share, 'rviz', 'tl_tcb605.rviz')
+            'urdf': os.path.join(pkg_share, 'urdf', 'tcb605.urdf'),
+            'rviz': os.path.join(pkg_share, 'rviz', 'tcb605.rviz')
         },
         'tcb605v': {
-            'urdf': os.path.join(pkg_share, 'urdf', 'tl_tcb605v.urdf'),
-            'rviz': os.path.join(pkg_share, 'rviz', 'tl_tcb605v.rviz')
+            'urdf': os.path.join(pkg_share, 'urdf', 'tcb605v.urdf'),
+            'rviz': os.path.join(pkg_share, 'rviz', 'tcb605v.rviz')
         },
         'tcb605f': {
-            'urdf': os.path.join(pkg_share, 'urdf', 'tl_tcb605f.urdf'),
-            'rviz': os.path.join(pkg_share, 'rviz', 'tl_tcb605f.rviz')
+            'urdf': os.path.join(pkg_share, 'urdf', 'tcb605f.urdf'),
+            'rviz': os.path.join(pkg_share, 'rviz', 'tcb605f.rviz')
         },
         'tcb605l': {
-            'urdf': os.path.join(pkg_share, 'urdf', 'tl_tcb605l.urdf'),
-            'rviz': os.path.join(pkg_share, 'rviz', 'tl_tcb605l.rviz')
+            'urdf': os.path.join(pkg_share, 'urdf', 'tcb605l.urdf'),
+            'rviz': os.path.join(pkg_share, 'rviz', 'tcb605l.rviz')
         },
         'tcb605lv': {
-            'urdf': os.path.join(pkg_share, 'urdf', 'tl_tcb605lv.urdf'),
-            'rviz': os.path.join(pkg_share, 'rviz', 'tl_tcb605lv.rviz')
+            'urdf': os.path.join(pkg_share, 'urdf', 'tcb605lv.urdf'),
+            'rviz': os.path.join(pkg_share, 'rviz', 'tcb605lv.rviz')
         },
         'tcb610': {
-            'urdf': os.path.join(pkg_share, 'urdf', 'tl_tcb610.urdf'),
-            'rviz': os.path.join(pkg_share, 'rviz', 'tl_tcb610.rviz')
+            'urdf': os.path.join(pkg_share, 'urdf', 'tcb610.urdf'),
+            'rviz': os.path.join(pkg_share, 'rviz', 'tcb610.rviz')
         },
         'tcb610v': {
-            'urdf': os.path.join(pkg_share, 'urdf', 'tl_tcb610v.urdf'),
-            'rviz': os.path.join(pkg_share, 'rviz', 'tl_tcb610v.rviz')
+            'urdf': os.path.join(pkg_share, 'urdf', 'tcb610v.urdf'),
+            'rviz': os.path.join(pkg_share, 'rviz', 'tcb610v.rviz')
         },
 
         'tcb705': {
-            'urdf': os.path.join(pkg_share, 'urdf', 'tl_tcb705.urdf'),
-            'rviz': os.path.join(pkg_share, 'rviz', 'tl_tcb705.rviz')
+            'urdf': os.path.join(pkg_share, 'urdf', 'tcb705.urdf'),
+            'rviz': os.path.join(pkg_share, 'rviz', 'tcb705.rviz')
         },
         'tcb705v': {
-            'urdf': os.path.join(pkg_share, 'urdf', 'tl_tcb705v.urdf'),
-            'rviz': os.path.join(pkg_share, 'rviz', 'tl_tcb705v.rviz')
+            'urdf': os.path.join(pkg_share, 'urdf', 'tcb705v.urdf'),
+            'rviz': os.path.join(pkg_share, 'rviz', 'tcb705v.rviz')
         },
         'tcb705f': {
-            'urdf': os.path.join(pkg_share, 'urdf', 'tl_tcb705f.urdf'),
-            'rviz': os.path.join(pkg_share, 'rviz', 'tl_tcb705f.rviz')
+            'urdf': os.path.join(pkg_share, 'urdf', 'tcb705f.urdf'),
+            'rviz': os.path.join(pkg_share, 'rviz', 'tcb705f.rviz')
         },
         'tcb705l': {
-            'urdf': os.path.join(pkg_share, 'urdf', 'tl_tcb705l.urdf'),
-            'rviz': os.path.join(pkg_share, 'rviz', 'tl_tcb705l.rviz')
+            'urdf': os.path.join(pkg_share, 'urdf', 'tcb705l.urdf'),
+            'rviz': os.path.join(pkg_share, 'rviz', 'tcb705l.rviz')
         },
         'tcb705lv': {
-            'urdf': os.path.join(pkg_share, 'urdf', 'tl_tcb705lv.urdf'),
-            'rviz': os.path.join(pkg_share, 'rviz', 'tl_tcb705lv.rviz')
+            'urdf': os.path.join(pkg_share, 'urdf', 'tcb705lv.urdf'),
+            'rviz': os.path.join(pkg_share, 'rviz', 'tcb705lv.rviz')
         },
         'tcb710': {
-            'urdf': os.path.join(pkg_share, 'urdf', 'tl_tcb710.urdf'),
-            'rviz': os.path.join(pkg_share, 'rviz', 'tl_tcb710.rviz')
+            'urdf': os.path.join(pkg_share, 'urdf', 'tcb710.urdf'),
+            'rviz': os.path.join(pkg_share, 'rviz', 'tcb710.rviz')
         },
         'tcb710v': {
-            'urdf': os.path.join(pkg_share, 'urdf', 'tl_tcb710v.urdf'),
-            'rviz': os.path.join(pkg_share, 'rviz', 'tl_tcb710v.rviz')
+            'urdf': os.path.join(pkg_share, 'urdf', 'tcb710v.urdf'),
+            'rviz': os.path.join(pkg_share, 'rviz', 'tcb710v.rviz')
         },
     }
 

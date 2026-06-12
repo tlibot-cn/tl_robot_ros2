@@ -2,7 +2,7 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="tl_tcb605l">
 
     <!-- Import claw_description urdf file -->
-    <xacro:include filename="$(find tl_description)/urdf/tl_tcb605l.urdf" />
+    <xacro:include filename="$(find tl_description)/urdf/tcb605l.urdf" />
 
     <!-- Used for fixing robot to Gazebo 'base_link' 将机械手的基座固定在世界坐标上-->
     <link name="world"/>

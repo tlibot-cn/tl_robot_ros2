@@ -35,26 +35,26 @@ ros2 launch tl_description tl_description.launch.py arm_type:=<arm_type> use_sim
 
 | 臂型 | 启动命令 |
 |------|----------|
-| TCB605 | `ros2 launch tl_description tl_tcb605_description.launch.py` |
-| TCB605F | `ros2 launch tl_description tl_tcb605f_description.launch.py` |
-| TCB605L | `ros2 launch tl_description tl_tcb605l_description.launch.py` |
-| TCB605LV | `ros2 launch tl_description tl_tcb605lv_description.launch.py` |
-| TCB605V | `ros2 launch tl_description tl_tcb605v_description.launch.py` |
-| TCB610 | `ros2 launch tl_description tl_tcb610_description.launch.py` |
-| TCB610V | `ros2 launch tl_description tl_tcb610v_description.launch.py` |
-| TCB705 | `ros2 launch tl_description tl_tcb705_description.launch.py` |
-| TCB705F | `ros2 launch tl_description tl_tcb705f_description.launch.py` |
-| TCB705L | `ros2 launch tl_description tl_tcb705l_description.launch.py` |
-| TCB705LV | `ros2 launch tl_description tl_tcb705lv_description.launch.py` |
-| TCB705V | `ros2 launch tl_description tl_tcb705v_description.launch.py` |
-| TCB710 | `ros2 launch tl_description tl_tcb710_description.launch.py` |
-| TCB710V | `ros2 launch tl_description tl_tcb710v_description.launch.py` |
+| TCB605 | `ros2 launch tl_description tcb605_description.launch.py` |
+| TCB605F | `ros2 launch tl_description tcb605f_description.launch.py` |
+| TCB605L | `ros2 launch tl_description tcb605l_description.launch.py` |
+| TCB605LV | `ros2 launch tl_description tcb605lv_description.launch.py` |
+| TCB605V | `ros2 launch tl_description tcb605v_description.launch.py` |
+| TCB610 | `ros2 launch tl_description tcb610_description.launch.py` |
+| TCB610V | `ros2 launch tl_description tcb610v_description.launch.py` |
+| TCB705 | `ros2 launch tl_description tcb705_description.launch.py` |
+| TCB705F | `ros2 launch tl_description tcb705f_description.launch.py` |
+| TCB705L | `ros2 launch tl_description tcb705l_description.launch.py` |
+| TCB705LV | `ros2 launch tl_description tcb705lv_description.launch.py` |
+| TCB705V | `ros2 launch tl_description tcb705v_description.launch.py` |
+| TCB710 | `ros2 launch tl_description tcb710_description.launch.py` |
+| TCB710V | `ros2 launch tl_description tcb710v_description.launch.py` |
 
 > 以下文档示例均以 **TCB605** 为例进行说明，其他臂型操作方式相同。
 
 `use_sim` 参数（默认 `false`）控制是否启用仿真模式。当进行仿真控制时，`use_sim` 设置为 `true`，此时 `joint_state_publisher_gui` 节点会发布关节状态话题 `/joint_states` 并生成 GUI 滑动条，通过拖动滑动条可以手动控制每个关节的角度或位置，例如 tcb605 机械臂的仿真启动命令:
 ```
-ros2 launch tl_description tl_tcb605_description.launch.py use_sim:=true
+ros2 launch tl_description tcb605_description.launch.py use_sim:=true
 ```
 节点启动成功后，将弹出以下画面，通过拖动滑动条可以控制每个关节的角度:
 <div align="center">
@@ -69,7 +69,7 @@ ros2 launch tl_driver tl_tcb605_driver.launch.py
 ```
 然后再启动 tl_description:
 ```
-ros2 launch tl_description tl_tcb605_description.launch.py
+ros2 launch tl_description tcb605_description.launch.py
 ```
 节点启动成功后，控制真实机械臂时，Rviz2 中的机械臂模型会进行对应角度的运动。
 
@@ -78,40 +78,40 @@ ros2 launch tl_description tl_tcb605_description.launch.py
 ```
 ├── CMakeLists.txt                           # 编译规则文件
 ├── config                                   # 关节名称配置（每型号一个 YAML）
-│   ├── joint_names_tl_tcb605.yaml
-│   ├── joint_names_tl_tcb605f.yaml
-│   ├── joint_names_tl_tcb605l.yaml
-│   ├── joint_names_tl_tcb605lv.yaml
-│   ├── joint_names_tl_tcb605v.yaml
-│   ├── joint_names_tl_tcb610.yaml
-│   ├── joint_names_tl_tcb610v.yaml
-│   ├── joint_names_tl_tcb705.yaml
-│   ├── joint_names_tl_tcb705f.yaml
-│   ├── joint_names_tl_tcb705l.yaml
-│   ├── joint_names_tl_tcb705lv.yaml
-│   ├── joint_names_tl_tcb705v.yaml
-│   ├── joint_names_tl_tcb710.yaml
-│   └── joint_names_tl_tcb710v.yaml
+│   ├── joint_names_tcb605.yaml
+│   ├── joint_names_tcb605f.yaml
+│   ├── joint_names_tcb605l.yaml
+│   ├── joint_names_tcb605lv.yaml
+│   ├── joint_names_tcb605v.yaml
+│   ├── joint_names_tcb610.yaml
+│   ├── joint_names_tcb610v.yaml
+│   ├── joint_names_tcb705.yaml
+│   ├── joint_names_tcb705f.yaml
+│   ├── joint_names_tcb705l.yaml
+│   ├── joint_names_tcb705lv.yaml
+│   ├── joint_names_tcb705v.yaml
+│   ├── joint_names_tcb710.yaml
+│   └── joint_names_tcb710v.yaml
 ├── doc                                      # 辅助文档、图片文件
 │   └── tl_description.png
 ├── launch                                   # 启动文件
 │   ├── tl_description.launch.py             # 通用启动（需传 arm_type 参数）
-│   ├── tl_tcb605_description.launch.py
-│   ├── tl_tcb605f_description.launch.py
-│   ├── tl_tcb605l_description.launch.py
-│   ├── tl_tcb605lv_description.launch.py
-│   ├── tl_tcb605v_description.launch.py
-│   ├── tl_tcb610_description.launch.py
-│   ├── tl_tcb610v_description.launch.py
-│   ├── tl_tcb705_description.launch.py
-│   ├── tl_tcb705f_description.launch.py
-│   ├── tl_tcb705l_description.launch.py
-│   ├── tl_tcb705lv_description.launch.py
-│   ├── tl_tcb705v_description.launch.py
-│   ├── tl_tcb710_description.launch.py
-│   └── tl_tcb710v_description.launch.py
+│   ├── tcb605_description.launch.py
+│   ├── tcb605f_description.launch.py
+│   ├── tcb605l_description.launch.py
+│   ├── tcb605lv_description.launch.py
+│   ├── tcb605v_description.launch.py
+│   ├── tcb610_description.launch.py
+│   ├── tcb610v_description.launch.py
+│   ├── tcb705_description.launch.py
+│   ├── tcb705f_description.launch.py
+│   ├── tcb705l_description.launch.py
+│   ├── tcb705lv_description.launch.py
+│   ├── tcb705v_description.launch.py
+│   ├── tcb710_description.launch.py
+│   └── tcb710v_description.launch.py
 ├── meshes                                   # 模型文件
-│   ├── tl_tcb605                            # tcb605机械臂模型文件
+│   ├── tcb605                            # tcb605机械臂模型文件
 │   │   ├── link0.STL
 │   │   ├── link1.STL
 │   │   ├── link2.STL
@@ -119,7 +119,7 @@ ros2 launch tl_description tl_tcb605_description.launch.py
 │   │   ├── link4.STL
 │   │   ├── link5.STL
 │   │   └── link6.STL
-│   ├── tl_tcb605f                           # tcb605f机械臂模型文件
+│   ├── tcb605f                           # tcb605f机械臂模型文件
 │   │   ├── link0.STL
 │   │   ├── link1.STL
 │   │   ├── link2.STL
@@ -127,7 +127,7 @@ ros2 launch tl_description tl_tcb605_description.launch.py
 │   │   ├── link4.STL
 │   │   ├── link5.STL
 │   │   └── link6.STL
-│   ├── tl_tcb605l                           # tcb605l机械臂模型文件
+│   ├── tcb605l                           # tcb605l机械臂模型文件
 │   │   ├── link0.STL
 │   │   ├── link1.STL
 │   │   ├── link2.STL
@@ -135,7 +135,7 @@ ros2 launch tl_description tl_tcb605_description.launch.py
 │   │   ├── link4.STL
 │   │   ├── link5.STL
 │   │   └── link6.STL
-│   ├── tl_tcb605lv                          # tcb605lv机械臂模型文件
+│   ├── tcb605lv                          # tcb605lv机械臂模型文件
 │   │   ├── camera_link.STL
 │   │   ├── link0.STL
 │   │   ├── link1.STL
@@ -144,7 +144,7 @@ ros2 launch tl_description tl_tcb605_description.launch.py
 │   │   ├── link4.STL
 │   │   ├── link5.STL
 │   │   └── link6.STL
-│   ├── tl_tcb605v                           # tcb605v机械臂模型文件
+│   ├── tcb605v                           # tcb605v机械臂模型文件
 │   │   ├── camera_link.STL
 │   │   ├── link0.STL
 │   │   ├── link1.STL
@@ -153,7 +153,7 @@ ros2 launch tl_description tl_tcb605_description.launch.py
 │   │   ├── link4.STL
 │   │   ├── link5.STL
 │   │   └── link6.STL
-│   ├── tl_tcb610                            # tcb610机械臂模型文件
+│   ├── tcb610                            # tcb610机械臂模型文件
 │   │   ├── link0.STL
 │   │   ├── link1.STL
 │   │   ├── link2.STL
@@ -161,7 +161,7 @@ ros2 launch tl_description tl_tcb605_description.launch.py
 │   │   ├── link4.STL
 │   │   ├── link5.STL
 │   │   └── link6.STL
-│   ├── tl_tcb610v                           # tcb610v机械臂模型文件
+│   ├── tcb610v                           # tcb610v机械臂模型文件
 │   │   ├── camera_link.STL
 │   │   ├── link0.STL
 │   │   ├── link1.STL
@@ -170,7 +170,7 @@ ros2 launch tl_description tl_tcb605_description.launch.py
 │   │   ├── link4.STL
 │   │   ├── link5.STL
 │   │   └── link6.STL
-│   ├── tl_tcb705                            # tcb705机械臂模型文件
+│   ├── tcb705                            # tcb705机械臂模型文件
 │   │   ├── link0.STL
 │   │   ├── link1.STL
 │   │   ├── link2.STL
@@ -179,7 +179,7 @@ ros2 launch tl_description tl_tcb605_description.launch.py
 │   │   ├── link5.STL
 │   │   ├── link6.STL
 │   │   └── link7.STL
-│   ├── tl_tcb705f                           # tcb705f机械臂模型文件
+│   ├── tcb705f                           # tcb705f机械臂模型文件
 │   │   ├── link0.STL
 │   │   ├── link1.STL
 │   │   ├── link2.STL
@@ -188,7 +188,7 @@ ros2 launch tl_description tl_tcb605_description.launch.py
 │   │   ├── link5.STL
 │   │   ├── link6.STL
 │   │   └── link7.STL
-│   ├── tl_tcb705l                           # tcb705l机械臂模型文件
+│   ├── tcb705l                           # tcb705l机械臂模型文件
 │   │   ├── link0.STL
 │   │   ├── link1.STL
 │   │   ├── link2.STL
@@ -197,17 +197,7 @@ ros2 launch tl_description tl_tcb605_description.launch.py
 │   │   ├── link5.STL
 │   │   ├── link6.STL
 │   │   └── link7.STL
-│   ├── tl_tcb705lv                          # tcb705lv机械臂模型文件
-│   │   ├── camera_link.STL
-│   │   ├── link0.STL
-│   │   ├── link1.STL
-│   │   ├── link2.STL
-│   │   ├── link3.STL
-│   │   ├── link4.STL
-│   │   ├── link5.STL
-│   │   ├── link6.STL
-│   │   └── link7.STL
-│   ├── tl_tcb705v                           # tcb705v机械臂模型文件
+│   ├── tcb705lv                          # tcb705lv机械臂模型文件
 │   │   ├── camera_link.STL
 │   │   ├── link0.STL
 │   │   ├── link1.STL
@@ -217,7 +207,8 @@ ros2 launch tl_description tl_tcb605_description.launch.py
 │   │   ├── link5.STL
 │   │   ├── link6.STL
 │   │   └── link7.STL
-│   ├── tl_tcb710                            # tcb710机械臂模型文件
+│   ├── tcb705v                           # tcb705v机械臂模型文件
+│   │   ├── camera_link.STL
 │   │   ├── link0.STL
 │   │   ├── link1.STL
 │   │   ├── link2.STL
@@ -226,7 +217,16 @@ ros2 launch tl_description tl_tcb605_description.launch.py
 │   │   ├── link5.STL
 │   │   ├── link6.STL
 │   │   └── link7.STL
-│   └── tl_tcb710v                           # tcb710v机械臂模型文件
+│   ├── tcb710                            # tcb710机械臂模型文件
+│   │   ├── link0.STL
+│   │   ├── link1.STL
+│   │   ├── link2.STL
+│   │   ├── link3.STL
+│   │   ├── link4.STL
+│   │   ├── link5.STL
+│   │   ├── link6.STL
+│   │   └── link7.STL
+│   └── tcb710v                           # tcb710v机械臂模型文件
 │       ├── camera_link.STL
 │       ├── link0.STL
 │       ├── link1.STL
@@ -239,49 +239,49 @@ ros2 launch tl_description tl_tcb605_description.launch.py
 ├── package.xml                              # 依赖说明文件
 ├── README.md                                # 说明文档
 ├── rviz                                     # rviz2配置文件
-│   ├── tl_tcb605f.rviz
-│   ├── tl_tcb605l.rviz
-│   ├── tl_tcb605lv.rviz
-│   ├── tl_tcb605.rviz
-│   ├── tl_tcb605v.rviz
-│   ├── tl_tcb610.rviz
-│   ├── tl_tcb610v.rviz
-│   ├── tl_tcb705f.rviz
-│   ├── tl_tcb705l.rviz
-│   ├── tl_tcb705lv.rviz
-│   ├── tl_tcb705.rviz
-│   ├── tl_tcb705v.rviz
-│   ├── tl_tcb710.rviz
-│   └── tl_tcb710v.rviz
+│   ├── tcb605f.rviz
+│   ├── tcb605l.rviz
+│   ├── tcb605lv.rviz
+│   ├── tcb605.rviz
+│   ├── tcb605v.rviz
+│   ├── tcb610.rviz
+│   ├── tcb610v.rviz
+│   ├── tcb705f.rviz
+│   ├── tcb705l.rviz
+│   ├── tcb705lv.rviz
+│   ├── tcb705.rviz
+│   ├── tcb705v.rviz
+│   ├── tcb710.rviz
+│   └── tcb710v.rviz
 └── urdf                                     # urdf描述文件
-    ├── tl_tcb605.csv
-    ├── tl_tcb605.urdf                       # tcb605机械臂urdf描述文件
-    ├── tl_tcb605f.csv
-    ├── tl_tcb605f.urdf                      # tcb605f机械臂urdf描述文件
-    ├── tl_tcb605l.csv
-    ├── tl_tcb605l.urdf                      # tcb605l机械臂urdf描述文件
-    ├── tl_tcb605lv.csv
-    ├── tl_tcb605lv.urdf                     # tcb605lv机械臂urdf描述文件
-    ├── tl_tcb605v.csv 
-    ├── tl_tcb605v.urdf                      # tcb605v机械臂urdf描述文件
-    ├── tl_tcb610.csv
-    ├── tl_tcb610.urdf                       # tcb610机械臂urdf描述文件     
-    ├── tl_tcb610v.csv
-    ├── tl_tcb610v.urdf                      # tcb610v机械臂urdf描述文件 
-    ├── tl_tcb705.csv
-    ├── tl_tcb705.urdf                       # tcb705机械臂urdf描述文件 
-    ├── tl_tcb705f.csv
-    ├── tl_tcb705f.urdf                      # tcb705f机械臂urdf描述文件
-    ├── tl_tcb705l.csv
-    ├── tl_tcb705l.urdf                      # tcb705l机械臂urdf描述文件
-    ├── tl_tcb705lv.csv
-    ├── tl_tcb705lv.urdf                     # tcb705lv机械臂urdf描述文件
-    ├── tl_tcb705v.csv
-    ├── tl_tcb705v.urdf                      # tcb705v机械臂urdf描述文件
-    ├── tl_tcb710.csv
-    ├── tl_tcb710.urdf                       # tcb710机械臂urdf描述文件
-    ├── tl_tcb710v.csv
-    └── tl_tcb710v.urdf                      # tcb710v机械臂urdf描述文件
+    ├── tcb605.csv
+    ├── tcb605.urdf                       # tcb605机械臂urdf描述文件
+    ├── tcb605f.csv
+    ├── tcb605f.urdf                      # tcb605f机械臂urdf描述文件
+    ├── tcb605l.csv
+    ├── tcb605l.urdf                      # tcb605l机械臂urdf描述文件
+    ├── tcb605lv.csv
+    ├── tcb605lv.urdf                     # tcb605lv机械臂urdf描述文件
+    ├── tcb605v.csv 
+    ├── tcb605v.urdf                      # tcb605v机械臂urdf描述文件
+    ├── tcb610.csv
+    ├── tcb610.urdf                       # tcb610机械臂urdf描述文件     
+    ├── tcb610v.csv
+    ├── tcb610v.urdf                      # tcb610v机械臂urdf描述文件 
+    ├── tcb705.csv
+    ├── tcb705.urdf                       # tcb705机械臂urdf描述文件 
+    ├── tcb705f.csv
+    ├── tcb705f.urdf                      # tcb705f机械臂urdf描述文件
+    ├── tcb705l.csv
+    ├── tcb705l.urdf                      # tcb705l机械臂urdf描述文件
+    ├── tcb705lv.csv
+    ├── tcb705lv.urdf                     # tcb705lv机械臂urdf描述文件
+    ├── tcb705v.csv
+    ├── tcb705v.urdf                      # tcb705v机械臂urdf描述文件
+    ├── tcb710.csv
+    ├── tcb710.urdf                       # tcb710机械臂urdf描述文件
+    ├── tcb710v.csv
+    └── tcb710v.urdf                      # tcb710v机械臂urdf描述文件
 ```
 ## tl_description功能包话题说明
 如下为该功能包的话题说明。  

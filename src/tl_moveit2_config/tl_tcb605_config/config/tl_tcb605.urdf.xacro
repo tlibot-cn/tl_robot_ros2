@@ -3,7 +3,7 @@
     <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
 
     <!-- Import tl_tcb605 urdf file -->
-    <xacro:include filename="$(find tl_description)/urdf/tl_tcb605.urdf" />
+    <xacro:include filename="$(find tl_description)/urdf/tcb605.urdf" />
 
     <!-- Import control_xacro -->
     <xacro:include filename="tl_tcb605.ros2_control.xacro" />
