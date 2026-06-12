@@ -9,61 +9,65 @@
 
 using json = nlohmann::json;
 
-// 位置缩放系数：VR 手柄移动 1m → 机械臂末端移动 0.5m
-static constexpr double POS_SCALE = 0.5;
-// 位置死区：手柄位移小于此值（单位：m）视为无效，避免微小抖动
-static constexpr double POS_DEADZONE = 0.005;
-// 单步最大位置增量（单位：mm），防止异常跳变
-static constexpr double MAX_POS_DELTA_MM = 300.0;
-// 奇异点判定角度（单位：度），J6/J7 超过此值触发减速保护
-static constexpr double SINGULAR_ANGLE = 160.0;
-// 奇异点区域内的速度缩放系数，降至正常的 20%
-static constexpr double SINGULAR_SCALE = 0.2;
-// 关节跳变检测阈值（单位：度），相邻两次指令差超过此值则拒绝执行
-static constexpr double JOINT_JUMP_THRESHOLD = 30.0;
-// 控制循环周期（单位：秒），100Hz
-static constexpr double CONTROL_PERIOD_S = 0.01;
-// 手柄握紧阈值，超过此值才触发遥操作
 static constexpr double GRIP_THRESHOLD = 0.9;
-
-
-// 默认关节限位（单位：度），第 6/7 轴范围较窄防止自碰撞
-static const std::vector<std::pair<double, double>> DEFAULT_JOINT_LIMITS = {
-  {-180, 180}, {-180, 180}, {-180, 180}, {-180, 180},
-  {-180, 180}, {-170, 170}, {-170, 170}
-};
+static constexpr double CONTROL_PERIOD_S = 0.01;
 
 TL_Teleop::TL_Teleop()
-: Node("tl_teleop")
+: Node("tl_teleop_node")
 {
-  declare_parameter("arm_joints", 7);
-  declare_parameter("pos_scale", POS_SCALE);
-  declare_parameter("pos_deadzone", POS_DEADZONE);
-  declare_parameter("max_pos_delta_mm", MAX_POS_DELTA_MM);
-  declare_parameter("singular_angle", SINGULAR_ANGLE);
-  declare_parameter("singular_scale", SINGULAR_SCALE);
-  declare_parameter("joint_jump_threshold", JOINT_JUMP_THRESHOLD);
-  declare_parameter("servo_speed", 25);
+  declare_parameter("arm_axis_mode", 0);
+  declare_parameter("pos_scale", 0.5);
+  declare_parameter("pos_deadzone", 0.005);
+  declare_parameter("max_pos_delta_mm", 300.0);
+  declare_parameter("singular_angle", 160.0);
+  declare_parameter("singular_scale", 0.2);
+  declare_parameter("joint_jump_threshold", 30.0);
+  declare_parameter("servo_speed", 25.0);
+  declare_parameter("joint_limits", std::vector<double>{0.0});
+  declare_parameter("servo_vmax", 80.0);
+  declare_parameter("servo_amax", 3000.0);
+  declare_parameter("servo_jmax", 50000.0);
 
-  arm_joints_ = get_parameter("arm_joints").as_int();
+  arm_joints_ = get_parameter("arm_axis_mode").as_int();
+  if (arm_joints_ != 6 && arm_joints_ != 7) {
+    RCLCPP_FATAL(get_logger(),
+      "arm_axis_mode must be 6 or 7, got: %d. "
+      "Please provide a valid arm_axis_mode in the YAML config file.",
+      arm_joints_);
+    init_failed_ = true;
+    return;
+  }
   pos_scale_ = get_parameter("pos_scale").as_double();
   pos_deadzone_ = get_parameter("pos_deadzone").as_double();
   max_pos_delta_mm_ = get_parameter("max_pos_delta_mm").as_double();
   singular_angle_ = get_parameter("singular_angle").as_double();
   singular_scale_ = get_parameter("singular_scale").as_double();
   joint_jump_threshold_ = get_parameter("joint_jump_threshold").as_double();
-  servo_speed_ = get_parameter("servo_speed").as_int();
-
-  joint_limits_ = DEFAULT_JOINT_LIMITS;
-  for (int i = 0; i < arm_joints_; ++i) {
-    servo_vmax_.push_back(80.0);
-    servo_amax_.push_back(3000.0);
-    servo_jmax_.push_back(50000.0);
+  servo_speed_ = get_parameter("servo_speed").as_double();
+  auto joint_limits_flat = get_parameter("joint_limits").as_double_array();
+  if (joint_limits_flat.size() != static_cast<size_t>(arm_joints_ * 2)) {
+    RCLCPP_FATAL(get_logger(),
+      "joint_limits flat array length mismatch: arm_axis_mode=%d, expected exactly %d values, "
+      "got %zu. Each joint needs [min, max] — %d joints × 2 = %d values. "
+      "Please fix the joint_limits parameter in the YAML config file.",
+      arm_joints_, arm_joints_ * 2,
+      joint_limits_flat.size(), arm_joints_, arm_joints_ * 2);
+    init_failed_ = true;
+    return;
   }
 
-  power_on_client_ = create_client<std_srvs::srv::Trigger>("/tl_driver/power_on");
-  power_off_client_ = create_client<std_srvs::srv::Trigger>("/tl_driver/power_off");
-  clear_error_client_ = create_client<std_srvs::srv::Trigger>("/tl_driver/clear_error");
+  joint_limits_.clear();
+  for (size_t i = 0; i < joint_limits_flat.size(); i += 2) {
+    joint_limits_.emplace_back(joint_limits_flat[i], joint_limits_flat[i + 1]);
+  }
+
+  double servo_vmax_val = get_parameter("servo_vmax").as_double();
+  double servo_amax_val = get_parameter("servo_amax").as_double();
+  double servo_jmax_val = get_parameter("servo_jmax").as_double();
+  servo_vmax_.assign(arm_joints_, servo_vmax_val);
+  servo_amax_.assign(arm_joints_, servo_amax_val);
+  servo_jmax_.assign(arm_joints_, servo_jmax_val);
+
   set_speed_client_ = create_client<tl_ros2_interface::srv::SetSpeed>("/tl_driver/set_speed");
   set_current_mode_client_ = create_client<tl_ros2_interface::srv::SetCurrentMode>("/tl_driver/set_current_mode");
   open_servoj_client_ = create_client<tl_ros2_interface::srv::OpenServoJ>("/tl_driver/open_servoj");
@@ -137,7 +141,6 @@ void TL_Teleop::on_pxrea_client_cb(void * context,
         bool a_button = right.value("primaryButton", false);
 
         self->vr_state_.update(pose, grip, a_button);
-        self->pxrea_ready_ = true;
       } catch (const json::exception & e) {
         RCLCPP_ERROR(self->get_logger(), "PXREA JSON parse error: %s", e.what());
       }
@@ -189,19 +192,7 @@ bool TL_Teleop::init_servo()
     return false;
   }
 
-  // 3. Power on (tl_driver handles the full state machine internally)
-  auto power_req = std::make_shared<std_srvs::srv::Trigger::Request>();
-  auto power_future = power_on_client_->async_send_request(power_req);
-  if (power_future.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
-    RCLCPP_ERROR(get_logger(), "power_on timeout");
-    return false;
-  }
-  if (!power_future.get()->success) {
-    RCLCPP_ERROR(get_logger(), "power_on failed: %s", power_future.get()->message.c_str());
-    return false;
-  }
-
-  // 4. Open ServoJ
+  // 3. Open ServoJ
   auto servoj_req = std::make_shared<tl_ros2_interface::srv::OpenServoJ::Request>();
   servoj_req->vmax = servo_vmax_;
   servoj_req->amax = servo_amax_;
@@ -228,9 +219,6 @@ void TL_Teleop::close_servo()
   auto close_req = std::make_shared<std_srvs::srv::Trigger::Request>();
   close_servoj_client_->async_send_request(close_req);
 
-  auto power_req = std::make_shared<std_srvs::srv::Trigger::Request>();
-  power_off_client_->async_send_request(power_req);
-
   RCLCPP_INFO(get_logger(), "Servo close requested via tl_driver services");
 }
 
@@ -255,8 +243,8 @@ std::vector<double> TL_Teleop::get_inverse_kinematics(
   double x, double y, double z, double rx, double ry, double rz)
 {
   auto req = std::make_shared<tl_ros2_interface::srv::CoordTransform::Request>();
-req->origin_coord = 1;  // 笛卡尔坐标系
-req->target_coord = 0;  // 关节坐标系
+  req->origin_coord = 1;  // 笛卡尔坐标系
+  req->target_coord = 0;  // 关节坐标系
   req->form = 0;
   req->origin_pos = {x, y, z, rx, ry, rz, 0.0};
   req->reference_pos = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
@@ -456,14 +444,21 @@ void TL_Teleop::control_loop()
       if (std::abs(dy) < pos_deadzone_) dy = 0.0;
       if (std::abs(dz) < pos_deadzone_) dz = 0.0;
 
-      // 奇异点保护：J6 或 J7 接近 180° 时大幅降低运动速度，防止关节速度爆炸
+      // 奇异点保护：末端关节接近极限角度时大幅降低运动速度，防止关节速度爆炸
       double scale = 1.0;
       {
         std::lock_guard<std::mutex> lock(teleop_mutex_);
-        if (!last_joints_.empty() && last_joints_.size() >= 7) {
-          if (std::abs(last_joints_[5]) > singular_angle_ ||
-              std::abs(last_joints_[6]) > singular_angle_) {
-            scale = singular_scale_;
+        if (!last_joints_.empty() && static_cast<int>(last_joints_.size()) >= arm_joints_) {
+          if (arm_joints_ == 6) {
+            if (std::abs(last_joints_[4]) > singular_angle_ ||
+                std::abs(last_joints_[5]) > singular_angle_) {
+              scale = singular_scale_;
+            }
+          } else {
+            if (std::abs(last_joints_[5]) > singular_angle_ ||
+                std::abs(last_joints_[6]) > singular_angle_) {
+              scale = singular_scale_;
+            }
           }
         }
       }
@@ -516,6 +511,10 @@ void TL_Teleop::control_loop()
       auto ik = get_inverse_kinematics(
         target_x, target_y, target_z, target_rx, target_ry, target_rz);
       if (!ik.empty()) {
+        // tl_driver CoordTransform 总是返回 7 个关节值，6 轴模式截取前 6 个
+        if (arm_joints_ == 6 && ik.size() > 6) {
+          ik.resize(6);
+        }
         servoJ_send(ik);
       }
     }
@@ -533,6 +532,12 @@ void TL_Teleop::control_loop()
 
 void TL_Teleop::run_control_loop()
 {
+  if (init_failed_) {
+    RCLCPP_FATAL(get_logger(), "Initialization failed, refusing to start control loop");
+    rclcpp::shutdown();
+    return;
+  }
+
   RCLCPP_INFO(get_logger(), "Initializing PXREA SDK...");
   int pxrea_ret = PXREAInit(this, on_pxrea_client_cb, PXREAFullMask);
   if (pxrea_ret != 0) {
@@ -543,7 +548,7 @@ void TL_Teleop::run_control_loop()
 
   // 等待 tl_driver 服务就绪
   RCLCPP_INFO(get_logger(), "Waiting for tl_driver services...");
-  if (!power_on_client_->wait_for_service(std::chrono::seconds(30))) {
+  if (!set_speed_client_->wait_for_service(std::chrono::seconds(30))) {
     RCLCPP_ERROR(get_logger(), "tl_driver services not available after 30s, shutting down");
     rclcpp::shutdown();
     return;
@@ -569,6 +574,11 @@ int main(int argc, char ** argv)
   rclcpp::init(argc, argv);
 
   auto node = std::make_shared<TL_Teleop>();
+
+  if (!node->init_ok()) {
+    rclcpp::shutdown();
+    return 1;
+  }
 
   // 控制循环在单独线程运行，避免 100Hz 循环阻塞 ROS2 spin
   // 主线程负责 ROS2 回调（服务调用、话题订阅）

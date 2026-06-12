@@ -59,10 +59,10 @@ public:
 
   void run_control_loop();
   void stop() { running_ = false; }
+  bool init_ok() const { return !init_failed_; }
 
 private:
   VRState vr_state_;
-  std::atomic<bool> pxrea_ready_{false};
 
   std::array<double, 7> vr_home_pose_{0.0};
   std::array<double, 4> base_arm_quat_{0.0};
@@ -79,16 +79,12 @@ private:
   double singular_scale_{0.2};
   double joint_jump_threshold_{30.0};
   std::vector<std::pair<double, double>> joint_limits_;
-
   std::vector<double> servo_vmax_;
   std::vector<double> servo_amax_;
   std::vector<double> servo_jmax_;
-  int servo_speed_{25};
+  double servo_speed_{25.0};
 
   // ROS2 service clients
-  rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr power_on_client_;
-  rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr power_off_client_;
-  rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr clear_error_client_;
   rclcpp::Client<tl_ros2_interface::srv::SetSpeed>::SharedPtr set_speed_client_;
   rclcpp::Client<tl_ros2_interface::srv::SetCurrentMode>::SharedPtr set_current_mode_client_;
   rclcpp::Client<tl_ros2_interface::srv::OpenServoJ>::SharedPtr open_servoj_client_;
@@ -106,6 +102,7 @@ private:
   bool tcp_pose_received_{false};
 
   std::atomic<bool> running_{true};
+  std::atomic<bool> init_failed_{false};
 
   bool init_servo();
   void close_servo();
