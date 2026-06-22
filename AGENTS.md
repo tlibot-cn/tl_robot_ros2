@@ -211,7 +211,7 @@ tl_driver/
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **demo_ws** (5883 symbols, 7939 relationships, 75 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **tl_robot_ros2_cpp** (5344 symbols, 6830 relationships, 0 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -234,10 +234,10 @@ This project is indexed by GitNexus as **demo_ws** (5883 symbols, 7939 relations
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/demo_ws/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/demo_ws/clusters` | All functional areas |
-| `gitnexus://repo/demo_ws/processes` | All execution flows |
-| `gitnexus://repo/demo_ws/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/tl_robot_ros2_cpp/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/tl_robot_ros2_cpp/clusters` | All functional areas |
+| `gitnexus://repo/tl_robot_ros2_cpp/processes` | All execution flows |
+| `gitnexus://repo/tl_robot_ros2_cpp/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 
