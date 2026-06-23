@@ -1,3 +1,6 @@
+#include <cmath>
+#include <thread>
+
 #include "tl_driver/tl_driver.h"
 
 namespace
@@ -840,6 +843,14 @@ TL_Arm::TL_Arm()
     "/tl_driver/set_servoj_pos",
     10,
     std::bind(&TL_Arm::handle_set_servoj_pos_topic, this, std::placeholders::_1),
+    topic_group_option
+  );
+
+  set_servol_pos_sub_ =
+    this->create_subscription<tl_ros2_interface::msg::ServolMove>(
+    "/tl_driver/set_servol_pos",
+    10,
+    std::bind(&TL_Arm::handle_set_servol_pos_topic, this, std::placeholders::_1),
     topic_group_option
   );
 
@@ -2977,6 +2988,191 @@ void TL_Arm::handle_set_servoj_pos_topic(
   std::vector<double> pos = msg->data; 
   int ret = set_servoJ_pos(socket_fd_aux_, pos);
   RCLCPP_INFO(this->get_logger(), "[ServoJ]: result=%s", result_to_string(ret));
+}
+
+// ================ 四元数辅助函数 ================
+
+std::vector<double> TL_Arm::_rpy_to_quat(const std::vector<double> & rpy)
+{
+  double cr = std::cos(rpy[0] * 0.5);
+  double sr = std::sin(rpy[0] * 0.5);
+  double cp = std::cos(rpy[1] * 0.5);
+  double sp = std::sin(rpy[1] * 0.5);
+  double cy = std::cos(rpy[2] * 0.5);
+  double sy = std::sin(rpy[2] * 0.5);
+  return {
+    cr * cp * cy + sr * sp * sy,  // w
+    sr * cp * cy - cr * sp * sy,  // x
+    cr * sp * cy + sr * cp * sy,  // y
+    cr * cp * sy - sr * sp * cy,  // z
+  };
+}
+
+std::vector<double> TL_Arm::_quat_to_rpy(const std::vector<double> & q)
+{
+  double w = q[0], x = q[1], y = q[2], z = q[3];
+  double t0 = 2.0 * (w * x + y * z);
+  double t1 = 1.0 - 2.0 * (x * x + y * y);
+  double rx = std::atan2(t0, t1);
+  double t2 = 2.0 * (w * y - z * x);
+  t2 = std::max(-1.0, std::min(1.0, t2));
+  double ry = std::asin(t2);
+  double t3 = 2.0 * (w * z + x * y);
+  double t4 = 1.0 - 2.0 * (y * y + z * z);
+  double rz = std::atan2(t3, t4);
+  return {rx, ry, rz};
+}
+
+std::vector<double> TL_Arm::_quat_slerp(
+  const std::vector<double> & q1,
+  const std::vector<double> & q2,
+  double t)
+{
+  double q2w = q2[0], q2x = q2[1], q2y = q2[2], q2z = q2[3];
+  double dot = q1[0]*q2w + q1[1]*q2x + q1[2]*q2y + q1[3]*q2z;
+  if (dot < 0.0) {
+    q2w = -q2w; q2x = -q2x; q2y = -q2y; q2z = -q2z;
+    dot = -dot;
+  }
+  const double DOT_THRESHOLD = 0.9995;
+  if (dot > DOT_THRESHOLD) {
+    std::vector<double> result = {
+      q1[0] + t * (q2w - q1[0]),
+      q1[1] + t * (q2x - q1[1]),
+      q1[2] + t * (q2y - q1[2]),
+      q1[3] + t * (q2z - q1[3]),
+    };
+    double norm = std::sqrt(result[0]*result[0] + result[1]*result[1] +
+                            result[2]*result[2] + result[3]*result[3]);
+    for (auto & v : result) v /= norm;
+    return result;
+  }
+  double theta_0 = std::acos(dot);
+  double sin_theta_0 = std::sin(theta_0);
+  double theta = theta_0 * t;
+  double s0 = std::cos(theta) - dot * std::sin(theta) / sin_theta_0;
+  double s1 = std::sin(theta) / sin_theta_0;
+  return {
+    s0 * q1[0] + s1 * q2w,
+    s0 * q1[1] + s1 * q2x,
+    s0 * q1[2] + s1 * q2y,
+    s0 * q1[3] + s1 * q2z,
+  };
+}
+
+// ================ ServoL 笛卡尔空间直线伺服 ================
+
+/**
+ * @brief ServoL 笛卡尔空间直线伺服运动
+ * 前置条件：需先调用 open_servoj 开启关节跟踪模式
+ * 收到目标笛卡尔位姿后，自动获取当前位姿，插值并 IK 转为关节角后通过 servoj 发送
+ */
+void TL_Arm::handle_set_servol_pos_topic(
+  const tl_ros2_interface::msg::ServolMove::SharedPtr msg)
+{
+  if (!is_connected())
+  {
+    RCLCPP_WARN(this->get_logger(), "[ServoL]: arm is not connected");
+    return;
+  }
+
+  // ========= 1. 获取当前位姿 =========
+  int coord = msg->coord;
+  if (coord < 1 || coord > 3) {
+    coord = 1;  // 默认基座标系
+  }
+
+  std::vector<double> current_pos;
+  int ret = get_current_position(socket_fd_, coord, current_pos);
+  if (ret != Result::SUCCESS || current_pos.size() < 6)
+  {
+    RCLCPP_ERROR(this->get_logger(), "[ServoL]: Failed to get current position");
+    return;
+  }
+
+  // 当前位姿 [x, y, z, rx, ry, rz]
+  double cx = current_pos[0], cy = current_pos[1], cz = current_pos[2];
+  double crx = current_pos[3], cry = current_pos[4], crz = current_pos[5];
+
+  // 目标位姿
+  const auto & target_pose = msg->target_pose;
+  if (target_pose.size() < 6)
+  {
+    RCLCPP_ERROR(this->get_logger(), "[ServoL]: target_pose must have at least 6 elements");
+    return;
+  }
+  double tx = target_pose[0], ty = target_pose[1], tz = target_pose[2];
+  double trx = target_pose[3], try_ = target_pose[4], trz = target_pose[5];
+
+  // ========= 2. 计算插值点数 =========
+  double dx = tx - cx, dy = ty - cy, dz = tz - cz;
+  double dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+  double step_size = msg->step_size;
+  if (step_size <= 0.0) {
+    step_size = 2.0;  // 默认步长 2mm
+  }
+
+  int N = std::max(1, static_cast<int>(std::ceil(dist / step_size)));
+  RCLCPP_INFO(this->get_logger(),
+    "[ServoL] dist=%.1fmm, step=%.1f, points=%d", dist, step_size, N);
+
+  // ========= 3. 准备 IK 参数 =========
+  std::vector<double> cur_quat = _rpy_to_quat({crx, cry, crz});
+  std::vector<double> target_quat = _rpy_to_quat({trx, try_, trz});
+
+  std::vector<double> ref_pos(7, 0.0);
+
+  // ========= 4. 插值 + IK + servoj 发送 (250Hz) =========
+  const auto period = std::chrono::nanoseconds(4000000);  // 250Hz = 4ms
+  auto next_time = std::chrono::steady_clock::now();
+
+  for (int i = 1; i <= N; ++i)
+  {
+    double t = static_cast<double>(i) / static_cast<double>(N);
+
+    // 位置线性插值
+    double ix = cx + t * dx;
+    double iy = cy + t * dy;
+    double iz = cz + t * dz;
+
+    // 姿态四元数 Slerp
+    std::vector<double> iq = _quat_slerp(cur_quat, target_quat, t);
+    std::vector<double> irpy = _quat_to_rpy(iq);
+
+    // 构建插值位姿 (7 元素: x,y,z,rx,ry,rz,0)
+    std::vector<double> interp_pos = {ix, iy, iz, irpy[0], irpy[1], irpy[2], 0.0};
+
+    // IK: 笛卡尔(coord) -> 关节(0)
+    std::vector<double> joint_pos;
+    ret = get_origin_coord_to_target_coord(
+      socket_fd_, coord, interp_pos,
+      0, joint_pos, 0, ref_pos);
+
+    if (ret != Result::SUCCESS)
+    {
+      RCLCPP_WARN(this->get_logger(),
+        "[ServoL] IK failed at point %d/%d, ret=%d", i, N, ret);
+      next_time += period;
+      continue;
+    }
+
+    // 通过 servoj 发送关节角
+    ret = set_servoJ_pos(socket_fd_aux_, joint_pos);
+    if (ret != Result::SUCCESS)
+    {
+      RCLCPP_WARN(this->get_logger(),
+        "[ServoL] set_servoJ_pos failed at point %d/%d, ret=%d", i, N, ret);
+    }
+
+    next_time += period;
+    std::this_thread::sleep_until(next_time);
+  }
+
+  // ========= 5. 记录完成 =========
+  RCLCPP_INFO(this->get_logger(),
+    "[ServoL] completed to [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f], %d points",
+    tx, ty, tz, trx, try_, trz, N);
 }
 
 void TL_Arm::publish_arm_state()
