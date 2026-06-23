@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>tl_example</name>
+  <version>1.0.0</version>
+  <description>
+    TL Robot example nodes — medical/lab automation demo with moveL queue motions
+    for 四川天链机器人股份有限公司.
+  </description>
+  <maintainer email="support@tlibot.com">天链机器人</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <build_depend>rclcpp</build_depend>
+  <build_depend>std_srvs</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>tl_ros2_interface</build_depend>
+
+  <build_export_depend>rclcpp</build_export_depend>
+  <build_export_depend>std_srvs</build_export_depend>
+  <build_export_depend>std_msgs</build_export_depend>
+  <build_export_depend>tl_ros2_interface</build_export_depend>
+
+  <exec_depend>rclcpp</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>tl_ros2_interface</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
