@@ -47,6 +47,13 @@ hardware_interface::CallbackReturn TLHardwareInterface::on_init(const hardware_i
     joint_names_.push_back(joint.name);
   }
 
+  // Build name → index map for O(1) joint state lookup.
+  joint_name_to_index_.clear();
+  for (size_t i = 0; i < joint_names_.size(); ++i)
+  {
+    joint_name_to_index_[joint_names_[i]] = i;
+  }
+
   const size_t joint_count = joint_names_.size();
 
   joint_positions_.assign(joint_count, 0.0);
@@ -56,7 +63,6 @@ hardware_interface::CallbackReturn TLHardwareInterface::on_init(const hardware_i
   joint_position_commands_.assign(joint_count, 0.0);
 
   received_positions_.assign(joint_count, 0.0);
-  received_velocities_.assign(joint_count, 0.0);
   received_efforts_.assign(joint_count, 0.0);
 
   last_positions_.assign(joint_count, 0.0);
@@ -170,6 +176,8 @@ hardware_interface::CallbackReturn TLHardwareInterface::on_configure(const rclcp
     servoj_pos_pub_ =
         node_->create_publisher<std_msgs::msg::Float64MultiArray>(servoj_topic_, rclcpp::QoS(10).reliable());
 
+    servoj_msg_.data.reserve(joint_names_.size());
+
     // Service clients for servoj lifecycle.
     open_servoj_client_ = node_->create_client<tl_ros2_interface::srv::OpenServoJ>(open_servoj_service_);
 
@@ -271,7 +279,7 @@ hardware_interface::CallbackReturn TLHardwareInterface::on_activate(const rclcpp
     std::lock_guard<std::mutex> lock(received_state_mutex_);
 
     joint_positions_ = received_positions_;
-    joint_velocities_ = received_velocities_;
+    joint_velocities_.assign(joint_names_.size(), 0.0);
     joint_efforts_ = received_efforts_;
 
     last_positions_ = received_positions_;
@@ -381,6 +389,8 @@ hardware_interface::return_type TLHardwareInterface::read(const rclcpp::Time& /*
     return hardware_interface::return_type::OK;
   }
 
+  const auto now = node_->now();
+
   {
     std::lock_guard<std::mutex> lock(received_state_mutex_);
 
@@ -408,22 +418,20 @@ hardware_interface::return_type TLHardwareInterface::read(const rclcpp::Time& /*
   if (has_received_state_)
   {
     last_positions_ = joint_positions_;
-    last_read_time_ = node_->now();
+    last_read_time_ = now;
   }
 
-  const auto now = node_->now();
   const auto time_since_update = now - last_joint_state_time_;
 
   if (time_since_update.seconds() > state_timeout_sec_)
   {
-    static auto last_warning = std::chrono::steady_clock::now();
     const auto now_steady = std::chrono::steady_clock::now();
 
-    if (now_steady - last_warning >= 5s)
+    if (now_steady - last_state_warning_time_ >= 5s)
     {
       RCLCPP_WARN(logger_, "No joint state update for %.3f seconds", time_since_update.seconds());
 
-      last_warning = now_steady;
+      last_state_warning_time_ = now_steady;
     }
   }
 
@@ -439,15 +447,13 @@ hardware_interface::return_type TLHardwareInterface::write(const rclcpp::Time& /
   }
 
   // Convert radians → degrees and publish to servoj topic.
-  auto command_msg = std::make_unique<std_msgs::msg::Float64MultiArray>();
-  command_msg->data.reserve(joint_position_commands_.size());
-
+  servoj_msg_.data.clear();
   for (const auto& rad_cmd : joint_position_commands_)
   {
-    command_msg->data.push_back(rad_cmd * 180.0 / M_PI);
+    servoj_msg_.data.push_back(rad_cmd * 180.0 / M_PI);
   }
 
-  servoj_pos_pub_->publish(std::move(command_msg));
+  servoj_pos_pub_->publish(servoj_msg_);
 
   return hardware_interface::return_type::OK;
 }
@@ -515,30 +521,25 @@ void TLHardwareInterface::joint_state_callback(const sensor_msgs::msg::JointStat
 {
   std::lock_guard<std::mutex> lock(received_state_mutex_);
 
-  for (size_t i = 0; i < joint_names_.size(); ++i)
+  for (size_t msg_i = 0; msg_i < msg->name.size(); ++msg_i)
   {
-    const auto it = std::find(msg->name.begin(), msg->name.end(), joint_names_[i]);
+    const auto it = joint_name_to_index_.find(msg->name[msg_i]);
 
-    if (it == msg->name.end())
+    if (it == joint_name_to_index_.end())
     {
       continue;
     }
 
-    const size_t msg_index = std::distance(msg->name.begin(), it);
+    const size_t i = it->second;
 
-    if (msg_index < msg->position.size())
+    if (msg_i < msg->position.size())
     {
-      received_positions_[i] = msg->position[msg_index];
+      received_positions_[i] = msg->position[msg_i];
     }
 
-    if (msg_index < msg->velocity.size())
+    if (msg_i < msg->effort.size())
     {
-      received_velocities_[i] = msg->velocity[msg_index];
-    }
-
-    if (msg_index < msg->effort.size())
-    {
-      received_efforts_[i] = msg->effort[msg_index];
+      received_efforts_[i] = msg->effort[msg_i];
     }
   }
 

@@ -2,10 +2,12 @@
 #define TL_HARDWARE_INTERFACE_HPP
 
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include <rclcpp/client.hpp>
@@ -71,6 +73,9 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr servoj_pos_pub_;
 
+  // Reusable message to avoid per-frame heap allocation in write().
+  std_msgs::msg::Float64MultiArray servoj_msg_;
+
   rclcpp::Client<tl_ros2_interface::srv::OpenServoJ>::SharedPtr open_servoj_client_;
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr close_servoj_client_;
 
@@ -91,13 +96,15 @@ private:
 
   // These vectors are updated only by the subscription callback.
   std::vector<double> received_positions_;
-  std::vector<double> received_velocities_;
   std::vector<double> received_efforts_;
 
   // Servoj streaming parameters (one value per joint, in deg units).
   std::vector<double> servoj_vmax_;
   std::vector<double> servoj_amax_;
   std::vector<double> servoj_jmax_;
+
+  // Name → index map for O(1) joint state lookup.
+  std::unordered_map<std::string, size_t> joint_name_to_index_;
 
   // Previous read state for velocity computation.
   std::vector<double> last_positions_;
@@ -112,6 +119,9 @@ private:
   rclcpp::Time last_joint_state_time_;
 
   double state_timeout_sec_{1.0};
+
+  // Throttle for state timeout warnings (5 s cooldown).
+  std::chrono::steady_clock::time_point last_state_warning_time_;
 };
 
 } // namespace tl_hardware
