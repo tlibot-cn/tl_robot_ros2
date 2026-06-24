@@ -14,10 +14,13 @@
   <depend>hardware_interface</depend>
   <depend>pluginlib</depend>
   <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>tl_ros2_interface</depend>
   <depend>trajectory_msgs</depend>
 
   <export>
     <build_type>ament_cmake</build_type>
-    <hardware_interface plugin="${prefix}/plugin.xml"/>
+    <hardware_interface plugin="${prefix}/tl_hardware_interface.xml"/>
   </export>
 </package>

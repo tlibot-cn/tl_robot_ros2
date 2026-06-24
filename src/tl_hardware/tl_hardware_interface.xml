@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<library path="tl_hardware_interface">
+<library path="tl_hardware">
   <class name="tl_hardware/TLHardwareInterface" type="tl_hardware::TLHardwareInterface" base_class_type="hardware_interface::SystemInterface">
     <description>
       tlrobot hardware interface for ROS2 Control.
