@@ -36,6 +36,50 @@ source install/setup.bash
 
 编译完成后即可进行各功能包的运行操作。
 
+### 安装格式化工具
+
+```bash
+sudo apt install clang-format
+pip install black isort ruff
+```
+
+## 代码规范
+
+项目统一使用以下格式化配置，所有成员在提交前需确保代码格式一致。
+
+### 启用 git hook（必须）
+
+克隆后执行一次，C++ 文件提交时会自动格式化：
+
+```bash
+git config core.hooksPath .githooks
+```
+
+### C++ 格式
+
+- 配置：`.clang-format`（clang-format v14）
+- Allman 大括号风格，2 空格缩进，120 列宽限制
+- 已配置 pre-commit hook，提交时自动格式化所有 `.cpp/.h/.hpp/.cc/.cxx` 文件
+
+手动格式化（自动跳过三方 SDK 头文件）：
+```bash
+./scripts/format-cpp.sh                          # 格式化所有 C++ 文件
+./scripts/format-cpp.sh src/tl_driver/src/       # 格式化指定目录
+./scripts/format-cpp.sh src/tl_driver/src/tl_driver.cpp  # 格式化指定文件
+```
+
+### Python 格式
+
+- 配置：`pyproject.toml`（Black / Ruff / isort）
+- 4 空格缩进，100 列宽限制
+
+手动格式化：
+```bash
+ruff format src/
+# 或
+black src/ && isort src/
+```
+
 ## 运行
 
 ### 真实机械臂

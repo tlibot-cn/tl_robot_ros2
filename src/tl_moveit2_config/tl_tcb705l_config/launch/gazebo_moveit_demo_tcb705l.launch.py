@@ -34,12 +34,8 @@ def generate_launch_description():
 def my_generate_move_group_launch(ld, moveit_config):
 
     ld.add_action(DeclareBooleanLaunchArg("debug", default_value=False))
-    ld.add_action(
-        DeclareBooleanLaunchArg("allow_trajectory_execution", default_value=True)
-    )
-    ld.add_action(
-        DeclareBooleanLaunchArg("publish_monitored_planning_scene", default_value=True)
-    )
+    ld.add_action(DeclareBooleanLaunchArg("allow_trajectory_execution", default_value=True))
+    ld.add_action(DeclareBooleanLaunchArg("publish_monitored_planning_scene", default_value=True))
     # load non-default MoveGroup capabilities (space separated)
     ld.add_action(DeclareLaunchArgument("capabilities", default_value=""))
     # inhibit these default MoveGroup capabilities (space separated)
@@ -55,9 +51,7 @@ def my_generate_move_group_launch(ld, moveit_config):
         "publish_robot_description_semantic": True,
         "allow_trajectory_execution": LaunchConfiguration("allow_trajectory_execution"),
         # Note: Wrapping the following values is necessary so that the parameter value can be the empty string
-        "capabilities": ParameterValue(
-            LaunchConfiguration("capabilities"), value_type=str
-        ),
+        "capabilities": ParameterValue(LaunchConfiguration("capabilities"), value_type=str),
         "disable_capabilities": ParameterValue(
             LaunchConfiguration("disable_capabilities"), value_type=str
         ),
@@ -87,6 +81,7 @@ def my_generate_move_group_launch(ld, moveit_config):
         additional_env={"DISPLAY": ":0"},
     )
     return ld
+
 
 def my_generate_moveit_rviz_launch(ld, moveit_config):
     """Launch file for rviz"""

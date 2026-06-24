@@ -1,0 +1,120 @@
+---
+# 天链机器人 C++ 代码格式配置
+# 用法: clang-format -i <file>
+# 安装: sudo apt install clang-format
+# VSCode 配合: C++扩展 → Clang_format_style → file
+# CLion: Settings → Code Style → C/C++ → ClangFormat
+
+Language: Cpp
+BasedOnStyle: Google
+
+# ── 缩进 ──────────────────────────────────────
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+IndentCaseLabels: true
+IndentPPDirectives: AfterHash
+IndentGotoLabels: false
+IndentExternBlock: NoIndent
+IndentAccessModifiers: false
+
+# ── 大括号 ────────────────────────────────────
+# 项目使用 Allman 风格（大括号换行）
+BreakBeforeBraces: Allman
+
+# ── 指针与引用 ────────────────────────────────
+PointerAlignment: Right
+ReferenceAlignment: Left
+DerivePointerAlignment: false
+
+# ── 列宽 ──────────────────────────────────────
+ColumnLimit: 120
+
+# ── 访问修饰符 ────────────────────────────────
+AccessModifierOffset: -2
+
+# ── 命名空间 ──────────────────────────────────
+NamespaceIndentation: None
+FixNamespaceComments: true
+CompactNamespaces: false
+
+# ── 函数 ──────────────────────────────────────
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortLambdasOnASingleLine: Empty
+AlwaysBreakAfterDefinitionReturnType: None
+AlwaysBreakAfterReturnType: None
+
+# ── 控制流 ────────────────────────────────────
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+
+# ── 运算符换行 ────────────────────────────────
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: true
+
+# ── 构造函数初始化列表 ────────────────────────
+BreakConstructorInitializers: BeforeColon
+ConstructorInitializerIndentWidth: 4
+ConstructorInitializerAllOnOneLineOrOnePerLine: false
+PackConstructorInitializers: BinPack
+
+# ── 对齐 ──────────────────────────────────────
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignConsecutiveMacros: false
+AlignEscapedNewlines: Left
+AlignOperands: Align
+AlignTrailingComments: true
+
+# ── 注释 ──────────────────────────────────────
+ReflowComments: true
+MaxEmptyLinesToKeep: 2
+KeepEmptyLinesAtTheStartOfBlocks: false
+
+# ── 空格 ──────────────────────────────────────
+SpaceAfterCStyleCast: false
+SpaceAfterLogicalNot: false
+SpaceAfterTemplateKeyword: true
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCaseColon: false
+SpaceBeforeCpp11BracedList: false
+SpaceBeforeCtorInitializerColon: true
+SpaceBeforeInheritanceColon: true
+SpaceBeforeParens: ControlStatements
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceBeforeSquareBrackets: false
+SpaceInEmptyParentheses: false
+SpacesBeforeTrailingComments: 1
+SpacesInAngles: false
+SpacesInContainerLiterals: true
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+
+# ── 换行权衡（惩罚值） ────────────────────────
+PenaltyBreakAssignment: 2
+PenaltyBreakBeforeFirstCallParameter: 1
+PenaltyBreakComment: 300
+PenaltyBreakFirstLessLess: 120
+PenaltyBreakString: 1000
+PenaltyExcessCharacter: 1000000
+PenaltyReturnTypeOnItsOwnLine: 200
+PenaltyIndentedWhitespace: 0
+
+# ── 头文件排序 ────────────────────────────────
+# 代码库已有手动分组排序，自动排序会打乱
+SortIncludes: false
+SortUsingDeclarations: false
+
+# ── 参数打包 ──────────────────────────────────
+BinPackArguments: true
+BinPackParameters: true
+AllowAllParametersOfDeclarationOnNextLine: true
+
+# ── 包含块 ────────────────────────────────────
+IncludeBlocks: Preserve
+
+# ── 语言标准 ──────────────────────────────────
+Standard: c++17
+...

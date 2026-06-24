@@ -1,0 +1,103 @@
+# 天链机器人 Python 格式与质量配置
+#
+# 安装依赖:
+#   pip install black isort ruff
+#
+# 格式化:
+#   ruff format                         # 格式化所有 Python 文件
+#   black --check .                     # 仅检查格式
+#   isort .                             # 排序 import
+#
+# 检查:
+#   ruff check .                        # 静态检查（替代 flake8）
+#   flake8 .                            # 传统 flake8 检查
+#
+# VS Code 配合:
+#   安装 "Python" + "Ruff" 扩展
+#   设置: "editor.formatOnSave": true
+#        "editor.codeActionsOnSave": { "source.organizeImports": true }
+
+# ── Black: Python 代码格式化 ──────────────────
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.nox
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+# ── isort: import 排序 ────────────────────────
+[tool.isort]
+profile = "black"
+line_length = 100
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+sections = [
+    "FUTURE",
+    "STDLIB",
+    "THIRDPARTY",
+    "FIRSTPARTY",
+    "LOCALFOLDER",
+]
+known_first_party = [
+    "tl_driver",
+    "tl_ros2_interface",
+    "tl_description",
+    "tl_bringup",
+    "tl_gazebo",
+]
+
+# ── Ruff: 超快速 Python linter + formatter ────
+[tool.ruff]
+# 兼容 black 格式
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.format]
+# 与 black 兼容的格式化风格
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle 错误
+    "W",    # pycodestyle 警告
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "S",    # bandit (安全)
+]
+ignore = [
+    "E501",   # 行长限制由 black 处理
+    "E741",   # 允许单字母变量名
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+# ── pytest ─────────────────────────────────────
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["src"]
+python_files = ["test_*.py", "*_test.py"]

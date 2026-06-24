@@ -15,7 +15,8 @@
 #include "tl_ros2_interface/srv/set_current_mode.hpp"
 #include "tl_ros2_interface/srv/set_speed.hpp"
 
-namespace tl_example {
+namespace tl_example
+{
 
 /**
  * @brief 队列 MoveL 运动演示节点
@@ -28,10 +29,10 @@ namespace tl_example {
  *          POWER_OFF → DONE
  * 连接后切换到示教模式（mode=0），然后显式上电；结束时显式下电，不切换模式。
  */
-class MedicalDemo : public rclcpp::Node {
+class MedicalDemo : public rclcpp::Node
+{
 public:
-  explicit MedicalDemo(
-      const rclcpp::NodeOptions &options = rclcpp::NodeOptions());
+  explicit MedicalDemo(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
 
   // ── 类型定义 ──
   using ArmStatus = tl_ros2_interface::msg::ArmStatus;
@@ -40,7 +41,8 @@ public:
   using SetSpeed = tl_ros2_interface::srv::SetSpeed;
   using Trigger = std_srvs::srv::Trigger;
 
-  struct SequenceStep {
+  struct SequenceStep
+  {
     std::string pos_key;     // 点位名称
     std::string description; // 动作描述
     double velocity;         // 速度百分比
@@ -48,10 +50,9 @@ public:
 
 private:
   // ── 辅助方法 ──
-  MoveCommand buildMoveL(const std::string &pos_key, double velocity) const;
+  MoveCommand buildMoveL(const std::string& pos_key, double velocity) const;
   void ensureClients();
-  bool waitService(rclcpp::ClientBase::SharedPtr client,
-                   const std::string &name, double timeout_s);
+  bool waitService(rclcpp::ClientBase::SharedPtr client, const std::string& name, double timeout_s);
 
   // ── 状态机 ──
   void stateMachine();
@@ -86,7 +87,8 @@ private:
   rclcpp::TimerBase::SharedPtr state_timer_;
 
   // ── 状态机变量 ──
-  enum class State {
+  enum class State
+  {
     INIT,
     CONNECTING,
     SET_MODE,
@@ -102,7 +104,12 @@ private:
   // 运动等待（通过 /arm_status 判断运动完成）
   std::string arm_run_state_ = "STOP";
 
-  enum class MovePhase { IDLE, WAIT_RUNNING, WAIT_DONE };
+  enum class MovePhase
+  {
+    IDLE,
+    WAIT_RUNNING,
+    WAIT_DONE
+  };
   MovePhase move_phase_ = MovePhase::IDLE;
 
   double demo_speed_ = 30.0;

@@ -22,47 +22,39 @@
 #include <std_srvs/srv/trigger.hpp>
 #include <tl_ros2_interface/srv/open_servo_j.hpp>
 
-namespace tl_hardware {
+namespace tl_hardware
+{
 
-class TLHardwareInterface : public hardware_interface::SystemInterface {
+class TLHardwareInterface : public hardware_interface::SystemInterface
+{
 public:
   RCLCPP_SHARED_PTR_DEFINITIONS(TLHardwareInterface)
 
   TLHardwareInterface();
   ~TLHardwareInterface() override;
 
-  hardware_interface::CallbackReturn
-  on_init(const hardware_interface::HardwareInfo &info) override;
+  hardware_interface::CallbackReturn on_init(const hardware_interface::HardwareInfo& info) override;
 
-  hardware_interface::CallbackReturn
-  on_configure(const rclcpp_lifecycle::State &previous_state) override;
+  hardware_interface::CallbackReturn on_configure(const rclcpp_lifecycle::State& previous_state) override;
 
-  hardware_interface::CallbackReturn
-  on_cleanup(const rclcpp_lifecycle::State &previous_state) override;
+  hardware_interface::CallbackReturn on_cleanup(const rclcpp_lifecycle::State& previous_state) override;
 
-  hardware_interface::CallbackReturn
-  on_activate(const rclcpp_lifecycle::State &previous_state) override;
+  hardware_interface::CallbackReturn on_activate(const rclcpp_lifecycle::State& previous_state) override;
 
-  hardware_interface::CallbackReturn
-  on_deactivate(const rclcpp_lifecycle::State &previous_state) override;
+  hardware_interface::CallbackReturn on_deactivate(const rclcpp_lifecycle::State& previous_state) override;
 
-  std::vector<hardware_interface::StateInterface>
-  export_state_interfaces() override;
+  std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
 
-  std::vector<hardware_interface::CommandInterface>
-  export_command_interfaces() override;
+  std::vector<hardware_interface::CommandInterface> export_command_interfaces() override;
 
-  hardware_interface::return_type read(const rclcpp::Time &time,
-                                       const rclcpp::Duration &period) override;
+  hardware_interface::return_type read(const rclcpp::Time& time, const rclcpp::Duration& period) override;
 
-  hardware_interface::return_type
-  write(const rclcpp::Time &time, const rclcpp::Duration &period) override;
+  hardware_interface::return_type write(const rclcpp::Time& time, const rclcpp::Duration& period) override;
 
 private:
   bool validate_interfaces() const;
 
-  std::string get_hardware_parameter(const std::string &name,
-                                     const std::string &default_value) const;
+  std::string get_hardware_parameter(const std::string& name, const std::string& default_value) const;
 
   void joint_state_callback(const sensor_msgs::msg::JointState::SharedPtr msg);
 
@@ -76,13 +68,10 @@ private:
   std::shared_ptr<rclcpp::executors::SingleThreadedExecutor> executor_;
   std::thread executor_thread_;
 
-  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr
-      joint_state_sub_;
-  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr
-      servoj_pos_pub_;
+  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
+  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr servoj_pos_pub_;
 
-  rclcpp::Client<tl_ros2_interface::srv::OpenServoJ>::SharedPtr
-      open_servoj_client_;
+  rclcpp::Client<tl_ros2_interface::srv::OpenServoJ>::SharedPtr open_servoj_client_;
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr close_servoj_client_;
 
   std::string joint_states_topic_;
