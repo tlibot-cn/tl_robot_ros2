@@ -468,6 +468,9 @@ void TL_Arm::init()
   if (connect())
   {
     power_on();
+    RCLCPP_INFO(this->get_logger(), "上电延时2s...");
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    RCLCPP_INFO(this->get_logger(), "上电延时完成");
   }
   else
   {
