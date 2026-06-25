@@ -8,7 +8,7 @@
 
 （colcon 自动解析拓扑顺序）：
 ```bash
-colcon build
+colcon build --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 source install/setup.bash
 ```
 

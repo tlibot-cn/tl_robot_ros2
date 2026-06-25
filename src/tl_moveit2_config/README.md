@@ -63,7 +63,72 @@ ros2 launch tl_tcb710_config demo.launch.py
 
 ### 2.2 MoveIt2 控制真实机械臂
 
-（待实现，后续补充）
+MoveIt2 通过 ros2_control 框架连接真实的机械臂硬件。`tl_hardware` 包提供 `TLHardwareInterface` 硬件接口插件，桥接 ros2_control 与 `tl_driver` 节点。
+
+#### 2.2.1 启动步骤
+
+**前置条件：** 已完成工作空间编译并 source，机械臂控制器已通电并接入网络。
+
+**第 1 步：启动机械臂驱动**
+
+```bash
+ros2 launch tl_driver tl_<arm_type>_driver.launch.py
+```
+
+驱动启动并成功连接机械臂后，`/joint_states` 话题会持续发布关节状态数据。
+
+**第 2 步：启动 MoveIt2 真实硬件控制**
+
+```bash
+ros2 launch tl_<arm_type>_config real_hardware_demo.launch.py
+```
+
+例如 tcb710 机械臂的完整启动命令：
+
+```bash
+ros2 launch tl_driver tl_tcb710_driver.launch.py
+ros2 launch tl_tcb710_config real_hardware_demo.launch.py
+```
+
+启动成功后，MoveIt2 的 RViz2 界面将显示当前机械臂的真实关节状态。
+
+#### 2.2.2 注意事项
+
+- 确保 `tl_driver` 启动后成功连接机械臂（终端输出显示 `Connected` 状态）。
+- MoveIt2 真实硬件控制默认关闭仿真时间（`use_sim_time:=false`），使用系统时钟。
+- `real_hardware_demo.launch.py` 内部调用 `xacro` 时传入 `use_real_hardware:=true` 参数，从而加载 `tl_hardware/TLHardwareInterface` 插件，而非虚拟模式下的 `mock_components/GenericSystem`。
+- 6 轴臂型（TCB605/610 系列）和 7 轴臂型（TCB705/710 系列）的配置均支持真实硬件控制，关节数差异自动由对应 SRDF 和 ros2_control 配置处理。
+
+#### 2.2.3 架构说明
+
+真实机械臂的控制链路如下：
+
+```
+RViz2 (规划可视化)
+  ↑ 规划请求 / 执行结果 ↓
+move_group (MoveIt2 运动规划)
+  ↓ FollowJointTrajectory action
+moveit_simple_controller_manager
+  ↓
+joint_trajectory_controller (ros2_control)
+  ↓ 位置指令 (rad)
+TLHardwareInterface (tl_hardware 硬件接口插件)
+  ↓ 发布 / 订阅
+┌────────────────────────────────────┐
+│  subscriber: /joint_states         │ ◄── tl_driver 发布关节状态
+│  publisher:  /tl_driver/set_servoj_pos  │ ──► tl_driver 接收位置指令
+│  client:     /tl_driver/open_servoj    │ ──► 启动 servoj 流模式
+│  client:     /tl_driver/close_servoj   │ ──► 关闭 servoj 流模式
+└────────────────────────────────────┘
+  ↓ TCP/IP
+机械臂控制器
+```
+
+**关键点：**
+- `TLHardwareInterface` 从 `/joint_states` 读取关节状态（位置、速度、力矩）并写入 ros2_control 状态接口。
+- `joint_trajectory_controller` 规划的位置指令（弧度）通过 `write()` 转换为角度，发布到 `/tl_driver/set_servoj_pos`。
+- 激活时自动调用 `/tl_driver/open_servoj` 开启 servoj 流模式，并等待首帧关节状态数据。
+- 停用时通过 `/tl_driver/close_servoj` 关闭流模式。
 
 ---
 
@@ -94,6 +159,7 @@ tl_moveit2_config/
 │   │   └── tl_tcb605.urdf.xacro        # URDF Xacro 描述（含 ros2_control）
 │   └── launch/                         # 启动文件文件夹
 │       ├── demo.launch.py              # 虚拟机械臂 MoveIt2 启动文件
+│       ├── real_hardware_demo.launch.py # 真实机械臂 MoveIt2 启动文件（所有臂型均已适配）
 │       ├── gazebo_moveit_demo_tcb605.launch.py   # Gazebo 仿真 MoveIt2 启动文件
 │       ├── move_group.launch.py        # move_group 启动文件
 │       ├── moveit_rviz.launch.py       # RViz2 可视化启动文件
@@ -135,7 +201,8 @@ tl_moveit2_config/
 | `config/<arm>.ros2_control.xacro` | Xacro 描述文件 |
 | `config/<arm>.srdf` | MoveIt2 控制配置文件 |
 | `config/<arm>.urdf.xacro` | URDF Xacro 描述文件 |
-| `launch/demo.launch.py` | 虚拟机械臂 MoveIt2 启动文件 |
+| `launch/demo.launch.py` | 虚拟机械臂 MoveIt2 启动文件（使用 `mock_components/GenericSystem`） |
+| `launch/real_hardware_demo.launch.py` | 真实机械臂 MoveIt2 启动文件（使用 `tl_hardware/TLHardwareInterface`） |
 | `launch/gazebo_moveit_demo_<arm_type>.launch.py` | Gazebo 仿真 MoveIt2 启动文件，`arm_type` 如 `tcb605`（不含 tl_ 前缀） |
 | `launch/move_group.launch.py` | move_group 启动文件 |
 | `launch/moveit_rviz.launch.py` | RViz2 可视化启动文件 |
@@ -147,11 +214,9 @@ tl_moveit2_config/
 
 ---
 
-## 4. tl_moveit2_config 话题说明（控制真实机械臂实现之后需修改）
+## 4. tl_moveit2_config-话题说明
 
-关于 MoveIt2 的话题说明，为使其话题结构更加清晰明白在这里以节点话题的数据流图的方式进行查看和讲解。
-
-在启动以上控制虚拟机器人的节点后可以运行如下指令查看当前话题的对接情况。
+为清晰展示 MoveIt2 控制真实机械臂时各节点间的话题通信关系，在启动 `real_hardware_demo.launch.py`（同时 `tl_driver` 已运行并连接机械臂）后，可通过如下指令查看实时 rqt_graph：
 
 ```bash
 ros2 run rqt_graph rqt_graph
@@ -159,21 +224,17 @@ ros2 run rqt_graph rqt_graph
 
 运行成功后界面将显示如下画面。
 
-![image](doc/tl_moveit2_config5.png)
+![image](doc/image4.png)
 
-该图反应了当前运行的节点与节点之间的话题通信关系，首先查看 `/tl_driver` 节点，该节点在 MoveIt2 运行时订阅和发布的话题如下。
+该图反映了当前运行的节点与节点之间的话题通信关系，首先查看 `/joint_states` 话题。
 
-![image](doc/tl_moveit2_config6.png)
+由图可知，`/joint_states` 话题由 `tl_driver` 发布，`joint_state_broadcaster` 获取 ros2_control 状态接口中的反馈数据后也向该话题转发。`/joint_states` 被 `/robot_state_publisher` 节点和 `/tl_hardware` 节点订阅。`/robot_state_publisher` 接收 `/joint_states` 是为了持续发布关节间的 TF 变换；`/tl_hardware` 接收 `/joint_states` 是为了获取当前机械臂的关节状态信息，作为 ros2_control 控制闭环的状态反馈输入。
 
-![image](doc/tl_moveit2_config7.png)
+`tl_hardware` 同时发布了 `/tl_driver/set_servoj_pos` 话题，该话题是机械臂透传功能的话题，通过该话题 `tl_hardware` 将规划的关节位置指令发布给 `tl_driver` 节点，`tl_driver` 接收后控制机械臂进行运动。
 
-由图可知，`tl_driver` 发布的 `/joint_states` 话题在持续被 `/robot_state_publisher` 节点和 `/move_group_private` 节点订阅。`/robot_state_publisher` 接收 `/joint_states` 是为了持续发布关节间的 TF 变换；`/move_group_private` 是 MoveIt2 的相关节点，MoveIt2 在规划时也需要实时获取当前机械臂的关节状态信息，所以也订阅了该话题。
+`tl_hardware` 为 `tl_driver` 与 MoveIt2 之间通信的桥梁，其通过 `/tcb_group_controller/follow_joint_trajectory` 动作与 `/moveit_simple_controller_manager` 进行通信，获取规划点，并进行插值运算，将插值之后的数据通过透传的方式给到 `tl_driver`。
 
-![image](doc/tl_moveit2_config8.png)
-
-MoveIt2 本身涉及的节点有 `move_group`、`move_group_private`、`moveit_simple_controller_manager`，它们的主要作用为实现机械臂的运动规划，并将规划信息等数据显示在 RViz2 中，另一方面还需要将规划数据传递到 ros2_control 端，进行进一步细分。
-
-![image](doc/tl_moveit2_config9.png)
+MoveIt2 本身涉及的节点有 `move_group`、`move_group_private`、`moveit_simple_controller_manager`，它们的主要作用为实现机械臂的运动规划，并将规划信息等数据显示在 RViz2 中，另一方面还需要将规划数据传递到 `tl_hardware` 端，进行进一步细分。
 
 ---
 
@@ -193,3 +254,31 @@ A：编辑对应臂型的 `config/joint_limits.yaml` 中的 `default_velocity_sc
 **Q：启动后 RViz2 中不显示模型？**
 
 A：确保已正确编译工作空间（`colcon build`）并 source `install/setup.bash`。检查 `tl_description` 功能包已正确安装。
+
+**Q：真实硬件启动后，RViz2 中关节不跟随实际位置？**
+
+A：确认 `tl_driver` 已成功连接机械臂并发布 `/joint_states` 话题：
+```bash
+ros2 topic echo /joint_states
+```
+如果话题无数据，检查 `tl_driver` 配置 YAML 中的 `arm_ip` 和 `arm_port` 是否正确。
+
+**Q：`joint_state_broadcaster` 在真实硬件模式中是否必要？**
+
+A：在真实硬件模式下，`joint_state_broadcaster` 将 `TLHardwareInterface` 状态接口中的关节数据重新发布到 `/joint_states`。由于 `tl_driver` 已经持续发布 `/joint_states`（`TLHardwareInterface` 正是从该话题读取数据），broadcaster 实际上是在重复发布相同的数据，因此并非必需。保留它的好处是同一套 `ros2_controllers.yaml` 同时兼容虚拟模式和真实模式，避免维护两份配置。
+
+**Q：启动时报错 "Failed to find hardware interface tl_hardware/TLHardwareInterface"？**
+
+A：确认 `tl_hardware` 包已编译安装：
+```bash
+colcon build --packages-select tl_hardware
+source install/setup.bash
+```
+
+**Q：如何调节 servoj 流的运动参数（速度、加速度）？**
+
+A：在 `<arm>.ros2_control.xacro` 的 `TLHardwareInterface` 插件配置中添加 `servoj_vmax`、`servoj_amax`、`servoj_jmax` 参数。默认值为 30.0 deg/s、100.0 deg/s²、500.0 deg/s³。支持单值（应用到所有关节）或以逗号分隔的逐关节值。
+
+**Q：真实硬件控制支持哪些臂型？**
+
+A：所有 14 种臂型均支持。6 轴系列（TCB605*/TCB610*）配置 6 个关节，7 轴系列（TCB705*/TCB710*）配置 7 个关节。各臂型的配置文件结构一致，区别仅在于关节数量和 SRDF 碰撞对。

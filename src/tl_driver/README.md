@@ -88,7 +88,7 @@ tl_driver:
     arm_port: "6001"                # 设置TCP连接时的端口  
     arm_port_aux: "7000"            # 设置机械臂连接时的辅助端口
     arm_type: "TCB710"              # 机械臂型号
-    arm_joints: ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"] # 关节名称
+    arm_joints: ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7"] # 关节名称
 ```
 ## tl_driver功能包架构说明
 ### 功能包文件总览

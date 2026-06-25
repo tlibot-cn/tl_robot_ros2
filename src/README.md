@@ -22,10 +22,13 @@
   * 2.4 [tl_gazebo — Gazebo 仿真](#24-tl_gazebo--gazebo-仿真)
   * 2.5 [tl_moveit2_config — MoveIt2 配置](#25-tl_moveit2_config--moveit2-配置)
   * 2.6 [tl_ros2_interface — 消息与接口定义](#26-tl_ros2_interface--消息与接口定义)
+  * 2.7 [tl_hardware — ros2_control 硬件接口](#27-tl_hardware--ros2_control-硬件接口)
+  * 2.8 [tl_teleop — VR 遥操作](#28-tl_teleop--vr-遥操作)
+  * 2.9 [tl_example — 使用示例](#29-tl_example--使用示例)
 
 ## 1 功能包概览
 
-`src/` 目录包含 **6 个功能包**，每个功能包（及子包）的作用如下：
+`src/` 目录包含 **9 个功能包**，每个功能包（及子包）的作用如下：
 
 ```
 src/
@@ -38,14 +41,19 @@ src/
 │   ├── meshes/              # 14 套 STL 网格文件
 │   ├── rviz/                # RViz 配置文件
 │   └── urdf/                # 14 套 URDF 模型
-├── tl_driver/               # 硬件驱动
+├── tl_driver/               # 硬件驱动（C++ 节点）
 │   ├── config/              # 14 套通信参数配置
 │   ├── launch/              # 驱动节点 launch
 │   ├── lib/                 # NexMotion SWIG 封装
 │   └── src/                 # 驱动节点源码
+├── tl_example/              # 使用示例
 ├── tl_gazebo/               # Gazebo 仿真
 │   ├── config/
 │   └── launch/              # 14 套 Gazebo 仿真 launch
+├── tl_hardware/             # ros2_control 硬件接口插件
+│   ├── include/
+│   ├── src/                 # TLHardwareInterface 实现
+│   └── tl_hardware_interface.xml
 ├── tl_moveit2_config/       # MoveIt2 配置（内含 14 个子包）
 │   ├── tl_tcb605_config/    # 14 套 MoveIt2 配置（每型号一套）
 │   │   ├── config/          # SRDF、限位、运动学等
@@ -53,9 +61,14 @@ src/
 │   ├── tl_tcb605f_config/
 │   ├── ...
 │   └── tl_tcb710v_config/
-└── tl_ros2_interface/       # ROS2 消息与服务接口
-    ├── msg/                 # 11 个 msg 定义文件
-    └── srv/                 # 45 个 srv 定义文件
+├── tl_ros2_interface/       # ROS2 消息与服务接口
+│   ├── msg/                 # 11 个 msg 定义文件
+│   └── srv/                 # 45 个 srv 定义文件
+└── tl_teleop/               # VR 遥操作（C++ 节点，PXREA SDK）
+    ├── config/
+    ├── launch/
+    ├── lib/                 # PXREA Robot SDK
+    └── src/
 ```
 
 ## 2 功能包说明
@@ -124,3 +137,35 @@ src/
 该包不包含可执行代码，仅提供接口定义（`.msg` 和 `.srv` 文件），其他功能包通过编译生成的头文件引用这些接口类型。
 
 详细说明请参考 [tl_ros2_interface/README.md](tl_ros2_interface/README.md)。
+
+### 2.7 tl_hardware — ros2_control 硬件接口
+
+实现 `TLHardwareInterface` 硬件接口插件（`hardware_interface::SystemInterface`），桥接 ros2_control 控制器层与 `tl_driver` 驱动节点。
+
+- 读取 `/joint_states` 获取关节状态，写入 ros2_control 状态接口
+- 通过 `joint_trajectory_controller` 接收规划轨迹，将弧度指令转换为角度后发布到 `/tl_driver/set_servoj_pos`
+- 自动管理 servoj 流生命周期（`open_servoj` / `close_servoj`）
+
+所有 14 种臂型的 MoveIt2 配置包均已集成该插件，通过 `use_real_hardware` 参数切换真实/虚拟硬件模式。
+
+详细说明请参考 [tl_hardware/README.md](tl_hardware/README.md)。
+
+### 2.8 tl_teleop — VR 遥操作
+
+通过 PXREA Robot SDK 与 VR 遥操作手柄通信，实现机械臂的实时跟随控制。
+
+- **双线程架构**：ROS2 事件循环 + 100Hz 独立控制线程
+- **安全机制**：握紧触发、位置死区、单步增量限幅、奇异点保护、关节跳变检测
+- **6/7 轴兼容**：通过配置文件切换轴数，自动匹配关节限位
+
+依赖 `tl_driver` 功能包提供的 ServoJ 服务和话题，使用前需先启动 `tl_driver`。
+
+详细说明请参考 [tl_teleop/README.md](tl_teleop/README.md)。
+
+### 2.9 tl_example — 使用示例
+
+提供天链机械臂的应用示例代码，目前包含：
+
+- `medical_demo`：医疗/实验室自动化场景的 moveL 队列运动示例
+
+示例节点展示了如何通过 tl_driver 的服务和话题接口实现典型的机械臂控制流程。
