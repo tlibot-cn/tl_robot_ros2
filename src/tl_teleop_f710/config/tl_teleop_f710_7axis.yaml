@@ -1,0 +1,33 @@
+/**:
+  ros__parameters:
+    control_rate: 100.0
+    arm_type: tcb710
+    speed_default: 50.0
+    speed_min: 5.0
+    speed_max: 100.0
+    speed_step: 5.0
+    pos_sensitivity: 80.0
+    rot_sensitivity: 1.0
+    step_size: 5.0
+    servo_speed: 25.0
+    servo_vmax: 80.0
+    servo_amax: 3000.0
+    servo_jmax: 50000.0
+    deadzone: 0.15
+    home_joints: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    axis_left_x: 1
+    axis_left_y: 0
+    axis_right_x: 2
+    axis_right_y: 3
+    axis_dpad_x: 4
+    axis_dpad_y: 5
+    btn_x: 0
+    btn_a: 1
+    btn_b: 2
+    btn_y: 3
+    btn_lb: 4
+    btn_rb: 5
+    btn_lt: 6
+    btn_rt: 7
+    btn_back: 8
+    btn_start: 9

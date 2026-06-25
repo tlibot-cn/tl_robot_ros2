@@ -1,0 +1,7 @@
+# Logitech F710 Gamepad udev rules
+# 安装：sudo cp 99-logitech-f710.rules /etc/udev/rules.d/ && sudo udevadm control --reload-rules && sudo udevadm trigger
+#
+# DirectInput 模式（开关拨到 "D"）：idProduct=c21f
+# XInput 模式（开关拨到 "X"）：idProduct=c219
+ACTION=="add", KERNEL=="js[0-9]*", SUBSYSTEM=="input", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c21f", MODE="0666"
+ACTION=="add", KERNEL=="js[0-9]*", SUBSYSTEM=="input", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c219", MODE="0666"
