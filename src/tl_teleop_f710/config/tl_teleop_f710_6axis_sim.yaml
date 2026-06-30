@@ -1,30 +1,50 @@
 /**:
   ros__parameters:
+
+    # ===================== 仿真模式 =====================
+    # true 时跳过 ServoJ 初始化（connect_arm / power_on / set_mode 等）
     simulation_mode: true
-    control_rate: 100.0
+
+    # ===================== 控制频率 =====================
+    control_rate: 250.0
+
+    # ===================== 机械臂型号 =====================
     arm_type: tcb605
+
+    # ===================== 运动速度（0-100） =====================
     speed_default: 50.0
     speed_min: 5.0
     speed_max: 100.0
     speed_step: 5.0
-    pos_sensitivity: 200.0
-    rot_sensitivity: 2.0
-    step_size: 1.0
+
+    # ===================== 笛卡尔运动灵敏度 =====================
+    # 仿真模式下灵敏度可适当调高以获得更灵敏的响应
+    pos_sensitivity: 200.0    # 平移灵敏度 (mm/s)
+    rot_sensitivity: 2.0      # 旋转灵敏度 (rad/s)
+
+    # ===================== 摇杆死区 =====================
     deadzone: 0.15
+
+    # ===================== 零位 & 工作空间限位 =====================
     home_joints: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    workspace_limits: [-500.0, 500.0, -500.0, 500.0, 0.0, 800.0]
+
+    # ===================== F710 轴映射 =====================
     axis_left_x: 1
     axis_left_y: 0
     axis_right_x: 2
     axis_right_y: 3
     axis_dpad_x: 4
     axis_dpad_y: 5
+
+    # ===================== F710 按键映射 =====================
     btn_x: 0
-    btn_a: 1
+    btn_a: 1                  # A 键 — 回零
     btn_b: 2
     btn_y: 3
-    btn_lb: 4
-    btn_rb: 5
+    btn_lb: 4                 # LB + 右摇杆 X = 翻滚
+    btn_rb: 5                 # RB + 右摇杆 X = 俯仰
     btn_lt: 6
     btn_rt: 7
-    btn_back: 8
+    btn_back: 8               # Back+Start = 紧急停止
     btn_start: 9

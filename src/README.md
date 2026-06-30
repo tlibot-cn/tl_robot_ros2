@@ -9,6 +9,7 @@
 | 版本号 | 时间 | 备注 |
 | :---: | :---- | :--- |
 | V1.0 | 2026-5-22 | 拟制 |
+| V1.1 | 2026-6-30 | 新增 F710 手柄遥操作功能包 |
 
 </div>
 
@@ -25,10 +26,11 @@
   * 2.7 [tl_hardware — ros2_control 硬件接口](#27-tl_hardware--ros2_control-硬件接口)
   * 2.8 [tl_teleop — VR 遥操作](#28-tl_teleop--vr-遥操作)
   * 2.9 [tl_example — 使用示例](#29-tl_example--使用示例)
+  * 2.10 [tl_teleop_f710 — F710 手柄遥操作](#210-tl_teleop_f710--f710-手柄遥操作)
 
 ## 1 功能包概览
 
-`src/` 目录包含 **9 个功能包**，每个功能包（及子包）的作用如下：
+`src/` 目录包含 **10 个功能包**，每个功能包（及子包）的作用如下：
 
 ```
 src/
@@ -64,11 +66,17 @@ src/
 ├── tl_ros2_interface/       # ROS2 消息与服务接口
 │   ├── msg/                 # 11 个 msg 定义文件
 │   └── srv/                 # 45 个 srv 定义文件
-└── tl_teleop/               # VR 遥操作（C++ 节点，PXREA SDK）
-    ├── config/
-    ├── launch/
-    ├── lib/                 # PXREA Robot SDK
-    └── src/
+├── tl_teleop/               # VR 遥操作（C++ 节点，PXREA SDK）
+│   ├── config/
+│   ├── launch/
+│   ├── lib/                 # PXREA Robot SDK
+│   └── src/
+└── tl_teleop_f710/          # F710 手柄遥操作（C++ 节点）
+    ├── config/              # 4 套参数配置
+    ├── launch/              # 4 个启动文件
+    ├── include/tl_teleop_f710/
+    ├── src/                 # 遥操作节点 + KDL IK 仿真桥接
+    └── udev/                # 手柄 udev 规则
 ```
 
 ## 2 功能包说明
@@ -169,3 +177,18 @@ src/
 - `medical_demo`：医疗/实验室自动化场景的 moveL 队列运动示例
 
 示例节点展示了如何通过 tl_driver 的服务和话题接口实现典型的机械臂控制流程。
+
+### 2.10 tl_teleop_f710 — F710 手柄遥操作
+
+通过 **Logitech F710 游戏手柄**远程控制天链机械臂运动（C++ 节点）。
+
+- **直接 ServoJ 方案**：节点内部自行 IK 求解，以 **250Hz（4ms）** 周期稳定输出关节角到 `/tl_driver/set_servoj_pos`
+- **双模式**：真机模式通过 ServoJ 关节跟踪驱动；仿真模式通过 KDL `ChainIkSolverPos_LMA` 本地 IK + Gazebo position controller 驱动
+- **完整上电流程**：自动执行 `connect_arm → power_on → set_mode → set_speed → open_servoj`
+- **安全机制**：Back+Start 紧急停止、工作空间软限位、摇杆死区滤波
+- **6/7 轴自适应**：根据 `home_joints` 长度自动确定轴数
+- **异步 IK**：有摇杆输入时 `std::async` 独立线程做 IK，不阻塞 250Hz 控制循环
+
+配置参数位于 `config/` 下，按轴数和模式分为 4 套 YAML 文件。运行时依赖 `tl_driver` 功能包。
+
+详细说明请参考 [tl_teleop_f710/README.md](tl_teleop_f710/README.md)。
