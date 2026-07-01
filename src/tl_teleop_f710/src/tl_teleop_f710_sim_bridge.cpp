@@ -21,14 +21,11 @@
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 
-ServolSimBridge::ServolSimBridge()
-: rclcpp::Node("tl_teleop_f710_sim_bridge"),
-  ndof_(0)
+ServolSimBridge::ServolSimBridge() : rclcpp::Node("tl_teleop_f710_sim_bridge"), ndof_(0)
 {
   // ===== 参数 =====
   this->declare_parameter("arm_type", "tcb605");
-  this->declare_parameter("position_controller_topic",
-    "/tcb_group_position_controller/commands");
+  this->declare_parameter("position_controller_topic", "/tcb_group_position_controller/commands");
   this->declare_parameter("joint_state_topic", "/joint_states");
   this->declare_parameter("ik_eps", 1e-4);
   this->declare_parameter("ik_max_iter", 200);
@@ -46,25 +43,22 @@ ServolSimBridge::ServolSimBridge()
 
   // 初始化关节角缓存
   current_joints_.resize(ndof_);
-  for (int i = 0; i < ndof_; ++i) {
+  for (int i = 0; i < ndof_; ++i)
+  {
     current_joints_(i) = 0.0;
   }
 
   // ===== 订阅 =====
   servol_sub_ = this->create_subscription<tl_ros2_interface::msg::ServolMove>(
-    "/tl_driver/set_servol_pos", 10,
-    std::bind(&ServolSimBridge::servolCallback, this, std::placeholders::_1));
+      "/tl_driver/set_servol_pos", 10, std::bind(&ServolSimBridge::servolCallback, this, std::placeholders::_1));
 
   js_sub_ = this->create_subscription<sensor_msgs::msg::JointState>(
-    joint_state_topic_, 10,
-    std::bind(&ServolSimBridge::jointStateCallback, this, std::placeholders::_1));
+      joint_state_topic_, 10, std::bind(&ServolSimBridge::jointStateCallback, this, std::placeholders::_1));
 
   // ===== 发布 =====
-  pos_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(
-    position_controller_topic_, 10);
+  pos_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(position_controller_topic_, 10);
 
-  RCLCPP_INFO(this->get_logger(),
-    "仿真桥接节点已启动 (KDL IK, max_iter=%d, eps=%.1e)", ik_max_iter_, ik_eps_);
+  RCLCPP_INFO(this->get_logger(), "仿真桥接节点已启动 (KDL IK, max_iter=%d, eps=%.1e)", ik_max_iter_, ik_eps_);
 }
 
 void ServolSimBridge::initKDL()
@@ -73,15 +67,18 @@ void ServolSimBridge::initKDL()
   std::string urdf_path;
   std::string urdf_file = arm_type_ + ".urdf";
 
-  try {
+  try
+  {
     std::string pkg_path = ament_index_cpp::get_package_share_directory("tl_description");
     urdf_path = pkg_path + "/urdf/" + urdf_file;
-  } catch (...) {
-    urdf_path = std::string(std::getenv("HOME")) +
-      "/tl_robot_ros2_py/src/tl_description/urdf/" + urdf_file;
+  }
+  catch (...)
+  {
+    urdf_path = std::string(std::getenv("HOME")) + "/tl_robot_ros2_py/src/tl_description/urdf/" + urdf_file;
   }
 
-  if (access(urdf_path.c_str(), F_OK) != 0) {
+  if (access(urdf_path.c_str(), F_OK) != 0)
+  {
     RCLCPP_FATAL(this->get_logger(), "找不到 URDF 文件: %s", urdf_path.c_str());
     throw std::runtime_error("URDF not found");
   }
@@ -89,26 +86,31 @@ void ServolSimBridge::initKDL()
   RCLCPP_INFO(this->get_logger(), "加载 URDF: %s", urdf_path.c_str());
 
   KDL::Tree tree;
-  if (!kdl_parser::treeFromFile(urdf_path, tree)) {
+  if (!kdl_parser::treeFromFile(urdf_path, tree))
+  {
     RCLCPP_FATAL(this->get_logger(), "无法从 URDF 解析 KDL tree");
     throw std::runtime_error("Failed to parse URDF to KDL tree");
   }
 
   // 动态确定轴数：从 joint_names 统计或从 URDF 推断
   // 先获取根到所有可能 tip 的 chain 来确定 ndof
+  // 从高到低尝试（7→6），确保 7 轴臂优先匹配 7 轴链
   ndof_ = 0;
   std::string tip_link;
-  for (int n = 6; n <= 7; ++n) {  // 尝试 6 轴和 7 轴
+  for (int n = 7; n >= 6; --n)
+  {
     tip_link = "link" + std::to_string(n);
     KDL::Chain test_chain;
-    if (tree.getChain("link0", tip_link, test_chain)) {
+    if (tree.getChain("link0", tip_link, test_chain))
+    {
       ndof_ = test_chain.getNrOfJoints();
       chain_ = test_chain;
       break;
     }
   }
 
-  if (ndof_ == 0) {
+  if (ndof_ == 0)
+  {
     RCLCPP_FATAL(this->get_logger(), "无法获取 KDL chain (link0 -> linkN)");
     throw std::runtime_error("Failed to get KDL chain");
   }
@@ -117,7 +119,8 @@ void ServolSimBridge::initKDL()
 
   // 动态构建关节名
   joint_names_.clear();
-  for (int i = 1; i <= ndof_; ++i) {
+  for (int i = 1; i <= ndof_; ++i)
+  {
     joint_names_.push_back("joint" + std::to_string(i));
   }
 
@@ -126,11 +129,8 @@ void ServolSimBridge::initKDL()
   ik_solver_ = std::make_unique<KDL::ChainIkSolverPos_LMA>(chain_);
 }
 
-bool ServolSimBridge::solveIK(
-  double x, double y, double z,
-  double rx, double ry, double rz,
-  const KDL::JntArray & q_guess,
-  KDL::JntArray & q_out)
+bool ServolSimBridge::solveIK(double x, double y, double z, double rx, double ry, double rz,
+                              const KDL::JntArray& q_guess, KDL::JntArray& q_out)
 {
   // 构建目标位姿
   KDL::Frame target_frame;
@@ -141,19 +141,21 @@ bool ServolSimBridge::solveIK(
   q_out.resize(ndof_);
   int ret = ik_solver_->CartToJnt(q_guess, target_frame, q_out);
 
-  return (ret == 0);  // KDL 返回 0 表示成功
+  return (ret == 0); // KDL 返回 0 表示成功
 }
 
-void ServolSimBridge::jointStateCallback(
-  const sensor_msgs::msg::JointState::SharedPtr msg)
+void ServolSimBridge::jointStateCallback(const sensor_msgs::msg::JointState::SharedPtr msg)
 {
   // 缓存最新关节状态
   std::vector<double> positions(ndof_, 0.0);
   int found = 0;
 
-  for (size_t i = 0; i < msg->name.size() && i < msg->position.size(); ++i) {
-    for (int j = 0; j < ndof_; ++j) {
-      if (msg->name[i] == joint_names_[j]) {
+  for (size_t i = 0; i < msg->name.size() && i < msg->position.size(); ++i)
+  {
+    for (int j = 0; j < ndof_; ++j)
+    {
+      if (msg->name[i] == joint_names_[j])
+      {
         positions[j] = msg->position[i];
         found++;
         break;
@@ -161,19 +163,21 @@ void ServolSimBridge::jointStateCallback(
     }
   }
 
-  if (found == ndof_) {
+  if (found == ndof_)
+  {
     std::lock_guard<std::mutex> lock(joints_mutex_);
-    for (int i = 0; i < ndof_; ++i) {
+    for (int i = 0; i < ndof_; ++i)
+    {
       current_joints_(i) = positions[i];
     }
   }
 }
 
-void ServolSimBridge::servolCallback(
-  const tl_ros2_interface::msg::ServolMove::SharedPtr msg)
+void ServolSimBridge::servolCallback(const tl_ros2_interface::msg::ServolMove::SharedPtr msg)
 {
-  const auto & target = msg->target_pose;
-  if (target.size() < 6) {
+  const auto& target = msg->target_pose;
+  if (target.size() < 6)
+  {
     RCLCPP_ERROR(this->get_logger(), "target_pose 长度不足: %zu", target.size());
     return;
   }
@@ -193,9 +197,10 @@ void ServolSimBridge::servolCallback(
   // IK 求解
   bool ok = solveIK(x_m, y_m, z_m, target[3], target[4], target[5], q_guess, q_out);
 
-  if (!ok) {
-    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
-      "IK 求解失败 target=(%.1f, %.1f, %.1f)", target[0], target[1], target[2]);
+  if (!ok)
+  {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "IK 求解失败 target=(%.1f, %.1f, %.1f)",
+                         target[0], target[1], target[2]);
     return;
   }
 
@@ -208,13 +213,14 @@ void ServolSimBridge::servolCallback(
   // 发送到 position controller（弧度）
   std_msgs::msg::Float64MultiArray cmd_msg;
   cmd_msg.data.resize(ndof_);
-  for (int i = 0; i < ndof_; ++i) {
+  for (int i = 0; i < ndof_; ++i)
+  {
     cmd_msg.data[i] = q_out(i);
   }
   pos_pub_->publish(cmd_msg);
 }
 
-int main(int argc, char * argv[])
+int main(int argc, char *argv[])
 {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<ServolSimBridge>();
