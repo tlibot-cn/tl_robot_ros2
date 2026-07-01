@@ -43,8 +43,14 @@ F710TeleopNode::F710TeleopNode()
   joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>(
       "/joy", 10, std::bind(&F710TeleopNode::joyCallback, this, std::placeholders::_1));
 
+  // 订阅 /joint_states（用于获取当前关节角初始化）
+  js_sub_ = this->create_subscription<sensor_msgs::msg::JointState>(
+      "/joint_states", 10, std::bind(&F710TeleopNode::jointStateCallback, this, std::placeholders::_1));
+
   // 发布 /tl_driver/set_servoj_pos（Float64MultiArray）
   servoj_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/tl_driver/set_servoj_pos", 10);
+  // 发布 /tl_driver/set_servol_pos（ServolMove，仿真模式用）
+  servol_pub_ = this->create_publisher<tl_ros2_interface::msg::ServolMove>("/tl_driver/set_servol_pos", 10);
 
   // 服务客户端
   set_mode_client_ = this->create_client<tl_ros2_interface::srv::SetCurrentMode>("/tl_driver/set_current_mode");
@@ -54,19 +60,12 @@ F710TeleopNode::F710TeleopNode()
   connect_arm_client_ = this->create_client<std_srvs::srv::Trigger>("/tl_driver/connect_arm");
   power_on_client_ = this->create_client<std_srvs::srv::Trigger>("/tl_driver/power_on");
   coord_transform_client_ = this->create_client<tl_ros2_interface::srv::CoordTransform>("/tl_driver/coord_transform");
+  power_off_client_ = this->create_client<std_srvs::srv::Trigger>("/tl_driver/power_off");
 
-  // 仿真模式：提前初始化 KDL FK
+  // 仿真模式：提前初始化 KDL FK（jointStateCallback 首帧触发初始位姿）
   if (simulation_mode_)
   {
     initKDLFK();
-    std::vector<double> init_pose;
-    if (homeJointsToPose(init_pose))
-    {
-      target_pose_ = init_pose;
-      target_pose_ready_ = true;
-      RCLCPP_INFO(this->get_logger(), "初始位姿（FK）: [%.1f, %.1f, %.1f, %.2f, %.2f, %.2f]", target_pose_[0],
-                  target_pose_[1], target_pose_[2], target_pose_[3], target_pose_[4], target_pose_[5]);
-    }
   }
 
   // ServoJ 初始化定时器（1Hz）
@@ -103,7 +102,6 @@ void F710TeleopNode::declareParameters()
   this->declare_parameter("rot_sensitivity", 1.0);
   this->declare_parameter("deadzone", 0.15);
   this->declare_parameter("home_joints", std::vector<double>{0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
-  this->declare_parameter("workspace_limits", std::vector<double>{-500.0, 500.0, -500.0, 500.0, 0.0, 800.0});
   this->declare_parameter("axis_left_x", 0);
   this->declare_parameter("axis_left_y", 1);
   this->declare_parameter("axis_right_x", 3);
@@ -141,7 +139,6 @@ void F710TeleopNode::loadParameters()
   rot_sensitivity_ = this->get_parameter("rot_sensitivity").as_double();
   deadzone_ = this->get_parameter("deadzone").as_double();
   home_joints_ = this->get_parameter("home_joints").as_double_array();
-  workspace_limits_ = this->get_parameter("workspace_limits").as_double_array();
 
   axis_left_x_ = this->get_parameter("axis_left_x").as_int();
   axis_left_y_ = this->get_parameter("axis_left_y").as_int();
@@ -175,21 +172,18 @@ void F710TeleopNode::publishServoj(const std::vector<double>& joint_pos)
   servoj_pub_->publish(msg);
 }
 
-void F710TeleopNode::applyWorkspaceLimits(std::vector<double>& pose)
+void F710TeleopNode::publishServol()
 {
-  if (workspace_limits_.size() < 6)
+  if (target_pose_.size() < 6)
     return;
-  for (int i = 0; i < 3; ++i)
-  {
-    if (pose[i] < workspace_limits_[i * 2])
-      pose[i] = workspace_limits_[i * 2];
-    if (pose[i] > workspace_limits_[i * 2 + 1])
-      pose[i] = workspace_limits_[i * 2 + 1];
-  }
+  auto msg = tl_ros2_interface::msg::ServolMove();
+  msg.target_pose = target_pose_;
+  msg.step_size = 5.0;
+  msg.coord = 1; // 基座标系
+  servol_pub_->publish(msg);
 }
 
-bool F710TeleopNode::cartesianToJoint(const std::vector<double>& cart_pose, const std::vector<double>& ref_joint,
-                                      std::vector<double>& joint_out)
+bool F710TeleopNode::cartesianToJoint(const std::vector<double>& cart_pose, std::vector<double>& joint_out)
 {
   if (!coord_transform_client_->wait_for_service(std::chrono::seconds(2)))
   {
@@ -207,10 +201,8 @@ bool F710TeleopNode::cartesianToJoint(const std::vector<double>& cart_pose, cons
   pos.resize(7, 0.0);
   req->origin_pos = pos;
 
-  // reference_pos: 当前关节角，补齐到 7
-  std::vector<double> ref = ref_joint;
-  ref.resize(7, 0.0);
-  req->reference_pos = ref;
+  // reference_pos: 传零让求解器自由求解（与 Python 版本一致）
+  req->reference_pos = std::vector<double>(7, 0.0);
 
   auto future = coord_transform_client_->async_send_request(req);
   if (future.wait_for(std::chrono::seconds(5)) != std::future_status::ready)
@@ -425,34 +417,121 @@ void F710TeleopNode::initServoj()
   // 状态 5：ServoJ 开启完成
   if (init_state_ == 5)
   {
-    RCLCPP_INFO(this->get_logger(), "ServoJ 已开启，遥操作就绪 ✅");
+    RCLCPP_INFO(this->get_logger(), "ServoJ 已开启，等待 joint_states 初始化位姿...");
     init_state_ = 6;
-    afterInit();
+    // 初始化位姿由 jointStateCallback 首帧触发
     return;
   }
 }
 
-void F710TeleopNode::afterInit()
+void F710TeleopNode::jointStateCallback(const sensor_msgs::msg::JointState::SharedPtr msg)
 {
-  if (simulation_mode_)
-    return;
-  if (target_pose_ready_)
-    return;
+  // 缓存当前关节角
+  std::vector<double> positions(ndof_, 0.0);
+  int found = 0;
+  for (size_t i = 0; i < msg->name.size() && i < msg->position.size(); ++i)
+  {
+    for (int j = 0; j < ndof_; ++j)
+    {
+      std::string jn = "joint" + std::to_string(j + 1);
+      if (msg->name[i] == jn)
+      {
+        positions[j] = msg->position[i];
+        found++;
+        break;
+      }
+    }
+  }
+  if (found == ndof_)
+  {
+    current_joint_state_ = positions;
+    joint_state_ready_ = true;
+  }
 
-  // 在独立线程中执行阻塞的服务调用，避免阻塞 executor
-  async_future_ = std::async(std::launch::async,
-                             [this]()
-                             {
-                               std::vector<double> init_pose;
-                               if (homeJointsToPose(init_pose))
-                               {
-                                 target_pose_ = init_pose;
-                                 target_pose_ready_ = true;
-                                 RCLCPP_INFO(this->get_logger(), "初始位姿（FK）: [%.1f, %.1f, %.1f, %.2f, %.2f, %.2f]",
-                                             target_pose_[0], target_pose_[1], target_pose_[2], target_pose_[3],
-                                             target_pose_[4], target_pose_[5]);
-                               }
-                             });
+  // 首帧到达且初始化完成 → 用当前关节角初始化位姿
+  if (joint_state_ready_ && init_state_ >= 6 && !target_pose_ready_)
+  {
+    // /joint_states 为弧度，set_servoJ_pos 需角度 → 转换
+    std::vector<double> joint_deg = current_joint_state_;
+    for (auto& v : joint_deg)
+      v *= 180.0 / M_PI;
+
+    // 用当前关节角作为初始指令（不移动）
+    {
+      std::lock_guard<std::mutex> lock(joint_mutex_);
+      last_joint_cmd_ = joint_deg;
+    }
+
+    // 异步 FK 算出当前笛卡尔位姿作为 target_pose_
+    async_future_ =
+        std::async(std::launch::async,
+                   [this]()
+                   {
+                     std::vector<double> pose;
+                     if (currentJointToPose(pose))
+                     {
+                       target_pose_ = pose;
+                       target_pose_ready_ = true;
+                       RCLCPP_INFO(this->get_logger(), "初始位姿（当前关节角FK）: [%.1f, %.1f, %.1f, %.2f, %.2f, %.2f]",
+                                   target_pose_[0], target_pose_[1], target_pose_[2], target_pose_[3], target_pose_[4],
+                                   target_pose_[5]);
+                     }
+                   });
+  }
+}
+
+bool F710TeleopNode::currentJointToPose(std::vector<double>& pose_out)
+{
+  if (!simulation_mode_)
+  {
+    // 真机：调用 coord_transform 做 FK（关节→笛卡尔）
+    if (!coord_transform_client_->wait_for_service(std::chrono::seconds(2)))
+    {
+      RCLCPP_ERROR(this->get_logger(), "coord_transform 服务不可用");
+      return false;
+    }
+    auto req = std::make_shared<tl_ros2_interface::srv::CoordTransform::Request>();
+    req->origin_coord = 0;
+    req->target_coord = 1;
+    req->form = 0;
+    // /joint_states 为弧度，coord_transform 需角度 → 转换
+    std::vector<double> pos = current_joint_state_;
+    for (auto& v : pos)
+      v *= 180.0 / M_PI;
+    pos.resize(7, 0.0);
+    req->origin_pos = pos;
+    req->reference_pos = std::vector<double>(7, 0.0);
+
+    auto future = coord_transform_client_->async_send_request(req);
+    if (future.wait_for(std::chrono::seconds(5)) != std::future_status::ready)
+    {
+      RCLCPP_WARN(this->get_logger(), "currentJointToPose 调用超时");
+      return false;
+    }
+    auto ret = future.get();
+    if (!ret->success || ret->target_pos.size() < 6)
+      return false;
+    pose_out.assign(ret->target_pos.begin(), ret->target_pos.begin() + 6);
+    return true;
+  }
+
+  // 仿真：KDL 本地 FK
+  if (!kdl_fk_ready_)
+    return false;
+
+  KDL::JntArray q_in(ndof_);
+  for (int i = 0; i < ndof_; ++i)
+    q_in(i) = current_joint_state_[i];
+  KDL::Frame frame_out;
+  if (kdl_fk_solver_->JntToCart(q_in, frame_out) != 0)
+    return false;
+  double x = frame_out.p.x() * 1000.0;
+  double y = frame_out.p.y() * 1000.0;
+  double z = frame_out.p.z() * 1000.0;
+  double rx, ry, rz;
+  frame_out.M.GetRPY(rx, ry, rz);
+  pose_out = {x, y, z, rx, ry, rz};
+  return true;
 }
 
 void F710TeleopNode::closeServoj()
@@ -467,6 +546,27 @@ void F710TeleopNode::closeServoj()
   catch (const std::exception& e)
   {
     RCLCPP_ERROR(this->get_logger(), "关闭 ServoJ 异常: %s", e.what());
+  }
+  // 切回示教模式并下电（匹配 Python 版本行为）
+  try
+  {
+    auto mode_req = std::make_shared<tl_ros2_interface::srv::SetCurrentMode::Request>();
+    mode_req->mode = 0;
+    set_mode_client_->async_send_request(mode_req);
+    RCLCPP_INFO(this->get_logger(), "已切换至示教模式");
+  }
+  catch (const std::exception& e)
+  {
+    RCLCPP_ERROR(this->get_logger(), "设置示教模式异常: %s", e.what());
+  }
+  try
+  {
+    power_off_client_->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>());
+    RCLCPP_INFO(this->get_logger(), "机械臂已下电");
+  }
+  catch (const std::exception& e)
+  {
+    RCLCPP_ERROR(this->get_logger(), "下电异常: %s", e.what());
   }
 }
 
@@ -488,7 +588,7 @@ void F710TeleopNode::controlLoop()
   auto now = this->now();
 
   int needed_axes = std::max({axis_left_x_, axis_left_y_, axis_right_x_, axis_right_y_});
-  int needed_btns = std::max({btn_a_, btn_b_, btn_lb_, btn_rb_, btn_back_, btn_start_});
+  int needed_btns = std::max({btn_a_, btn_lb_, btn_rb_, btn_back_, btn_start_});
   if (static_cast<int>(joy.axes.size()) <= needed_axes || static_cast<int>(joy.buttons.size()) <= needed_btns)
   {
     return;
@@ -497,13 +597,30 @@ void F710TeleopNode::controlLoop()
   double dpad_y = (static_cast<int>(joy.axes.size()) > axis_dpad_y_) ? joy.axes[axis_dpad_y_] : 0.0;
   bool has_dpad = static_cast<int>(joy.axes.size()) > axis_dpad_y_;
 
-  // ========== 1. 紧急停止：Back+Start ==========
-  if (joy.buttons[btn_back_] == 1 && joy.buttons[btn_start_] == 1)
+  // ========== 1. Back+Start 切换 停止/恢复（边缘检测） ==========
+  bool bs_now = (joy.buttons[btn_back_] == 1 && joy.buttons[btn_start_] == 1);
+  if (bs_now && !prev_bs_)
   {
-    stop_mode_ = true;
-    RCLCPP_WARN(this->get_logger(), "⚠️ 紧急停止 (Back+Start)");
-    return;
+    if (stop_mode_)
+    {
+      // 检查所有摇杆归零
+      double lx_c = applyDeadzone(joy.axes[axis_left_x_], deadzone_);
+      double ly_c = applyDeadzone(joy.axes[axis_left_y_], deadzone_);
+      double rx_c = applyDeadzone(joy.axes[axis_right_x_], deadzone_);
+      double ry_c = applyDeadzone(joy.axes[axis_right_y_], deadzone_);
+      if (std::abs(lx_c) < 0.01 && std::abs(ly_c) < 0.01 && std::abs(rx_c) < 0.01 && std::abs(ry_c) < 0.01)
+      {
+        stop_mode_ = false;
+        RCLCPP_INFO(this->get_logger(), "▶️ 遥操作恢复");
+      }
+    }
+    else
+    {
+      stop_mode_ = true;
+      RCLCPP_WARN(this->get_logger(), "⏸️ 遥操作暂停 (Back+Start 恢复)");
+    }
   }
+  prev_bs_ = bs_now;
 
   if (stop_mode_)
     return;
@@ -512,48 +629,52 @@ void F710TeleopNode::controlLoop()
   if (has_dpad && dpad_y != 0.0 && (now - last_dpad_time_).seconds() > 0.3)
   {
     if (dpad_y > 0.0)
-    {
       speed_value_ = std::min(speed_max_, speed_value_ + speed_step_);
-    }
     else
-    {
       speed_value_ = std::max(speed_min_, speed_value_ - speed_step_);
-    }
     last_dpad_time_ = now;
     RCLCPP_INFO(this->get_logger(), "速度: %.0f", speed_value_);
   }
 
-  // ========== 3. A 键回零（防抖 500ms，异步 IK） ==========
+  // ========== 3. A 键回零（防抖 500ms，直接发 home 关节角+异步 FK 更新 target_pose_） ==========
   if (joy.buttons[btn_a_] == 1 && !ik_pending_.load() && (now - last_a_press_).seconds() > 0.5)
   {
     last_a_press_ = now;
     stop_mode_ = false;
-    ik_pending_.store(true);
-    async_future_ =
-        std::async(std::launch::async,
-                   [this]()
-                   {
-                     std::vector<double> home_pose;
-                     if (homeJointsToPose(home_pose))
-                     {
-                       target_pose_ = home_pose;
-                       speed_value_ = speed_default_;
-                       // 回零后立即 IK，更新关节缓存
-                       std::vector<double> ref, joint_cmd;
-                       {
-                         std::lock_guard<std::mutex> lock(joint_mutex_);
-                         ref = last_joint_cmd_;
-                       }
-                       if (cartesianToJoint(target_pose_, ref, joint_cmd))
-                       {
-                         std::lock_guard<std::mutex> lock(joint_mutex_);
-                         last_joint_cmd_ = joint_cmd;
-                       }
-                       RCLCPP_INFO(this->get_logger(), "回零 -> [%.1f, %.1f, %.1f, %.2f, %.2f, %.2f]", target_pose_[0],
-                                   target_pose_[1], target_pose_[2], target_pose_[3], target_pose_[4], target_pose_[5]);
-                     }
-                     ik_pending_.store(false);
-                   });
+    speed_value_ = speed_default_;
+    // 直接发 home_joints（度），不做 IK（与 Python 版本一致）
+    {
+      std::lock_guard<std::mutex> lock(joint_mutex_);
+      last_joint_cmd_ = home_joints_;
+    }
+    // 仿真模式：立即发 ServolMove，否则 sim_bridge 不会收到回零指令
+    if (simulation_mode_)
+    {
+      std::vector<double> home_pose;
+      if (homeJointsToPose(home_pose))
+      {
+        target_pose_ = home_pose;
+        publishServol();
+        RCLCPP_INFO(this->get_logger(), "回零 -> [%.1f, %.1f, %.1f, %.2f, %.2f, %.2f]", target_pose_[0],
+                    target_pose_[1], target_pose_[2], target_pose_[3], target_pose_[4], target_pose_[5]);
+      }
+    }
+    else
+    {
+      // 真机：异步 FK 更新 target_pose_
+      async_future_ = std::async(std::launch::async,
+                                 [this]()
+                                 {
+                                   std::vector<double> home_pose;
+                                   if (homeJointsToPose(home_pose))
+                                   {
+                                     target_pose_ = home_pose;
+                                     RCLCPP_INFO(this->get_logger(), "回零 -> [%.1f, %.1f, %.1f, %.2f, %.2f, %.2f]",
+                                                 target_pose_[0], target_pose_[1], target_pose_[2], target_pose_[3],
+                                                 target_pose_[4], target_pose_[5]);
+                                   }
+                                 });
+    }
     return;
   }
 
@@ -566,27 +687,25 @@ void F710TeleopNode::controlLoop()
   double dt = 1.0 / control_rate_;
   double scale = speed_value_ / 100.0;
 
-  // 笛卡尔速度 [vx, vy, vz, vroll, vpitch, vyaw]
   double cart_vel[6] = {0.0};
-  cart_vel[0] = lx * pos_sensitivity_ * scale; // x
-  cart_vel[1] = ly * pos_sensitivity_ * scale; // y
-  cart_vel[2] = ry * pos_sensitivity_ * scale; // z
-  cart_vel[5] = rx * rot_sensitivity_ * scale; // yaw (default)
+  cart_vel[0] = lx * pos_sensitivity_ * scale;
+  cart_vel[1] = ly * pos_sensitivity_ * scale;
+  cart_vel[2] = ry * pos_sensitivity_ * scale;
+  cart_vel[5] = rx * rot_sensitivity_ * scale;
 
   bool lb = joy.buttons[btn_lb_] == 1;
   bool rb = joy.buttons[btn_rb_] == 1;
   if (lb && !rb)
   {
-    cart_vel[3] = rx * rot_sensitivity_ * scale; // roll
+    cart_vel[3] = rx * rot_sensitivity_ * scale;
     cart_vel[5] = 0.0;
   }
   else if (rb && !lb)
   {
-    cart_vel[4] = rx * rot_sensitivity_ * scale; // pitch
+    cart_vel[4] = rx * rot_sensitivity_ * scale;
     cart_vel[5] = 0.0;
   }
 
-  // 积分
   bool has_input = false;
   for (int i = 0; i < 6; ++i)
   {
@@ -597,35 +716,37 @@ void F710TeleopNode::controlLoop()
     }
   }
 
-  // 工作空间限位
-  applyWorkspaceLimits(target_pose_);
-
   // ========== 5. 发送上一帧关节角（保持指令流不断） ==========
   {
     std::lock_guard<std::mutex> lock(joint_mutex_);
     publishServoj(last_joint_cmd_);
   }
 
-  // ========== 6. 有输入时异步 IK 更新关节角 ==========
-  if (has_input && !ik_pending_.load())
+  // ========== 6. 有输入时更新关节角 / Servol ==========
+  if (has_input)
   {
-    ik_pending_.store(true);
-    std::vector<double> target_copy = target_pose_;
-    async_future_ = std::async(std::launch::async,
-                               [this, target_copy]()
-                               {
-                                 std::vector<double> ref, joint_cmd;
+    if (simulation_mode_)
+    {
+      // 仿真：发布 ServolMove（笛卡尔位姿），由 sim_bridge 做 IK
+      publishServol();
+    }
+    else if (!ik_pending_.load())
+    {
+      // 真机：异步 IK 更新关节角
+      ik_pending_.store(true);
+      std::vector<double> target_copy = target_pose_;
+      async_future_ = std::async(std::launch::async,
+                                 [this, target_copy]()
                                  {
-                                   std::lock_guard<std::mutex> lock(joint_mutex_);
-                                   ref = last_joint_cmd_;
-                                 }
-                                 if (cartesianToJoint(target_copy, ref, joint_cmd))
-                                 {
-                                   std::lock_guard<std::mutex> lock(joint_mutex_);
-                                   last_joint_cmd_ = joint_cmd;
-                                 }
-                                 ik_pending_.store(false);
-                               });
+                                   std::vector<double> joint_cmd;
+                                   if (cartesianToJoint(target_copy, joint_cmd))
+                                   {
+                                     std::lock_guard<std::mutex> lock(joint_mutex_);
+                                     last_joint_cmd_ = joint_cmd;
+                                   }
+                                   ik_pending_.store(false);
+                                 });
+    }
   }
 }
 
