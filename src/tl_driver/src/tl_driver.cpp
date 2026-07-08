@@ -467,6 +467,25 @@ void TL_Arm::init()
               arm_port_aux_.c_str());
   if (connect())
   {
+    // 切换到示教模式
+    int ret = set_current_mode(socket_fd_, 0);
+    if (ret != Result::SUCCESS)
+    {
+      RCLCPP_ERROR(this->get_logger(), "[Init]: failed to set teach mode, result=%s", result_to_string(ret));
+      rclcpp::shutdown();
+      exit(0);
+    }
+
+    // 清除控制器错误和报警
+    ret = clear_error(socket_fd_);
+    if (ret != Result::SUCCESS)
+    {
+      RCLCPP_WARN(this->get_logger(), "[Init]: clear_error result=%s", result_to_string(ret));
+    }
+
+    // 清错后下电，释放控制器占用状态
+    power_off();
+
     power_on();
     RCLCPP_INFO(this->get_logger(), "上电延时2s...");
     std::this_thread::sleep_for(std::chrono::seconds(2));
@@ -493,6 +512,15 @@ bool TL_Arm::power_on()
 {
   int state = -1;
   get_servo_state(socket_fd_, state);
+
+  if (state == 3)
+  {
+    is_powered_ = true;
+    RCLCPP_INFO(this->get_logger(), "[PowerOn]: already power on");
+    return true;
+  }
+
+  get_servo_state(socket_fd_, state);
   switch (state)
   {
     case 0:
@@ -503,13 +531,15 @@ bool TL_Arm::power_on()
       set_servo_poweron(socket_fd_);
       break;
     case 2:
-      clear_error(socket_fd_);
-      set_servo_state(socket_fd_, 1);
-      set_servo_poweron(socket_fd_);
-      break;
+      RCLCPP_ERROR(this->get_logger(), "[PowerOn]: servo alarm state (2), cannot power on");
+      return false;
     case 3:
+      is_powered_ = true;
       RCLCPP_INFO(this->get_logger(), "[PowerOn]: already power on");
       return true;
+    default:
+      RCLCPP_ERROR(this->get_logger(), "[PowerOn]: unknown servo state %d", state);
+      return false;
   }
 
   get_servo_state(socket_fd_, state);
@@ -521,7 +551,7 @@ bool TL_Arm::power_on()
   }
   else
   {
-    RCLCPP_INFO(this->get_logger(), "[PowerOn]: failed to power on, servo_state = %d", state);
+    RCLCPP_ERROR(this->get_logger(), "[PowerOn]: failed to power on, servo_state = %d", state);
     return false;
   }
 }
