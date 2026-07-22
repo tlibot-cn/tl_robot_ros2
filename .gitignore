@@ -9,3 +9,4 @@ __pycache__/
 .cache/
 compile_commands.json
 .clangd
+scripts/workspace_measure/results
