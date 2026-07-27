@@ -56,16 +56,18 @@ struct TeleopTiming
     SDK_QUAT,
     ORIENT,
     IK,
+    INTERP,
     SERVO,
     TOTAL,
     SECTION_COUNT
   };
 
   static constexpr int REPORT_INTERVAL = 100;
-  static constexpr const char *NAMES[] = {"vr_get", "tcp_pose", "sdk_quat", "orient", "ik", "servo", "total"};
+  static constexpr const char *NAMES[] = {"vr_get", "tcp_pose", "sdk_quat", "orient", "ik", "interp", "servo", "total"};
 
   Slot slots[SECTION_COUNT]{};
   int counter{0};
+  Clock::time_point window_start_;
 
   void reset_all()
   {
@@ -74,6 +76,7 @@ struct TeleopTiming
       s.reset();
     }
     counter = 0;
+    window_start_ = Clock::now();
   }
 
   void tick(rclcpp::Logger logger)
@@ -88,8 +91,13 @@ struct TeleopTiming
 
   void report(rclcpp::Logger logger)
   {
+    auto elapsed = Clock::now() - window_start_;
+    auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+    double freq = elapsed_ms > 0 ? (counter * 1000.0 / elapsed_ms) : 0.0;
+
     std::stringstream ss;
-    ss << "\n=== Control Loop Timing (us) ===\n";
+    ss << "\n=== Control Loop Timing (us) ===";
+    ss << "  window=" << elapsed_ms << "ms  freq=" << std::fixed << std::setprecision(1) << freq << "Hz\n";
     for (int i = 0; i < SECTION_COUNT; ++i)
     {
       Slot& s = slots[i];
@@ -118,6 +126,8 @@ TL_Teleop::TL_Teleop() : Node("tl_teleop_node")
   declare_parameter("servo_vmax", 80.0);
   declare_parameter("servo_amax", 3000.0);
   declare_parameter("servo_jmax", 50000.0);
+  declare_parameter("ik_interval", 3);
+  declare_parameter("interp_mode", 1);
 
   arm_joints_ = get_parameter("arm_axis_mode").as_int();
   if (arm_joints_ != 6 && arm_joints_ != 7)
@@ -431,7 +441,7 @@ bool TL_Teleop::joints_safe(const std::vector<double>& new_joints)
   {
     if (std::abs(new_joints[i] - last_joints_[i]) > joint_jump_threshold_)
     {
-      RCLCPP_WARN(get_logger(), "Joint %zu jump too large: %.1f deg", i, std::abs(new_joints[i] - last_joints_[i]));
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Joint %zu jump too large: %.1f deg", i, std::abs(new_joints[i] - last_joints_[i]));
       return false;
     }
   }
@@ -447,9 +457,8 @@ void TL_Teleop::servoJ_send(const std::vector<double>& joint_target)
     return;
   }
 
-  auto msg = std_msgs::msg::Float64MultiArray();
-  msg.data = clamped;
-  servoj_pos_pub_->publish(msg);
+  msg_.data = clamped;
+  servoj_pos_pub_->publish(msg_);
 }
 
 // 四元数乘法：q1 * q2，表示先旋转 q2 再旋转 q1
@@ -656,30 +665,67 @@ void TL_Teleop::control_loop()
       double target_rz = rpy[2];
       prof.slots[TeleopTiming::ORIENT].record(std::chrono::steady_clock::now() - t_orient);
 
-      auto t_ik = std::chrono::steady_clock::now();
-      auto ik = get_inverse_kinematics(target_x, target_y, target_z, target_rx, target_ry, target_rz);
-      prof.slots[TeleopTiming::IK].record(std::chrono::steady_clock::now() - t_ik);
-      if (!ik.empty())
+      // ========== 异步 IK（不阻塞，最多 1 帧延迟）==========
+      // 始终检查上一帧 IK 是否完成
+      if (ik_future_.valid())
       {
-        // tl_driver CoordTransform 总是返回 7 个关节值，6 轴模式截取前 6 个
-        if (arm_joints_ == 6 && ik.size() > 6)
+        auto t_ik = std::chrono::steady_clock::now();
+        if (ik_future_.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
         {
-          ik.resize(6);
+          auto resp = ik_future_.get();
+          if (resp->success)
+          {
+            last_ik_result_ = resp->target_pos;
+            // tl_driver CoordTransform 总是返回 7 个关节值，6 轴模式截取前 6 个
+            if (arm_joints_ == 6 && last_ik_result_.size() > 6)
+            {
+              last_ik_result_.resize(6);
+            }
+          }
         }
+        prof.slots[TeleopTiming::IK].record(std::chrono::steady_clock::now() - t_ik);
+      }
+
+      // 发起新的异步 IK 请求（立即返回，不阻塞控制循环）
+      {
+        auto req = std::make_shared<tl_ros2_interface::srv::CoordTransform::Request>();
+        req->origin_coord = 1;
+        req->target_coord = 0;
+        req->form = 0;
+        req->origin_pos = {target_x, target_y, target_z, target_rx, target_ry, target_rz, 0.0};
+        req->reference_pos = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+        ik_future_ = coord_transform_client_->async_send_request(req).future.share();
+      }
+
+      // 发送 ServoJ：VR 变化时有新 IK 结果，未变化时重复上一帧
+      if (!last_ik_result_.empty())
+      {
         auto t_servo = std::chrono::steady_clock::now();
-        servoJ_send(ik);
+        servoJ_send(last_ik_result_);
         prof.slots[TeleopTiming::SERVO].record(std::chrono::steady_clock::now() - t_servo);
       }
     }
 
-    // 固定频率控制：100Hz，睡眠补足剩余时间
+    // 固定频率控制：100Hz，混合休眠 + 自旋保持精度
     auto t1 = std::chrono::steady_clock::now();
     prof.slots[TeleopTiming::TOTAL].record(t1 - t0);
     auto elapsed = std::chrono::duration<double>(t1 - t0).count();
     double sleep_time = CONTROL_PERIOD_S - elapsed;
     if (sleep_time > 0)
     {
-      std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int64_t>(sleep_time * 1e6)));
+      // 前段用 sleep_for（省电），后段 500us 用自旋（维持精度）
+      constexpr double SPIN_SAFE_US = 500.0;
+      double sleep_us = sleep_time * 1e6;
+      if (sleep_us > SPIN_SAFE_US)
+      {
+        std::this_thread::sleep_for(
+            std::chrono::microseconds(static_cast<int64_t>(sleep_us - SPIN_SAFE_US)));
+      }
+      // 自旋等待剩余时间，避免 sleep_for 精度不足
+      while (std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() < CONTROL_PERIOD_S)
+      {
+        std::this_thread::yield();
+      }
     }
     prof.tick(get_logger());
   }
