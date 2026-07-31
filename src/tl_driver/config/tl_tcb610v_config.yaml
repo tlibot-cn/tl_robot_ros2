@@ -1,7 +1,7 @@
 tl_driver:   
   ros__parameters:  
     #robot param  
-    arm_ip: "192.168.1.13"          # 设置TCP连接时的IP  
+    arm_ip: "192.168.1.14"          # 设置TCP连接时的IP  
     arm_port: "6001"                # 设置TCP连接时的端口  
     arm_port_aux: "7000"
     arm_type: "TCB610V"

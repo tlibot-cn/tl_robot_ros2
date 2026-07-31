@@ -90,6 +90,10 @@ private:
   std::vector<double> servo_jmax_;
   double servo_speed_{25.0};
 
+  // Async IK: non-blocking IK requests, at most 1-frame delay
+  std::shared_future<std::shared_ptr<tl_ros2_interface::srv::CoordTransform::Response>> ik_future_;
+  std::vector<double> last_ik_result_;
+
   // ROS2 service clients
   rclcpp::Client<tl_ros2_interface::srv::SetSpeed>::SharedPtr set_speed_client_;
   rclcpp::Client<tl_ros2_interface::srv::SetCurrentMode>::SharedPtr set_current_mode_client_;
@@ -100,6 +104,7 @@ private:
 
   // Topic publisher
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr servoj_pos_pub_;
+  std_msgs::msg::Float64MultiArray msg_;
 
   // Topic subscriber + cache
   rclcpp::Subscription<tl_ros2_interface::msg::CartesianPose>::SharedPtr tcp_pose_sub_;

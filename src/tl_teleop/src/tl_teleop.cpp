@@ -12,6 +12,105 @@ using json = nlohmann::json;
 
 static constexpr double GRIP_THRESHOLD = 0.9;
 static constexpr double CONTROL_PERIOD_S = 0.01;
+struct TeleopTiming
+{
+  using Clock = std::chrono::steady_clock;
+
+  struct Slot
+  {
+    Clock::duration min{Clock::duration::max()};
+    Clock::duration max{Clock::duration::zero()};
+    Clock::duration total{0};
+    int count{0};
+
+    void record(Clock::duration d)
+    {
+      min = std::min(min, d);
+      max = std::max(max, d);
+      total += d;
+      ++count;
+    }
+    void reset()
+    {
+      *this = Slot{};
+    }
+
+    long long avg_us() const
+    {
+      return count > 0 ? std::chrono::duration_cast<std::chrono::microseconds>(total).count() / count : 0;
+    }
+    long long min_us() const
+    {
+      return min == Clock::duration::max() ? 0 : std::chrono::duration_cast<std::chrono::microseconds>(min).count();
+    }
+    long long max_us() const
+    {
+      return max == Clock::duration::zero() ? 0 : std::chrono::duration_cast<std::chrono::microseconds>(max).count();
+    }
+  };
+
+  enum Idx : int
+  {
+    VR_GET = 0,
+    TCP_POSE,
+    SDK_QUAT,
+    ORIENT,
+    IK,
+    INTERP,
+    SERVO,
+    TOTAL,
+    SECTION_COUNT
+  };
+
+  static constexpr int REPORT_INTERVAL = 100;
+  static constexpr const char *NAMES[] = {"vr_get", "tcp_pose", "sdk_quat", "orient", "ik", "interp", "servo", "total"};
+
+  Slot slots[SECTION_COUNT]{};
+  int counter{0};
+  Clock::time_point window_start_;
+
+  void reset_all()
+  {
+    for (auto& s : slots)
+    {
+      s.reset();
+    }
+    counter = 0;
+    window_start_ = Clock::now();
+  }
+
+  void tick(rclcpp::Logger logger)
+  {
+    ++counter;
+    if (counter >= REPORT_INTERVAL)
+    {
+      report(logger);
+      reset_all();
+    }
+  }
+
+  void report(rclcpp::Logger logger)
+  {
+    auto elapsed = Clock::now() - window_start_;
+    auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+    double freq = elapsed_ms > 0 ? (counter * 1000.0 / elapsed_ms) : 0.0;
+
+    std::stringstream ss;
+    ss << "\n=== Control Loop Timing (us) ===";
+    ss << "  window=" << elapsed_ms << "ms  freq=" << std::fixed << std::setprecision(1) << freq << "Hz\n";
+    for (int i = 0; i < SECTION_COUNT; ++i)
+    {
+      Slot& s = slots[i];
+      if (s.count > 0)
+      {
+        ss << "  " << NAMES[i] << ": min=" << s.min_us() << " avg=" << s.avg_us() << " max=" << s.max_us()
+           << " cnt=" << s.count << "\n";
+      }
+    }
+    RCLCPP_INFO(logger, "%s", ss.str().c_str());
+  }
+};
+
 
 TL_Teleop::TL_Teleop() : Node("tl_teleop_node")
 {
@@ -27,6 +126,8 @@ TL_Teleop::TL_Teleop() : Node("tl_teleop_node")
   declare_parameter("servo_vmax", 80.0);
   declare_parameter("servo_amax", 3000.0);
   declare_parameter("servo_jmax", 50000.0);
+  declare_parameter("ik_interval", 3);
+  declare_parameter("interp_mode", 1);
 
   arm_joints_ = get_parameter("arm_axis_mode").as_int();
   if (arm_joints_ != 6 && arm_joints_ != 7)
@@ -340,7 +441,7 @@ bool TL_Teleop::joints_safe(const std::vector<double>& new_joints)
   {
     if (std::abs(new_joints[i] - last_joints_[i]) > joint_jump_threshold_)
     {
-      RCLCPP_WARN(get_logger(), "Joint %zu jump too large: %.1f deg", i, std::abs(new_joints[i] - last_joints_[i]));
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Joint %zu jump too large: %.1f deg", i, std::abs(new_joints[i] - last_joints_[i]));
       return false;
     }
   }
@@ -356,9 +457,8 @@ void TL_Teleop::servoJ_send(const std::vector<double>& joint_target)
     return;
   }
 
-  auto msg = std_msgs::msg::Float64MultiArray();
-  msg.data = clamped;
-  servoj_pos_pub_->publish(msg);
+  msg_.data = clamped;
+  servoj_pos_pub_->publish(msg_);
 }
 
 // 四元数乘法：q1 * q2，表示先旋转 q2 再旋转 q1
@@ -399,6 +499,7 @@ void TL_Teleop::control_loop()
 {
   // 基准点：握下扳机瞬间的机械臂笛卡尔位置（mm）
   double base_x = 0.0, base_y = 0.0, base_z = 0.0;
+  TeleopTiming prof;
 
   while (running_)
   {
@@ -408,6 +509,7 @@ void TL_Teleop::control_loop()
     double grip;
     bool a_button;
     vr_state_.get(pose, grip, a_button);
+    prof.slots[TeleopTiming::VR_GET].record(std::chrono::steady_clock::now() - t0);
 
     double x = pose[0], y = pose[1], z = pose[2];
     double qx = pose[3], qy = pose[4], qz = pose[5], qw = pose[6];
@@ -432,7 +534,9 @@ void TL_Teleop::control_loop()
       {
         // 刚握下扳机时，记录当前机械臂位姿作为基准点
         // 后续手柄位移以此刻为原点，避免绝对坐标系漂移
+        auto t_section = std::chrono::steady_clock::now();
         auto cart = get_arm_cartesian_pose();
+        prof.slots[TeleopTiming::TCP_POSE].record(std::chrono::steady_clock::now() - t_section);
         if (!cart.empty() && cart.size() >= 6)
         {
           base_x = cart[0];
@@ -440,7 +544,9 @@ void TL_Teleop::control_loop()
           base_z = cart[2];
           double base_rx = cart[3], base_ry = cart[4], base_rz = cart[5];
           // 将当前位姿的 RPY 通过 SDK 转为四元数，作为角度基准
+          auto t_section = std::chrono::steady_clock::now();
           auto arm_quat = get_rpy2quat_sdk(base_rx, base_ry, base_rz);
+          prof.slots[TeleopTiming::SDK_QUAT].record(std::chrono::steady_clock::now() - t_section);
           // VR 手柄当前姿态（qx,qy,qz,qw 顺序）
           std::array<double, 4> current_vr_quat = {qx, qy, qz, qw};
           {
@@ -528,6 +634,7 @@ void TL_Teleop::control_loop()
 
       // 取最短旋转路径：若当前 quat 与 home quat 点积为负，翻转其中一个
       // 避免 360°→0° 走长路
+      auto t_orient = std::chrono::steady_clock::now();
       std::array<double, 4> vr_quat_wxyz = {qw, qx, qy, qz};
       std::array<double, 4> vr_home_wxyz = {vr_hq[3], vr_hq[0], vr_hq[1], vr_hq[2]};
 
@@ -556,27 +663,71 @@ void TL_Teleop::control_loop()
       double target_rx = rpy[0];
       double target_ry = -rpy[1];
       double target_rz = rpy[2];
+      prof.slots[TeleopTiming::ORIENT].record(std::chrono::steady_clock::now() - t_orient);
 
-      auto ik = get_inverse_kinematics(target_x, target_y, target_z, target_rx, target_ry, target_rz);
-      if (!ik.empty())
+      // ========== 异步 IK（不阻塞，最多 1 帧延迟）==========
+      // 始终检查上一帧 IK 是否完成
+      if (ik_future_.valid())
       {
-        // tl_driver CoordTransform 总是返回 7 个关节值，6 轴模式截取前 6 个
-        if (arm_joints_ == 6 && ik.size() > 6)
+        auto t_ik = std::chrono::steady_clock::now();
+        if (ik_future_.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
         {
-          ik.resize(6);
+          auto resp = ik_future_.get();
+          if (resp->success)
+          {
+            last_ik_result_ = resp->target_pos;
+            // tl_driver CoordTransform 总是返回 7 个关节值，6 轴模式截取前 6 个
+            if (arm_joints_ == 6 && last_ik_result_.size() > 6)
+            {
+              last_ik_result_.resize(6);
+            }
+          }
         }
-        servoJ_send(ik);
+        prof.slots[TeleopTiming::IK].record(std::chrono::steady_clock::now() - t_ik);
+      }
+
+      // 发起新的异步 IK 请求（立即返回，不阻塞控制循环）
+      {
+        auto req = std::make_shared<tl_ros2_interface::srv::CoordTransform::Request>();
+        req->origin_coord = 1;
+        req->target_coord = 0;
+        req->form = 0;
+        req->origin_pos = {target_x, target_y, target_z, target_rx, target_ry, target_rz, 0.0};
+        req->reference_pos = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+        ik_future_ = coord_transform_client_->async_send_request(req).future.share();
+      }
+
+      // 发送 ServoJ：VR 变化时有新 IK 结果，未变化时重复上一帧
+      if (!last_ik_result_.empty())
+      {
+        auto t_servo = std::chrono::steady_clock::now();
+        servoJ_send(last_ik_result_);
+        prof.slots[TeleopTiming::SERVO].record(std::chrono::steady_clock::now() - t_servo);
       }
     }
 
-    // 固定频率控制：100Hz，睡眠补足剩余时间
+    // 固定频率控制：100Hz，混合休眠 + 自旋保持精度
     auto t1 = std::chrono::steady_clock::now();
+    prof.slots[TeleopTiming::TOTAL].record(t1 - t0);
     auto elapsed = std::chrono::duration<double>(t1 - t0).count();
     double sleep_time = CONTROL_PERIOD_S - elapsed;
     if (sleep_time > 0)
     {
-      std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int64_t>(sleep_time * 1e6)));
+      // 前段用 sleep_for（省电），后段 500us 用自旋（维持精度）
+      constexpr double SPIN_SAFE_US = 500.0;
+      double sleep_us = sleep_time * 1e6;
+      if (sleep_us > SPIN_SAFE_US)
+      {
+        std::this_thread::sleep_for(
+            std::chrono::microseconds(static_cast<int64_t>(sleep_us - SPIN_SAFE_US)));
+      }
+      // 自旋等待剩余时间，避免 sleep_for 精度不足
+      while (std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() < CONTROL_PERIOD_S)
+      {
+        std::this_thread::yield();
+      }
     }
+    prof.tick(get_logger());
   }
 }
 
@@ -626,6 +777,7 @@ void TL_Teleop::run_control_loop()
 
 namespace
 {
+
 std::atomic<bool> g_sigint_received{false};
 
 extern "C" void sigint_handler(int)
