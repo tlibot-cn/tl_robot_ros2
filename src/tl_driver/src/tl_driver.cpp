@@ -1815,7 +1815,6 @@ void TL_Arm::handle_get_pos_reachable_service(
 void TL_Arm::handle_set_dh_param_service(const std::shared_ptr<tl_ros2_interface::srv::SetDHParam::Request> request,
                                          std::shared_ptr<tl_ros2_interface::srv::SetDHParam::Response> response)
 {
-  (void)request;
   if (!is_connected())
   {
     response->success = false;
@@ -1823,10 +1822,27 @@ void TL_Arm::handle_set_dh_param_service(const std::shared_ptr<tl_ros2_interface
     return;
   }
 
-  // 新 SDK 的 RobotDHParam 结构体已改为 alpha/a/theta/d，与旧 L1~L20 参数不匹配，
-  // 暂不支持设置 DH 参数，待厂商提供字段映射后恢复
-  response->success = false;
-  response->message = "set_dh_param not supported by current SDK";
+  // 新 SDK: 标准DH参数 alpha/a/theta/d，逐字段映射到 SDK 的 tl::RobotDHParam
+  RobotDHParam dh{};
+  const auto &p = request->param;
+  for (int i = 0; i < 6 && i < static_cast<int>(p.alpha.size()); ++i) dh.alpha[i] = p.alpha[i];
+  for (int i = 0; i < 6 && i < static_cast<int>(p.a.size()); ++i) dh.a[i] = p.a[i];
+  for (int i = 0; i < 6 && i < static_cast<int>(p.theta.size()); ++i) dh.theta[i] = p.theta[i];
+  for (int i = 0; i < 6 && i < static_cast<int>(p.d.size()); ++i) dh.d[i] = p.d[i];
+  dh.eulerAngle = p.euler_angle;
+  dh.mountingAngle = p.mounting_angle;
+
+  int ret = set_robot_dh_param(socket_fd_, dh);
+  if (ret == Result::SUCCESS)
+  {
+    response->success = true;
+    response->message = "Set DH param successfully";
+  }
+  else
+  {
+    response->success = false;
+    response->message = "Failed to set DH param, ret=" + std::to_string(ret);
+  }
 }
 
 void TL_Arm::handle_get_dh_param_service(const std::shared_ptr<tl_ros2_interface::srv::GetDHParam::Request> request,
@@ -1840,10 +1856,26 @@ void TL_Arm::handle_get_dh_param_service(const std::shared_ptr<tl_ros2_interface
     return;
   }
 
-  // 新 SDK 的 RobotDHParam 结构体已改为 alpha/a/theta/d，与旧 L1~L20 参数不匹配，
-  // 暂不支持读取 DH 参数，待厂商提供字段映射后恢复
-  response->success = false;
-  response->message = "get_dh_param not supported by current SDK";
+  // 新 SDK: 标准DH参数 alpha/a/theta/d，逐字段映射到 ROS2 消息
+  RobotDHParam dh{};
+  int ret = get_robot_dh_param(socket_fd_, dh);
+  if (ret == Result::SUCCESS)
+  {
+    auto &p = response->param;
+    p.alpha.assign(dh.alpha, dh.alpha + 6);
+    p.a.assign(dh.a, dh.a + 6);
+    p.theta.assign(dh.theta, dh.theta + 6);
+    p.d.assign(dh.d, dh.d + 6);
+    p.euler_angle = dh.eulerAngle;
+    p.mounting_angle = dh.mountingAngle;
+    response->success = true;
+    response->message = "Get DH param successfully";
+  }
+  else
+  {
+    response->success = false;
+    response->message = "Failed to get DH param, ret=" + std::to_string(ret);
+  }
 }
 
 void TL_Arm::handle_get_all_job_filename_service(
