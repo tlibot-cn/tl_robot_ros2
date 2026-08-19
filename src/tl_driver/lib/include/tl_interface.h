@@ -16,6 +16,15 @@ namespace tl
 
 // ==================== 日志控制 ====================
 
+// Windows 头文件（windows.h）会 #define ERROR 为 0、DEBUG 等宏，
+// 与下方枚举值冲突导致编译错误，这里先取消宏定义。
+#ifdef ERROR
+#undef ERROR
+#endif
+#ifdef DEBUG
+#undef DEBUG
+#endif
+
 typedef enum
 {
   DEBUG = 0,   ///< 调试
@@ -34,8 +43,8 @@ TL_API void set_log_level(LogLevel level);
 // ==================== 连接/版本 ====================
 
 /**
- * @brief 获取库信息
- * @return 库版本相关信息
+ * @brief 获取版本信息（包含 SDK 封装层版本 + 底层控制器库版本）
+ * @return 版本信息字符串，格式 "SDK v<sdk版本> (Base: <底层库版本>)"
  */
 TL_API std::string get_library_version();
 
@@ -90,6 +99,40 @@ TL_API Result set_reconnect(SOCKETFD socketFd, bool reconnect);
 TL_API Result set_receive_error_or_warnning_message_callback(SOCKETFD socketFd,
                                                       void (*function)(int messageType, const char *message,
                                                                        int messageCode));
+
+/**
+ * @brief 收到控制器消息时触发设置的回调函数
+ * @param function 指向回调函数的指针，签名 `void (int messageID, const char* message)`。
+ *        回调收到控制器主动推送的消息 id 与消息内容。
+ * @warning 回调函数内不能做耗时操作或阻塞（控制器消息线程内触发）。
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result recv_message(SOCKETFD socketFd, void (*function)(int messageID, const char *message));
+
+/**
+ * @brief 配置控制器有线网口 IP
+ * @param name 配置名
+ * @param address ip地址
+ * @param gateway 网关
+ * @param dns DNS
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result set_controller_ip(SOCKETFD socketFd, const std::string& name, const std::string& address,
+                                const std::string& gateway, const std::string& dns);
+
+/**
+ * @brief 获取控制器序列号 ID
+ * @param id 输出：控制器序列号 ID 字符串
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result get_controller_id(SOCKETFD socketFd, std::string& id);
+
+/**
+ * @brief 获取算法库版本
+ * @param version 输出：算法库版本号字符串
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result get_nexmotion_lib_version(SOCKETFD socketFd, std::string& version);
 
 // ==================== 伺服/清错/状态 ====================
 
@@ -152,6 +195,20 @@ TL_API Result get_robot_state(SOCKETFD socketFd, RobotState param);
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_robot_running_state(SOCKETFD socketFd, int& status);
+
+/**
+ * @brief 设置当前机器人DH参数
+ * @param param 结构体参数（标准 DH 参数：alpha[6]/a[6]/theta[6]/d[6] + eulerAngle/mountingAngle）
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result set_robot_dh_param(SOCKETFD socketFd, const RobotDHParam& param);
+
+/**
+ * @brief 恢复机械臂默认DH参数
+ * @param robotNum 机器人编号，0 为默认（单机器人模式）；多机器人模式下为机器人序号
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result restore_default_param_DH(SOCKETFD socketFd, int robotNum);
 
 /**
  * @brief 获取当前机器人DH参数
@@ -244,6 +301,14 @@ TL_API Result get_robot_type(SOCKETFD socketFd, RobotType& type);
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_robot_switch(SOCKETFD socketFd, int& robot);
+
+/**
+ * @brief 设置当前机器人指定关节参数
+ * @param id 关节编号，取值范围 [1,6]（6轴，对应 J1~J6）；7轴为 [1,7]（对应 J1~J7）
+ * @param param 关节参数（结构体）
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result set_robot_joint_param(SOCKETFD socketFd, int id, RobotJointParam& param);
 
 /**
  * @brief 获取指定关节参数
@@ -684,6 +749,39 @@ TL_API Result get_origin_coord_to_target_coord(SOCKETFD socketFd, Coord originCo
                                         int form = 0, const std::vector<double>& reference_pos = {});
 
 /**
+ * @brief 检测目标点位是否可达
+ * @param socketFd 控制端口 socket 句柄
+ * @param pos 目标点位坐标数据，vector 长度 14
+ *        [0] 坐标系 0：关节 1：直角 2：工具 3：用户
+ *        [1] 0：角度制 1：弧度制
+ *        [2] 形态
+ *        [3] 工具手坐标序号
+ *        [4] 用户坐标序号
+ *        [5][6] 备用
+ *        [7-13] 点位信息
+ * @param movetype 移动方式 "MOVJ" 或 "MOVL"
+ * @param result 输出：点位是否可达（true=可达）
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result get_pos_reachable(SOCKETFD socketFd, std::vector<double> pos, std::string movetype, bool& result);
+
+/**
+ * @brief 获取逆运动学全解
+ * @param transMatrix 4x4 变换矩阵（旋转+平移），vector长度 = 16（行主序）
+ * @param posLast 上一关节角，长度 = 6（6轴）
+ * @param posACS 当前关节角，长度 = 6（6轴）
+ * @param swivel_angle 旋角
+ * @param optimize 优化标志
+ * @param param 逆运动学参数（InverseKinParameter：构型/工具/用户坐标/待机位等）
+ * @param full_solution 输出：逆运动学全解结果（多组关节角）
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result get_full_solution(SOCKETFD socketFd, std::vector<double> transMatrix,
+                                std::vector<double> posLast, std::vector<double> posACS, double swivel_angle,
+                                bool optimize, InverseKinParameter param,
+                                std::vector<std::vector<double>>& full_solution);
+
+/**
  * @brief 查询四点标定结果
  * @param result 输出：四点标定结果（查询到的标记点数据）
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
@@ -844,6 +942,40 @@ TL_API Result get_payload_param_by_sensor(SOCKETFD socketFd, PayloadParamBySenso
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT
  */
 TL_API Result get_joint_voltage(SOCKETFD socketFd, std::vector<double>& joint_voltage, std::vector<double>& positioner_voltage);
+
+/**
+ * @brief 获取关节温度
+ * @param temperatures 输出：各关节温度
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result get_joint_temperature(SOCKETFD socketFd, std::vector<double>& temperatures);
+
+/**
+ * @brief 获取当前电机电流（24.03/DEV 接口）
+ * @param motor_current 输出：机器人本体电机电流，长度 7，单位 ‰
+ * @param motor_current_sync 输出：外部轴电机电流，长度 5，单位 ‰
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result get_current_motor_current(SOCKETFD socketFd, std::vector<double>& motor_current,
+                                        std::vector<double>& motor_current_sync);
+
+/**
+ * @brief 获取当前电机扭矩
+ * @param motor_torque 输出：机器人本体电机扭矩，长度 7，单位 [%]
+ * @param motor_torque_sync 输出：外部轴电机扭矩，长度 5，单位 [%]
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result get_current_motor_torque(SOCKETFD socketFd, std::vector<int>& motor_torque, std::vector<int>& motor_torque_sync);
+
+/**
+ * @brief 获取当前末端线速度和关节速度
+ * @param line_speed 输出：末端线速度，单位 [mm/s]
+ * @param joint_speed 输出：关节速度，长度 7，单位 [度/s]
+ * @param joint_speed_sync 输出：外部轴关节速度，长度 5，单位 [度/s]
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result get_current_line_speed_and_joint_speed(SOCKETFD socketFd, double& line_speed, std::vector<double>& joint_speed,
+                                                      std::vector<double>& joint_speed_sync);
 
 // ==================== 全局变量 ====================
 
