@@ -99,6 +99,14 @@ TL_API Result job_insert_moveL(SOCKETFD socketFd, int line, MoveCmd moveCmd);
  */
 TL_API Result job_insert_moveC(SOCKETFD socketFd, int line, MoveCmd moveCmd);
 
+/**
+ * @brief 向作业文件插入一条增量指令 IMOVE
+ * @param line 插入的行号
+ * @param moveCmd 运动指令参数，详见 MoveCmd；增量指令需 targetPosType=3（变量）、targetPosName="RP0001"（厂商约定）
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误（如行号越界或参数非法）；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result job_insert_imove(SOCKETFD socketFd, int line, MoveCmd moveCmd);
+
 } // namespace tl
 
 #endif /* TL_SDK_TL_JOB_H */
