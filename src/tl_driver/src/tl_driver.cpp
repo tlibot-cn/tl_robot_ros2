@@ -2,6 +2,7 @@
 #include <thread>
 
 #include "tl_driver/tl_driver.h"
+using namespace tl;
 
 namespace
 {
