@@ -977,10 +977,9 @@ void TL_Arm::handle_get_controller_id_service(const std::shared_ptr<std_srvs::sr
     return;
   }
 
-  char id[128] = {0};
-  int ret = get_controller_id(socket_fd_, id);
-  response->success = (ret == Result::SUCCESS);
-  response->message = response->success ? std::string(id) : "Failed to get controller ID";
+  // 新 SDK 未提供 get_controller_id 接口，暂时返回不支持
+  response->success = false;
+  response->message = "get_controller_id not supported by current SDK";
 }
 
 void TL_Arm::handle_start_jogging_service(const std::shared_ptr<tl_ros2_interface::srv::Jogging::Request> request,
@@ -1125,19 +1124,16 @@ void TL_Arm::handle_get_robot_joint_param_service(
   {
     response->success = true;
     response->message = "Get robot joint param successfully";
-    response->param.reduction_ratio = param.reducRatio;
+    response->param.reduction_ratio = param.reduceRatio;
     response->param.encoder_resolution = param.encoderResolution;
-    response->param.pos_sw_limit = param.posSWLimit;
-    response->param.neg_sw_limit = param.negSWLimit;
+    response->param.pos_sw_limit = param.maxPos;
+    response->param.neg_sw_limit = param.minPos;
     response->param.rated_rot_speed = param.ratedRotSpeed;
-    response->param.rated_derot_speed = param.ratedDeRotSpeed;
     response->param.max_rot_speed = param.maxRotSpeed;
-    response->param.max_derot_speed = param.maxDeRotSpeed;
-    response->param.rated_vel = param.ratedVel;
-    response->param.rated_devel = param.deRatedVel;
     response->param.max_acc = param.maxAcc;
-    response->param.max_dec = param.maxDecel;
-    response->param.direction = param.direction;
+    response->param.max_dec = param.maxDec;
+    response->param.direction = param.axisDirection;
+    // 新 SDK 无 rated_derot_speed / max_derot_speed / rated_vel / rated_devel 对应字段，保持默认 0
   }
   else
   {
@@ -1165,19 +1161,16 @@ void TL_Arm::handle_set_robot_joint_param_service(
   }
 
   RobotJointParam param{};
-  param.reducRatio = request->param.reduction_ratio;
+  param.reduceRatio = request->param.reduction_ratio;
   param.encoderResolution = request->param.encoder_resolution;
-  param.posSWLimit = request->param.pos_sw_limit;
-  param.negSWLimit = request->param.neg_sw_limit;
+  param.maxPos = request->param.pos_sw_limit;
+  param.minPos = request->param.neg_sw_limit;
   param.ratedRotSpeed = request->param.rated_rot_speed;
-  param.ratedDeRotSpeed = request->param.rated_derot_speed;
   param.maxRotSpeed = request->param.max_rot_speed;
-  param.maxDeRotSpeed = request->param.max_derot_speed;
-  param.ratedVel = request->param.rated_vel;
-  param.deRatedVel = request->param.rated_devel;
   param.maxAcc = request->param.max_acc;
-  param.maxDecel = request->param.max_dec;
-  param.direction = request->param.direction;
+  param.maxDec = request->param.max_dec;
+  param.axisDirection = request->param.direction;
+  // 新 SDK 无 rated_derot_speed / max_derot_speed / rated_vel / rated_devel 对应字段，忽略
 
   int ret = set_robot_joint_param(socket_fd_, request->id, param);
   response->success = (ret == Result::SUCCESS);
@@ -1256,19 +1249,9 @@ void TL_Arm::handle_get_motor_current_service(
     return;
   }
 
-  std::vector<double> motor_current;
-  int ret = get_current_motor_current_independent(socket_fd_, motor_current);
-  if (ret == Result::SUCCESS)
-  {
-    response->success = true;
-    response->message = "Get motor current successfully";
-    response->motor_current = motor_current;
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Failed to get motor current";
-  }
+  // 新 SDK 未提供 get_current_motor_current_independent 接口，暂时返回不支持
+  response->success = false;
+  response->message = "get_motor_current not supported by current SDK";
 }
 
 void TL_Arm::handle_get_joint_software_version_service(
@@ -1306,10 +1289,9 @@ void TL_Arm::handle_get_nexmotion_lib_version_service(const std::shared_ptr<std_
     return;
   }
 
-  std::string version;
-  int ret = get_nexmotion_lib_version(socket_fd_, version);
-  response->success = (ret == Result::SUCCESS);
-  response->message = response->success ? version : "Failed to get nexmotion lib version";
+  // 新 SDK 未提供 get_nexmotion_lib_version 接口，暂时返回不支持
+  response->success = false;
+  response->message = "get_nexmotion_lib_version not supported by current SDK";
 }
 
 void TL_Arm::handle_restore_default_dh_param_service(
@@ -1477,10 +1459,17 @@ void TL_Arm::handle_set_user_coord_service(const std::shared_ptr<tl_ros2_interfa
     return;
   }
 
-  std::vector<double> pos = {request->pos.position.x, request->pos.position.y, request->pos.position.z,
-                             request->pos.rpy.x,      request->pos.rpy.y,      request->pos.rpy.z};
+  // 使用新 SDK 推荐的 UserCoordParam 重载（旧的 vector 重载已标记 deprecated）
+  UserCoordParam param{};
+  param.location_type = 0; // 静态用户坐标
+  param.position[0] = request->pos.position.x;
+  param.position[1] = request->pos.position.y;
+  param.position[2] = request->pos.position.z;
+  param.position[3] = request->pos.rpy.x;
+  param.position[4] = request->pos.rpy.y;
+  param.position[5] = request->pos.rpy.z;
 
-  int ret = set_user_coordinate_data(socket_fd_, request->user_num, pos);
+  int ret = set_user_coordinate_data(socket_fd_, request->user_num, param);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Set user coordinate successfully" : "Failed to set user coordinate";
 }
@@ -1818,25 +1807,15 @@ void TL_Arm::handle_get_pos_reachable_service(
     return;
   }
 
-  std::vector<double> queryPos = request->pos;
-
-  bool result = false;
-  int ret = get_pos_reachable(socket_fd_, queryPos, request->move_type, result);
-  if (ret == Result::SUCCESS)
-  {
-    response->success = result;
-    response->message = response->success ? "Target pos is reachable" : "Target pos is not reachable";
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Fail to get pos reachable status";
-  }
+  // 新 SDK 未提供 get_pos_reachable 接口，暂时返回不支持
+  response->success = false;
+  response->message = "get_pos_reachable not supported by current SDK";
 }
 
 void TL_Arm::handle_set_dh_param_service(const std::shared_ptr<tl_ros2_interface::srv::SetDHParam::Request> request,
                                          std::shared_ptr<tl_ros2_interface::srv::SetDHParam::Response> response)
 {
+  (void)request;
   if (!is_connected())
   {
     response->success = false;
@@ -1844,74 +1823,10 @@ void TL_Arm::handle_set_dh_param_service(const std::shared_ptr<tl_ros2_interface
     return;
   }
 
-  RobotDHParam dh_param{};
-  dh_param.L1 = request->param.l1;
-  dh_param.L2 = request->param.l2;
-  dh_param.L3 = request->param.l3;
-  dh_param.L4 = request->param.l4;
-  dh_param.L5 = request->param.l5;
-  dh_param.L6 = request->param.l6;
-  dh_param.L7 = request->param.l7;
-  dh_param.L8 = request->param.l8;
-  dh_param.L9 = request->param.l9;
-  dh_param.L10 = request->param.l10;
-  dh_param.L11 = request->param.l11;
-  dh_param.L12 = request->param.l12;
-  dh_param.L13 = request->param.l13;
-  dh_param.L14 = request->param.l14;
-  dh_param.L15 = request->param.l15;
-  dh_param.L16 = request->param.l16;
-  dh_param.L17 = request->param.l17;
-  dh_param.L18 = request->param.l18;
-  dh_param.L19 = request->param.l19;
-  dh_param.L20 = request->param.l20;
-
-  dh_param.Couple_Coe_1_2 = request->param.couple_coe_1_2;
-  dh_param.Couple_Coe_2_3 = request->param.couple_coe_2_3;
-  dh_param.Couple_Coe_3_2 = request->param.couple_coe_3_2;
-  dh_param.Couple_Coe_3_4 = request->param.couple_coe_3_4;
-  dh_param.Couple_Coe_4_5 = request->param.couple_coe_4_5;
-  dh_param.Couple_Coe_4_6 = request->param.couple_coe_4_6;
-  dh_param.Couple_Coe_5_6 = request->param.couple_coe_5_6;
-
-  dh_param.dynamicLimit_max = request->param.dynamic_limit_max;
-  dh_param.dynamicLimit_min = request->param.dynamic_limit_max;
-
-  dh_param.pitch = request->param.pitch;
-  dh_param.sliding_lead_value = request->param.sliding_lead_value;
-  dh_param.uplift_lead_value = request->param.uplift_lead_value;
-  dh_param.spray_distance = request->param.spray_distance;
-
-  dh_param.threeAxisDirection = request->param.three_axis_direction;
-  dh_param.fiveAxisDirection = request->param.five_axis_direction;
-
-  dh_param.twoAxisConversionRatio = request->param.two_axis_convertion_ratio;
-  dh_param.threeAxisConversionRatio = request->param.three_axis_convertion_ratio;
-  dh_param.amplificationRatio = request->param.amplification_ratio;
-
-  dh_param.conversionratio_x = request->param.convertion_ratio_x;
-  dh_param.conversionratio_y = request->param.convertion_ratio_y;
-  dh_param.conversionratio_z = request->param.convertion_ratio_z;
-
-  dh_param.conversionratio_J1 = request->param.convertion_ratio_j1;
-  dh_param.conversionratio_J2 = request->param.convertion_ratio_j2;
-  dh_param.conversionratio_J3 = request->param.convertion_ratio_j3;
-  dh_param.upsideDown = request->param.upside_down;
-  dh_param.hanyu.PC = request->param.pc;
-
-  for (size_t i = 0; i < 3; i++)
-  {
-    dh_param.hanyu.SP[i] = (i < request->param.sp.size()) ? request->param.sp[i] : 0.0;
-    dh_param.hanyu.TL[i] = (i < request->param.tl.size()) ? request->param.tl[i] : 0.0;
-  }
-
-  int ret = set_robot_dh_param(socket_fd_, dh_param);
-  response->success = (ret == Result::SUCCESS);
-  response->message = response->success ? "Set DH param successfully" : "Failed to set DH param";
-
-  // 设置参数后机械臂会下电
-  power_off();
-  power_on();
+  // 新 SDK 的 RobotDHParam 结构体已改为 alpha/a/theta/d，与旧 L1~L20 参数不匹配，
+  // 暂不支持设置 DH 参数，待厂商提供字段映射后恢复
+  response->success = false;
+  response->message = "set_dh_param not supported by current SDK";
 }
 
 void TL_Arm::handle_get_dh_param_service(const std::shared_ptr<tl_ros2_interface::srv::GetDHParam::Request> request,
@@ -1925,67 +1840,10 @@ void TL_Arm::handle_get_dh_param_service(const std::shared_ptr<tl_ros2_interface
     return;
   }
 
-  RobotDHParam dh_param{};
-  int ret = get_robot_dh_param(socket_fd_, dh_param);
-  response->success = (ret == Result::SUCCESS);
-  response->message = response->success ? "Get DH param successfully" : "Failed to get DH param";
-
-  response->param.l1 = dh_param.L1;
-  response->param.l2 = dh_param.L2;
-  response->param.l3 = dh_param.L3;
-  response->param.l4 = dh_param.L4;
-  response->param.l5 = dh_param.L5;
-  response->param.l6 = dh_param.L6;
-  response->param.l7 = dh_param.L7;
-  response->param.l8 = dh_param.L8;
-  response->param.l9 = dh_param.L9;
-  response->param.l10 = dh_param.L10;
-  response->param.l11 = dh_param.L11;
-  response->param.l12 = dh_param.L12;
-  response->param.l13 = dh_param.L13;
-  response->param.l14 = dh_param.L14;
-  response->param.l15 = dh_param.L15;
-  response->param.l16 = dh_param.L16;
-  response->param.l17 = dh_param.L17;
-  response->param.l18 = dh_param.L18;
-  response->param.l19 = dh_param.L19;
-  response->param.l20 = dh_param.L20;
-
-  response->param.couple_coe_1_2 = dh_param.Couple_Coe_1_2;
-  response->param.couple_coe_2_3 = dh_param.Couple_Coe_2_3;
-  response->param.couple_coe_3_2 = dh_param.Couple_Coe_3_2;
-  response->param.couple_coe_3_4 = dh_param.Couple_Coe_3_4;
-  response->param.couple_coe_4_5 = dh_param.Couple_Coe_4_5;
-  response->param.couple_coe_4_6 = dh_param.Couple_Coe_4_6;
-  response->param.couple_coe_5_6 = dh_param.Couple_Coe_5_6;
-
-  response->param.dynamic_limit_max = dh_param.dynamicLimit_max;
-  response->param.dynamic_limit_min = dh_param.dynamicLimit_min;
-
-  response->param.pitch = dh_param.pitch;
-  response->param.sliding_lead_value = dh_param.sliding_lead_value;
-  response->param.uplift_lead_value = dh_param.uplift_lead_value;
-  response->param.spray_distance = dh_param.spray_distance;
-
-  response->param.three_axis_direction = dh_param.threeAxisDirection;
-  response->param.five_axis_direction = dh_param.fiveAxisDirection;
-
-  response->param.two_axis_convertion_ratio = dh_param.twoAxisConversionRatio;
-  response->param.three_axis_convertion_ratio = dh_param.threeAxisConversionRatio;
-  response->param.amplification_ratio = dh_param.amplificationRatio;
-
-  response->param.convertion_ratio_x = dh_param.conversionratio_x;
-  response->param.convertion_ratio_y = dh_param.conversionratio_y;
-  response->param.convertion_ratio_z = dh_param.conversionratio_z;
-
-  response->param.convertion_ratio_j1 = dh_param.conversionratio_J1;
-  response->param.convertion_ratio_j2 = dh_param.conversionratio_J2;
-  response->param.convertion_ratio_j3 = dh_param.conversionratio_J3;
-
-  response->param.upside_down = dh_param.upsideDown;
-  response->param.pc = dh_param.hanyu.PC;
-  response->param.sp.assign(dh_param.hanyu.SP, dh_param.hanyu.SP + 3);
-  response->param.tl.assign(dh_param.hanyu.TL, dh_param.hanyu.TL + 3);
+  // 新 SDK 的 RobotDHParam 结构体已改为 alpha/a/theta/d，与旧 L1~L20 参数不匹配，
+  // 暂不支持读取 DH 参数，待厂商提供字段映射后恢复
+  response->success = false;
+  response->message = "get_dh_param not supported by current SDK";
 }
 
 void TL_Arm::handle_get_all_job_filename_service(
@@ -2061,7 +1919,7 @@ void TL_Arm::handle_job_insert_movej_service(
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = request->cmd.coord;
+  cmd.coord = static_cast<Coord>(request->cmd.coord);
   cmd.velocity = request->cmd.velocity;
   cmd.velocitySync = request->cmd.velocity_sync;
   cmd.acc = request->cmd.acc;
@@ -2095,7 +1953,7 @@ void TL_Arm::handle_job_insert_movel_service(
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = request->cmd.coord;
+  cmd.coord = static_cast<Coord>(request->cmd.coord);
   cmd.velocity = request->cmd.velocity;
   cmd.velocitySync = request->cmd.velocity_sync;
   cmd.acc = request->cmd.acc;
@@ -2129,7 +1987,7 @@ void TL_Arm::handle_job_insert_imove_service(
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = request->cmd.coord;
+  cmd.coord = static_cast<Coord>(request->cmd.coord);
   cmd.velocity = request->cmd.velocity;
   cmd.velocitySync = request->cmd.velocity_sync;
   cmd.acc = request->cmd.acc;
@@ -2163,7 +2021,7 @@ void TL_Arm::handle_job_insert_movec_service(
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = request->cmd.coord;
+  cmd.coord = static_cast<Coord>(request->cmd.coord);
   cmd.velocity = request->cmd.velocity;
   cmd.velocitySync = request->cmd.velocity_sync;
   cmd.acc = request->cmd.acc;
@@ -2365,7 +2223,7 @@ void TL_Arm::handle_queue_motion_movej_service(
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = request->cmd.coord;
+  cmd.coord = static_cast<Coord>(request->cmd.coord);
   cmd.velocity = request->cmd.velocity;
   cmd.velocitySync = request->cmd.velocity_sync;
   cmd.acc = request->cmd.acc;
@@ -2438,21 +2296,9 @@ void TL_Arm::handle_get_current_motor_torque_service(
     return;
   }
 
-  std::vector<int> motor_torque{};
-  std::vector<int> motor_torque_sync{};
-  Result ret = get_current_motor_torque(socket_fd_, motor_torque, motor_torque_sync);
-  if (ret == Result::SUCCESS)
-  {
-    response->success = true;
-    response->message = "Get current motor torque successfully";
-    response->motor_torque = motor_torque;
-    response->motor_torque_sync = motor_torque_sync;
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Failed to get current motor torque";
-  }
+  // 新 SDK 未提供 get_current_motor_torque 接口，暂时返回不支持
+  response->success = false;
+  response->message = "get_current_motor_torque not supported by current SDK";
 }
 
 void TL_Arm::handle_get_current_line_joint_speed_service(
@@ -2468,23 +2314,9 @@ void TL_Arm::handle_get_current_line_joint_speed_service(
     return;
   }
 
-  double line_speed{0.0};
-  std::vector<double> joint_speed{};
-  std::vector<double> joint_speed_sync{};
-  Result ret = get_current_line_speed_and_joint_speed(socket_fd_, line_speed, joint_speed, joint_speed_sync);
-  if (ret == Result::SUCCESS)
-  {
-    response->success = true;
-    response->message = "Get current line and joint speed successfully";
-    response->line_speed = line_speed;
-    response->joint_speed = joint_speed;
-    response->joint_speed_sync = joint_speed_sync;
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Failed to get current line and joint speed";
-  }
+  // 新 SDK 未提供 get_current_line_speed_and_joint_speed 接口，暂时返回不支持
+  response->success = false;
+  response->message = "get_current_line_joint_speed not supported by current SDK";
 }
 
 void TL_Arm::handle_movej_topic(const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
@@ -2498,7 +2330,7 @@ void TL_Arm::handle_movej_topic(const tl_ros2_interface::msg::MoveCommand::Share
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = msg->coord;
+  cmd.coord = static_cast<Coord>(msg->coord);
   cmd.velocity = msg->velocity;
   cmd.velocitySync = msg->velocity_sync;
   cmd.acc = msg->acc;
@@ -2529,7 +2361,7 @@ void TL_Arm::handle_movel_topic(const tl_ros2_interface::msg::MoveCommand::Share
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = msg->coord;
+  cmd.coord = static_cast<Coord>(msg->coord);
   cmd.velocity = msg->velocity;
   cmd.velocitySync = msg->velocity_sync;
   cmd.acc = msg->acc;
