@@ -34,4 +34,9 @@ install(TARGETS medical_demo
   DESTINATION lib/${PROJECT_NAME}
 )
 
+# Python 驱动快速自检脚本（ros2 run tl_example test_all_interfaces）
+install(PROGRAMS scripts/test_all_interfaces.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()
