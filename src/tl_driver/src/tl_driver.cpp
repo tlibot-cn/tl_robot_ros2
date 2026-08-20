@@ -977,9 +977,10 @@ void TL_Arm::handle_get_controller_id_service(const std::shared_ptr<std_srvs::sr
     return;
   }
 
-  // 新 SDK 未提供 get_controller_id 接口，暂时返回不支持
-  response->success = false;
-  response->message = "get_controller_id not supported by current SDK";
+  std::string id;
+  int ret = get_controller_id(socket_fd_, id);
+  response->success = (ret == Result::SUCCESS);
+  response->message = response->success ? id : "Failed to get controller id, ret=" + std::to_string(ret);
 }
 
 void TL_Arm::handle_start_jogging_service(const std::shared_ptr<tl_ros2_interface::srv::Jogging::Request> request,
@@ -1055,7 +1056,8 @@ void TL_Arm::handle_get_robot_state_service(
     start_seq = g_robot_state_msg_buffer.seq;
   }
 
-  int ret = get_robot_state(socket_fd_, param);
+  // get_robot_state 需使用 7000 端口（socket_fd_aux_），回调亦注册在 7000 端口
+  int ret = get_robot_state(socket_fd_aux_, param);
   if (ret != Result::SUCCESS)
   {
     response->success = false;
@@ -1249,9 +1251,20 @@ void TL_Arm::handle_get_motor_current_service(
     return;
   }
 
-  // 新 SDK 未提供 get_current_motor_current_independent 接口，暂时返回不支持
-  response->success = false;
-  response->message = "get_motor_current not supported by current SDK";
+  std::vector<double> motor_current;
+  std::vector<double> motor_current_sync;
+  int ret = get_current_motor_current(socket_fd_, motor_current, motor_current_sync);
+  if (ret == Result::SUCCESS)
+  {
+    response->success = true;
+    response->message = "Get motor current successfully";
+    response->motor_current = motor_current;
+  }
+  else
+  {
+    response->success = false;
+    response->message = "Failed to get motor current, ret=" + std::to_string(ret);
+  }
 }
 
 void TL_Arm::handle_get_joint_software_version_service(
@@ -1289,9 +1302,10 @@ void TL_Arm::handle_get_nexmotion_lib_version_service(const std::shared_ptr<std_
     return;
   }
 
-  // 新 SDK 未提供 get_nexmotion_lib_version 接口，暂时返回不支持
-  response->success = false;
-  response->message = "get_nexmotion_lib_version not supported by current SDK";
+  std::string version;
+  int ret = get_nexmotion_lib_version(socket_fd_, version);
+  response->success = (ret == Result::SUCCESS);
+  response->message = response->success ? version : "Failed to get nexmotion lib version, ret=" + std::to_string(ret);
 }
 
 void TL_Arm::handle_restore_default_dh_param_service(
@@ -1650,6 +1664,11 @@ void TL_Arm::handle_modbus_write_service(const std::shared_ptr<tl_ros2_interface
 
   ModbusMasterParameter master_param;
   master_param.type = request->master_param.type;
+  // 兼容大小写：统一转大写后判断（SDK 期望 "TCP"/"RTU"）
+  for (auto &c : master_param.type)
+  {
+    if (c >= 'a' && c <= 'z') c -= 32;
+  }
   master_param.startAddress = request->master_param.start_addr;
 
   if (master_param.type == "TCP")
@@ -1707,6 +1726,11 @@ void TL_Arm::handle_modbus_read_service(const std::shared_ptr<tl_ros2_interface:
 
   ModbusMasterParameter master_param;
   master_param.type = request->master_param.type;
+  // 兼容大小写：统一转大写后判断（SDK 期望 "TCP"/"RTU"）
+  for (auto &c : master_param.type)
+  {
+    if (c >= 'a' && c <= 'z') c -= 32;
+  }
   master_param.startAddress = request->master_param.start_addr;
 
   if (master_param.type == "TCP")
@@ -1807,9 +1831,33 @@ void TL_Arm::handle_get_pos_reachable_service(
     return;
   }
 
-  // 新 SDK 未提供 get_pos_reachable 接口，暂时返回不支持
-  response->success = false;
-  response->message = "get_pos_reachable not supported by current SDK";
+  // SDK 要求 pos 为 14 位标准点位格式：[0]坐标系 [1]角度/弧度 [2]形态 [3]工具号 [4]用户号 [5][6]备用 [7-13]点位
+  // 兼容调用方传入 7 位（纯点位）或 6 位（直角点位）的写法：自动补全标准点位头
+  std::vector<double> pos(14, 0.0);
+  if (request->pos.size() >= 14)
+  {
+    pos = request->pos;
+  }
+  else
+  {
+    pos[3] = 1.0;  // 工具手序号
+    pos[4] = 1.0;  // 用户坐标序号
+    size_t n = std::min<size_t>(request->pos.size(), 7);
+    for (size_t i = 0; i < n; ++i) pos[7 + i] = request->pos[i];
+  }
+
+  bool reachable = false;
+  int ret = get_pos_reachable(socket_fd_, pos, request->move_type, reachable);
+  if (ret == Result::SUCCESS)
+  {
+    response->success = true;
+    response->message = reachable ? "Position is reachable" : "Position is NOT reachable";
+  }
+  else
+  {
+    response->success = false;
+    response->message = "Failed to check pos reachable, ret=" + std::to_string(ret);
+  }
 }
 
 void TL_Arm::handle_set_dh_param_service(const std::shared_ptr<tl_ros2_interface::srv::SetDHParam::Request> request,
@@ -2328,9 +2376,21 @@ void TL_Arm::handle_get_current_motor_torque_service(
     return;
   }
 
-  // 新 SDK 未提供 get_current_motor_torque 接口，暂时返回不支持
-  response->success = false;
-  response->message = "get_current_motor_torque not supported by current SDK";
+  std::vector<int> motor_torque;
+  std::vector<int> motor_torque_sync;
+  int ret = get_current_motor_torque(socket_fd_, motor_torque, motor_torque_sync);
+  if (ret == Result::SUCCESS)
+  {
+    response->success = true;
+    response->message = "Get current motor torque successfully";
+    response->motor_torque = motor_torque;
+    response->motor_torque_sync = motor_torque_sync;
+  }
+  else
+  {
+    response->success = false;
+    response->message = "Failed to get current motor torque, ret=" + std::to_string(ret);
+  }
 }
 
 void TL_Arm::handle_get_current_line_joint_speed_service(
@@ -2346,9 +2406,23 @@ void TL_Arm::handle_get_current_line_joint_speed_service(
     return;
   }
 
-  // 新 SDK 未提供 get_current_line_speed_and_joint_speed 接口，暂时返回不支持
-  response->success = false;
-  response->message = "get_current_line_joint_speed not supported by current SDK";
+  double line_speed = 0.0;
+  std::vector<double> joint_speed;
+  std::vector<double> joint_speed_sync;
+  int ret = get_current_line_speed_and_joint_speed(socket_fd_, line_speed, joint_speed, joint_speed_sync);
+  if (ret == Result::SUCCESS)
+  {
+    response->success = true;
+    response->message = "Get current line joint speed successfully";
+    response->line_speed = line_speed;
+    response->joint_speed = joint_speed;
+    response->joint_speed_sync = joint_speed_sync;
+  }
+  else
+  {
+    response->success = false;
+    response->message = "Failed to get current line joint speed, ret=" + std::to_string(ret);
+  }
 }
 
 void TL_Arm::handle_movej_topic(const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
