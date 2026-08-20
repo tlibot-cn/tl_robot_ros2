@@ -42,7 +42,53 @@ test_all_interfaces.py
 """
 
 import sys
+import os
+import glob
 import time
+import ctypes
+
+# ---- 自动路径引导（未手动 source 环境时也能找到本地 install 与 ROS 系统包）----
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+
+
+def _add_python_paths(base_dir):
+    """将 base_dir 下生成的 Python 模块目录加入 sys.path"""
+    if not base_dir or not os.path.isdir(base_dir):
+        return
+    for pat in ("local/lib/python3*/dist-packages", "lib/python3*/site-packages"):
+        for d in glob.glob(os.path.join(base_dir, pat)):
+            if d not in sys.path:
+                sys.path.insert(0, d)
+
+
+# 本地 colcon install 包（scripts 目录 -> 仓库根：../../..）
+_repo_root = os.path.abspath(os.path.join(_script_dir, "..", "..", ".."))
+_install_dir = os.path.join(_repo_root, "install")
+if os.path.isdir(_install_dir):
+    for _pkg in sorted(os.listdir(_install_dir)):
+        _add_python_paths(os.path.join(_install_dir, _pkg))
+# ROS 系统包（rclpy / std_srvs / sensor_msgs 等）
+_add_python_paths("/opt/ros/humble")
+
+
+def _preload_local_shared_libs(install_dir):
+    """预加载本地 install 各包的动态库，使未 source 环境时 rosidl 类型支持库可正常加载
+
+    运行时修改 LD_LIBRARY_PATH 对已运行进程无效，改用 ctypes 预加载，
+    将本地消息接口库（如 libtl_ros2_interface__rosidl_*.so）及其依赖载入全局符号表，
+    解决 "libtl_ros2_interface__rosidl_generator_py.so: cannot open shared object" 类错误。
+    """
+    if not install_dir or not os.path.isdir(install_dir):
+        return
+    for so in sorted(glob.glob(os.path.join(install_dir, "*", "lib", "*.so*"))):
+        try:
+            ctypes.CDLL(so, mode=ctypes.RTLD_GLOBAL)
+        except Exception:
+            # 依赖可能尚未加载；后续依赖就位后 import 时仍可解析，此处忽略单个失败
+            pass
+
+
+_preload_local_shared_libs(_install_dir)
 
 import rclpy
 from rclpy.node import Node
@@ -454,28 +500,45 @@ class DriverQuickTest(Node):
             self.print_arr("      output ", [float(v) for v in resp.output])
 
     def test_modbus(self):
-        self.logger.info("\n========== §13 Modbus ==========")
+        self.logger.info("\n========== §13 Modbus（RTU）==========")
+
+        # ---- RTU 主站参数（请自行配置实际参数）----
         mp = ModbusMasterParam()
-        mp.type = "tcp"
-        mp.start_addr = False
-        mp.tcp = ModbusTCPParam()
-        mp.tcp.ip = "192.168.1.100"
-        mp.tcp.port = 502
+        mp.type = "RTU"                # 主站类型：RTU
+        mp.start_addr = True          # false:起始地址为1；true:起始地址为0
+        mp.tcp = ModbusTCPParam()      # TCP 参数（本次用 RTU，无需配置）
         mp.rtu = ModbusRTUParam()
+        mp.rtu.slave_id = 1            # 从站号（请自行修改）
+        mp.rtu.port = 2               # 端口（请自行修改）
+        mp.rtu.baudrate = 115200         # 波特率（请自行修改）
+        mp.rtu.data_bit = 8            # 数据位（请自行修改）
+        mp.rtu.stop_bit = 1            # 停止位（请自行修改）
+        mp.rtu.check_bit = "None"      # 校验位 None/Even/Odd（请自行修改）
 
+        master_id = 1                  # 配方 id（最多保存 9 个）
+
+        # ---- 批量写：每个元素为 (起始地址, 寄存器值列表)，请自行填写 ----
+        batch_writes = [
+            # (addr, data)
+            (10, [1000]),            # 示例：从地址 0 开始连续写 3 个寄存器
+            # (10, [0x1234]),          # 示例2：从地址 10 写 1 个寄存器
+            # (20, [1, 0, 1, 0, 1]),   # 示例3：从地址 20 连续写 5 个寄存器
+        ]
         cli = self.wait_service("/tl_driver/modbus_write", ModbusWrite)
-        req = ModbusWrite.Request()
-        req.master_id = 1
-        req.addr = 0
-        req.data = [1]
-        req.master_param = mp
-        self.call_srv(cli, req, "modbus_write")
+        for addr, data in batch_writes:
+            req = ModbusWrite.Request()
+            req.master_id = master_id
+            req.addr = addr
+            req.data = data
+            req.master_param = mp
+            self.call_srv(cli, req, f"modbus_write(addr={addr}, n={len(data)})")
 
+        # ---- 读测试（可选，请自行配置起始地址/数量）----
         cli = self.wait_service("/tl_driver/modbus_read", ModbusRead)
         req = ModbusRead.Request()
-        req.master_id = 1
-        req.addr = 0
-        req.quantity = 1
+        req.master_id = master_id
+        req.addr = 10                   # 起始地址（请自行修改）
+        req.quantity = 5              # 读取数量（请自行修改）
         req.master_param = mp
         resp = self.call_srv(cli, req, "modbus_read")
         if resp and resp.success:
@@ -551,6 +614,9 @@ class DriverQuickTest(Node):
             self.logger.error("tl_driver 核心服务未就绪，请先启动 tl_driver 节点")
             return
 
+        # ============================================================
+        # 测试全部接口（危险和运动接口已跳过）
+        # ============================================================
         self.logger.info("\n========== §2 连接管理 ==========")
         self.call_trigger(cli_version, "get_library_version（库版本）")
         cli_nex = self.wait_service("/tl_driver/get_nexmotion_lib_version", Trigger)
