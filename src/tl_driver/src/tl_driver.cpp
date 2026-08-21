@@ -514,40 +514,38 @@ bool TL_Arm::power_on()
   int state = -1;
   get_servo_state(socket_fd_, state);
 
-  if (state == 3)
-  {
-    is_powered_ = true;
-    RCLCPP_INFO(this->get_logger(), "[PowerOn]: already power on");
-    return true;
-  }
-
-  get_servo_state(socket_fd_, state);
   switch (state)
   {
     case 0:
       set_servo_state(socket_fd_, 1);
+      RCLCPP_INFO(this->get_logger(), "[PowerOn]: waiting 2s for servo ready...");
+      std::this_thread::sleep_for(std::chrono::seconds(2));
       set_servo_poweron(socket_fd_);
       break;
     case 1:
       set_servo_poweron(socket_fd_);
       break;
     case 2:
-      RCLCPP_ERROR(this->get_logger(), "[PowerOn]: servo alarm state (2), cannot power on");
-      return false;
+      RCLCPP_WARN(this->get_logger(), "[PowerOn]: servo alarm state (2), clearing error first");
+      clear_error(socket_fd_);
+      set_servo_state(socket_fd_, 1);
+      set_servo_poweron(socket_fd_);
+      break;
     case 3:
-      is_powered_ = true;
-      RCLCPP_INFO(this->get_logger(), "[PowerOn]: already power on");
-      return true;
+      RCLCPP_INFO(this->get_logger(), "[PowerOn]: servo_state=3, re-executing power on");
+      set_servo_state(socket_fd_, 1);
+      set_servo_poweron(socket_fd_);
+      break;
     default:
       RCLCPP_ERROR(this->get_logger(), "[PowerOn]: unknown servo state %d", state);
       return false;
   }
 
   get_servo_state(socket_fd_, state);
+  RCLCPP_INFO(this->get_logger(), "[PowerOn]: servo_state = %d", state);
   if (state == 3)
   {
     is_powered_ = true;
-    RCLCPP_INFO(this->get_logger(), "[PowerOn]: successfully power on, servo_state = %d", state);
     return true;
   }
   else
@@ -681,13 +679,6 @@ void TL_Arm::handle_poweron_service(const std::shared_ptr<std_srvs::srv::Trigger
     return;
   }
 
-  if (is_powered())
-  {
-    response->success = true;
-    response->message = "Arm already power on";
-    return;
-  }
-
   response->success = power_on();
   response->message = response->success ? "Arm power on successfully" : "Failed to power on arm";
 }
@@ -728,18 +719,10 @@ void TL_Arm::handle_clear_error_service(const std::shared_ptr<std_srvs::srv::Tri
   int state = -1;
   get_servo_state(socket_fd_, state);
 
-  if (state == 2)
-  {
-    int ret = clear_error(socket_fd_);
-    response->success = (ret == Result::SUCCESS);
-    response->message =
-        response->success ? "Clear error successfully" : std::string("Clear error failed: ") + result_to_string(ret);
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Not an error state";
-  }
+  int ret = clear_error(socket_fd_);
+  response->success = (ret == Result::SUCCESS);
+  response->message =
+      response->success ? "Clear error successfully" : std::string("Clear error failed: ") + result_to_string(ret);
 }
 
 void TL_Arm::handle_set_speed_service(const std::shared_ptr<tl_ros2_interface::srv::SetSpeed::Request> request,
