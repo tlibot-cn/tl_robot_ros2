@@ -35,8 +35,8 @@ test_all_interfaces.py
 @usage
   方式一（推荐，需已 source install/setup.bash）:
     python3 test_all_interfaces.py
-  方式二（需已构建 tl_example 包）:
-    ros2 run tl_example test_all_interfaces
+  方式二（未 source 时直接运行，脚本会自动引导本地 install 路径）:
+    python3 src/tl_driver/test/test_all_interfaces.py
 @attention 请先启动 tl_driver 节点，如:
     ros2 launch tl_driver tl_tcb610_driver.launch.py
 """
