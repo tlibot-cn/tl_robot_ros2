@@ -19,21 +19,21 @@ struct RobotStateMessageBuffer
 
 RobotStateMessageBuffer g_robot_state_msg_buffer;
 
-// 普通 C 风格函数指针回调
-void robot_state_recv_callback(int msg_id, const char *msg)
+// 新 SDK：7000 端口机器人状态专用回调（robot_state_callback）
+void robot_state_callback_handler(const char *state)
 {
   {
     std::lock_guard<std::mutex> lock(g_robot_state_msg_buffer.mutex);
 
-    g_robot_state_msg_buffer.last_msg_id = msg_id;
-    g_robot_state_msg_buffer.last_msg = msg ? msg : "";
+    g_robot_state_msg_buffer.last_msg_id = MessageLists::ROBOT_STATE;
+    g_robot_state_msg_buffer.last_msg = state ? state : "";
     ++g_robot_state_msg_buffer.seq;
   }
 
   g_robot_state_msg_buffer.cv.notify_all();
 
   std::cout << "\033[32m"
-            << "id = " << msg_id << ", msg = " << (msg ? msg : "") << "\033[0m" << std::endl;
+            << "robot_state = " << (state ? state : "") << "\033[0m" << std::endl;
 }
 
 void receive_error_or_warning_message_callback(int messageType, const char *message, int messageCode)
@@ -611,7 +611,8 @@ bool TL_Arm::connect()
 
   set_receive_error_or_warnning_message_callback(socket_fd_aux_, receive_error_or_warning_message_callback);
 
-  recv_message(socket_fd_aux_, robot_state_recv_callback);
+  // 新 SDK：机器人状态通过 robot_state_callback（7000 端口）接收，不再使用旧的 recv_message 机制
+  robot_state_callback(socket_fd_aux_, robot_state_callback_handler);
 
   RCLCPP_INFO(this->get_logger(), "[Connect]: successfully connected to arm at %s:%s,%s", arm_ip_.c_str(),
               arm_port_.c_str(), arm_port_aux_.c_str());
@@ -960,8 +961,8 @@ void TL_Arm::handle_get_controller_id_service(const std::shared_ptr<std_srvs::sr
     return;
   }
 
-  std::string id;
-  int ret = get_controller_id(socket_fd_, id);
+  std::string id{};
+  Result ret = get_controller_id(socket_fd_, id);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? id : "Failed to get controller id, ret=" + std::to_string(ret);
 }
@@ -1033,6 +1034,13 @@ void TL_Arm::handle_get_robot_state_service(
   param.ioPort = request->io_port;
   param.optional = request->optional;
 
+  // 新 SDK：io_state=true 但 io_port 为空会返回 PARAM_ERR(-3)，请求 IO 时必须指定端口
+  if (param.ioState && param.ioPort.empty())
+  {
+    RCLCPP_WARN(this->get_logger(), "[GetRobotState]: io_state=true but io_port empty, force io_state=false");
+    param.ioState = false;
+  }
+
   uint64_t start_seq = 0;
   {
     std::lock_guard<std::mutex> lock(g_robot_state_msg_buffer.mutex);
@@ -1040,7 +1048,7 @@ void TL_Arm::handle_get_robot_state_service(
   }
 
   // get_robot_state 需使用 7000 端口（socket_fd_aux_），回调亦注册在 7000 端口
-  int ret = get_robot_state(socket_fd_aux_, param);
+  Result ret = get_robot_state(socket_fd_aux_, param);
   if (ret != Result::SUCCESS)
   {
     response->success = false;
@@ -1234,9 +1242,9 @@ void TL_Arm::handle_get_motor_current_service(
     return;
   }
 
-  std::vector<double> motor_current;
-  std::vector<double> motor_current_sync;
-  int ret = get_current_motor_current(socket_fd_, motor_current, motor_current_sync);
+  std::vector<double> motor_current{};
+  std::vector<double> motor_current_sync{};
+  Result ret = get_current_motor_current(socket_fd_, motor_current, motor_current_sync);
   if (ret == Result::SUCCESS)
   {
     response->success = true;
@@ -1286,7 +1294,7 @@ void TL_Arm::handle_get_nexmotion_lib_version_service(const std::shared_ptr<std_
   }
 
   std::string version;
-  int ret = get_nexmotion_lib_version(socket_fd_, version);
+  Result ret = get_nexmotion_lib_version(socket_fd_, version);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? version : "Failed to get nexmotion lib version, ret=" + std::to_string(ret);
 }
@@ -1753,7 +1761,7 @@ void TL_Arm::handle_modbus_read_service(const std::shared_ptr<tl_ros2_interface:
     return;
   }
 
-  std::vector<int> data;
+  std::vector<int> data{};
   ret = modbus_read_holding_registers(socket_fd_, request->master_id, request->addr, request->quantity, data);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Modbus read successfully" : "Failed to read Modbus";
@@ -1814,32 +1822,19 @@ void TL_Arm::handle_get_pos_reachable_service(
     return;
   }
 
-  // SDK 要求 pos 为 14 位标准点位格式：[0]坐标系 [1]角度/弧度 [2]形态 [3]工具号 [4]用户号 [5][6]备用 [7-13]点位
-  // 兼容调用方传入 7 位（纯点位）或 6 位（直角点位）的写法：自动补全标准点位头
-  std::vector<double> pos(14, 0.0);
-  if (request->pos.size() >= 14)
-  {
-    pos = request->pos;
-  }
-  else
-  {
-    pos[3] = 1.0;  // 工具手序号
-    pos[4] = 1.0;  // 用户坐标序号
-    size_t n = std::min<size_t>(request->pos.size(), 7);
-    for (size_t i = 0; i < n; ++i) pos[7 + i] = request->pos[i];
-  }
+  std::vector<double> queryPos = request->pos;
 
-  bool reachable = false;
-  int ret = get_pos_reachable(socket_fd_, pos, request->move_type, reachable);
+  bool result = false;
+  Result ret = get_pos_reachable(socket_fd_, queryPos, request->move_type, result);
   if (ret == Result::SUCCESS)
   {
-    response->success = true;
-    response->message = reachable ? "Position is reachable" : "Position is NOT reachable";
+    response->success = result;
+    response->message = response->success ? "Target pos is reachable" : "Target pos is not reachable";
   }
   else
   {
     response->success = false;
-    response->message = "Failed to check pos reachable, ret=" + std::to_string(ret);
+    response->message = "Fail to get pos reachable status" + std::to_string(ret);
   }
 }
 
@@ -1889,7 +1884,7 @@ void TL_Arm::handle_get_dh_param_service(const std::shared_ptr<tl_ros2_interface
 
   // 新 SDK: 标准DH参数 alpha/a/theta/d，逐字段映射到 ROS2 消息
   RobotDHParam dh{};
-  int ret = get_robot_dh_param(socket_fd_, dh);
+  Result ret = get_robot_dh_param(socket_fd_, dh);
   if (ret == Result::SUCCESS)
   {
     auto &p = response->param;
@@ -2309,7 +2304,10 @@ void TL_Arm::handle_queue_motion_movej_service(
     return;
   }
 
-  ret = queue_motion_send_to_controller(socket_fd_, request->is_continue);
+  // 新 SDK 签名: queue_motion_send_to_controller(socketFd, int size, bool isContinue = false)
+  //   size=0 表示发送全部队列指令；isContinue=true 继续排队不运动，false 立即执行
+  // 旧写法把 bool 传给了 size 参数，导致 is_continue=true 时只发送第 1 条，已修正
+  ret = queue_motion_send_to_controller(socket_fd_, 0, request->is_continue);
   response->success = (ret == Result::SUCCESS);
   response->message =
       response->success ? "Queue motion movej execute successfully" : "Failed to execute queue motion movej";
@@ -2359,9 +2357,9 @@ void TL_Arm::handle_get_current_motor_torque_service(
     return;
   }
 
-  std::vector<int> motor_torque;
-  std::vector<int> motor_torque_sync;
-  int ret = get_current_motor_torque(socket_fd_, motor_torque, motor_torque_sync);
+  std::vector<int> motor_torque{};
+  std::vector<int> motor_torque_sync{};
+  Result ret = get_current_motor_torque(socket_fd_, motor_torque, motor_torque_sync);
   if (ret == Result::SUCCESS)
   {
     response->success = true;
@@ -2390,9 +2388,9 @@ void TL_Arm::handle_get_current_line_joint_speed_service(
   }
 
   double line_speed = 0.0;
-  std::vector<double> joint_speed;
-  std::vector<double> joint_speed_sync;
-  int ret = get_current_line_speed_and_joint_speed(socket_fd_, line_speed, joint_speed, joint_speed_sync);
+  std::vector<double> joint_speed{};
+  std::vector<double> joint_speed_sync{};
+  Result ret = get_current_line_speed_and_joint_speed(socket_fd_, line_speed, joint_speed, joint_speed_sync);
   if (ret == Result::SUCCESS)
   {
     response->success = true;
@@ -2724,17 +2722,21 @@ void TL_Arm::publish_joint_pose(const std::vector<double>& joint_pose)
 
 void TL_Arm::publish_tcp_pose(const std::vector<double>& tcp_pose)
 {
+  // SDK 返回：位置 mm、欧拉角 度（°）→ 统一转换为 ROS 标准单位：m 和 rad
+  constexpr double kMmToM = 1.0 / 1000.0;
+  constexpr double kDegToRad = M_PI / 180.0;
+
   tl_ros2_interface::msg::CartesianPose msg;
   msg.header.stamp = this->now();
   msg.header.frame_id = "base_link";
 
-  msg.position.x = tcp_pose[0];
-  msg.position.y = tcp_pose[1];
-  msg.position.z = tcp_pose[2];
+  msg.position.x = tcp_pose[0] * kMmToM;
+  msg.position.y = tcp_pose[1] * kMmToM;
+  msg.position.z = tcp_pose[2] * kMmToM;
 
-  msg.rpy.x = tcp_pose[3];
-  msg.rpy.y = tcp_pose[4];
-  msg.rpy.z = tcp_pose[5];
+  msg.rpy.x = tcp_pose[3] * kDegToRad;
+  msg.rpy.y = tcp_pose[4] * kDegToRad;
+  msg.rpy.z = tcp_pose[5] * kDegToRad;
 
   switch (ndof_)
   {
@@ -2742,7 +2744,7 @@ void TL_Arm::publish_tcp_pose(const std::vector<double>& tcp_pose)
       msg.arm_angle = 0;
       break;
     case 7:
-      msg.arm_angle = tcp_pose[6];
+      msg.arm_angle = tcp_pose[6] * kDegToRad;
       break;
   }
 
