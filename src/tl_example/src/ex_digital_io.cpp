@@ -20,7 +20,7 @@
  *   # 自定义测试端口
  *   ros2 run tl_example ex_digital_io --ros-args -p io_port:=1
  *
- * @see ex_driver_quick_test.cpp — 驱动全接口快速自检（§12 get/set_digital_io）
+ * @see ex_info_query.cpp — 信息查询示例（§4 信息查询接口）
  */
 
 #include <algorithm>
@@ -59,8 +59,7 @@ using SetDigitalOutput = tl_ros2_interface::srv::SetDigitalOutput;
 class DigitalIoDemo : public rclcpp::Node
 {
 public:
-  explicit DigitalIoDemo(const rclcpp::NodeOptions& options = rclcpp::NodeOptions())
-    : Node("ex_digital_io", options)
+  explicit DigitalIoDemo(const rclcpp::NodeOptions& options = rclcpp::NodeOptions()) : Node("ex_digital_io", options)
   {
     RCLCPP_INFO(this->get_logger(), "============================================================");
     RCLCPP_INFO(this->get_logger(), "  数字 IO 测试节点启动");
@@ -68,15 +67,15 @@ public:
     RCLCPP_INFO(this->get_logger(), "============================================================");
 
     // ── 参数 ──
-    this->declare_parameter("io_port", 1);  // 测试的数字输出端口号
+    this->declare_parameter("io_port", 1); // 测试的数字输出端口号
     io_port_ = this->get_parameter("io_port").as_int();
 
     // ── 服务客户端 ──
-    connect_cli_   = this->create_client<Trigger>("/tl_driver/connect_arm");
+    connect_cli_ = this->create_client<Trigger>("/tl_driver/connect_arm");
     disconnect_cli_ = this->create_client<Trigger>("/tl_driver/disconnect_arm");
-    set_mode_cli_  = this->create_client<SetCurrentMode>("/tl_driver/set_current_mode");
-    get_dio_cli_   = this->create_client<GetDigitalInputOutput>("/tl_driver/get_digital_input_output");
-    set_dio_cli_   = this->create_client<SetDigitalOutput>("/tl_driver/set_digital_output");
+    set_mode_cli_ = this->create_client<SetCurrentMode>("/tl_driver/set_current_mode");
+    get_dio_cli_ = this->create_client<GetDigitalInputOutput>("/tl_driver/get_digital_input_output");
+    set_dio_cli_ = this->create_client<SetDigitalOutput>("/tl_driver/set_digital_output");
 
     // ── 运行状态订阅（替代 SDK 的 get_robot_running_state）──
     arm_status_sub_ = this->create_subscription<ArmStatus>(
@@ -101,17 +100,21 @@ private:
   std::string arm_run_state_ = "unknown";
 
   // ── 参数 ──
-  int io_port_ = 1;  // 测试的数字输出端口号
+  int io_port_ = 1; // 测试的数字输出端口号
 
   // ── 话题回调 ──
-  void onArmStatus(const ArmStatus::SharedPtr msg) { arm_run_state_ = msg->run_state; }
+  void onArmStatus(const ArmStatus::SharedPtr msg)
+  {
+    arm_run_state_ = msg->run_state;
+  }
 
   // ── 辅助方法 ──
 
   /// 等待单个服务就绪
   bool waitService(const std::string& name, rclcpp::ClientBase::SharedPtr cli, double timeout_s = 3.0)
   {
-    if (!cli->wait_for_service(std::chrono::duration<double>(timeout_s))) {
+    if (!cli->wait_for_service(std::chrono::duration<double>(timeout_s)))
+    {
       RCLCPP_ERROR(this->get_logger(), "  服务 %s 未就绪（%.0fs 超时）", name.c_str(), timeout_s);
       return false;
     }
@@ -122,22 +125,28 @@ private:
   /// 调用 Trigger 服务
   bool callTrigger(rclcpp::Client<Trigger>::SharedPtr cli, const std::string& label)
   {
-    if (!cli->service_is_ready()) {
+    if (!cli->service_is_ready())
+    {
       RCLCPP_WARN(this->get_logger(), "  [%s] 服务未就绪，跳过", label.c_str());
       return false;
     }
     auto req = std::make_shared<Trigger::Request>();
     auto future = cli->async_send_request(req);
-    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future,
-                                           std::chrono::seconds(10)) != rclcpp::FutureReturnCode::SUCCESS) {
+    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future, std::chrono::seconds(10)) !=
+        rclcpp::FutureReturnCode::SUCCESS)
+    {
       RCLCPP_WARN(this->get_logger(), "  [%s] 调用超时/异常", label.c_str());
       return false;
     }
     const auto& resp = future.get();
-    if (resp->success) {
+    if (resp->success)
+    {
       RCLCPP_INFO(this->get_logger(), "  ✓ %s 成功", label.c_str());
-      if (!resp->message.empty()) RCLCPP_INFO(this->get_logger(), "      返回: %s", resp->message.c_str());
-    } else {
+      if (!resp->message.empty())
+        RCLCPP_INFO(this->get_logger(), "      返回: %s", resp->message.c_str());
+    }
+    else
+    {
       RCLCPP_WARN(this->get_logger(), "  ✗ %s 失败: %s", label.c_str(), resp->message.c_str());
     }
     return resp->success;
@@ -146,23 +155,27 @@ private:
   /// 泛型服务调用：同步等待并打印结果，返回响应供调用方打印额外字段
   template <typename Srv>
   typename Srv::Response::SharedPtr callService(const typename rclcpp::Client<Srv>::SharedPtr& cli,
-                                                typename Srv::Request::SharedPtr req,
-                                                const std::string& label)
+                                                typename Srv::Request::SharedPtr req, const std::string& label)
   {
-    if (!cli->service_is_ready()) {
+    if (!cli->service_is_ready())
+    {
       RCLCPP_WARN(this->get_logger(), "  [%s] 服务未就绪，跳过", label.c_str());
       return nullptr;
     }
     auto future = cli->async_send_request(req);
-    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future,
-                                           std::chrono::seconds(10)) != rclcpp::FutureReturnCode::SUCCESS) {
+    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future, std::chrono::seconds(10)) !=
+        rclcpp::FutureReturnCode::SUCCESS)
+    {
       RCLCPP_WARN(this->get_logger(), "  [%s] 调用超时/异常", label.c_str());
       return nullptr;
     }
     auto resp = future.get();
-    if (resp->success) {
+    if (resp->success)
+    {
       RCLCPP_INFO(this->get_logger(), "  ✓ %s 成功", label.c_str());
-    } else {
+    }
+    else
+    {
       RCLCPP_WARN(this->get_logger(), "  ✗ %s 失败: %s", label.c_str(), resp->message.c_str());
     }
     return resp;
@@ -173,14 +186,18 @@ private:
   {
     std::string s;
     size_t n = std::min(v.size(), max);
-    for (size_t i = 0; i < n; ++i) {
-      if (i) s += ", ";
+    for (size_t i = 0; i < n; ++i)
+    {
+      if (i)
+        s += ", ";
       s += std::to_string(v[i]);
-      if (static_cast<int>(i) == io_port_ - 1 && name == "DO") {
-        s += "(DO" + std::to_string(io_port_) + ")";  // 标记测试端口
+      if (static_cast<int>(i) == io_port_ - 1 && name == "DO")
+      {
+        s += "(DO" + std::to_string(io_port_) + ")"; // 标记测试端口
       }
     }
-    if (v.size() > max) s += ", ...";
+    if (v.size() > max)
+      s += ", ...";
     RCLCPP_INFO(this->get_logger(), "      %s[%zu] = [%s]", name.c_str(), v.size(), s.c_str());
   }
 };
@@ -195,11 +212,10 @@ void tl_example::DigitalIoDemo::run()
 {
   // ── 1. 检查核心服务就绪 ──
   RCLCPP_INFO(this->get_logger(), "\n========== 1. 检查核心服务就绪 ==========");
-  if (!waitService("connect_arm", connect_cli_) ||
-      !waitService("set_current_mode", set_mode_cli_) ||
-      !waitService("get_digital_input_output", get_dio_cli_) ||
-      !waitService("set_digital_output", set_dio_cli_) ||
-      !waitService("disconnect_arm", disconnect_cli_)) {
+  if (!waitService("connect_arm", connect_cli_) || !waitService("set_current_mode", set_mode_cli_) ||
+      !waitService("get_digital_input_output", get_dio_cli_) || !waitService("set_digital_output", set_dio_cli_) ||
+      !waitService("disconnect_arm", disconnect_cli_))
+  {
     RCLCPP_ERROR(this->get_logger(), "tl_driver 核心服务未就绪，请先启动 tl_driver 节点");
     rclcpp::shutdown();
     return;
@@ -207,7 +223,8 @@ void tl_example::DigitalIoDemo::run()
 
   // ── 2. 连接机械臂 ──
   RCLCPP_INFO(this->get_logger(), "\n========== 2. 连接机械臂 ==========");
-  if (!callTrigger(connect_cli_, "connect_arm")) {
+  if (!callTrigger(connect_cli_, "connect_arm"))
+  {
     RCLCPP_ERROR(this->get_logger(), "连接失败，退出测试");
     rclcpp::shutdown();
     return;
@@ -217,7 +234,7 @@ void tl_example::DigitalIoDemo::run()
   RCLCPP_INFO(this->get_logger(), "\n========== 3. 设置机器人模式（远程） ==========");
   {
     auto req = std::make_shared<SetCurrentMode::Request>();
-    req->mode = 1;  // 远程模式（0=示教，1=远程，2=运行）
+    req->mode = 1; // 远程模式（0=示教，1=远程，2=运行）
     callService<SetCurrentMode>(set_mode_cli_, req, "set_current_mode(1)");
   }
 
@@ -226,7 +243,8 @@ void tl_example::DigitalIoDemo::run()
   {
     auto req = std::make_shared<GetDigitalInputOutput::Request>();
     auto resp = callService<GetDigitalInputOutput>(get_dio_cli_, req, "get_digital_input_output");
-    if (resp && resp->success) {
+    if (resp && resp->success)
+    {
       printIoArray(resp->input, "DI");
       printIoArray(resp->output, "DO");
     }
@@ -243,7 +261,8 @@ void tl_example::DigitalIoDemo::run()
   {
     auto req = std::make_shared<GetDigitalInputOutput::Request>();
     auto resp = callService<GetDigitalInputOutput>(get_dio_cli_, req, "get_digital_input_output（验证）");
-    if (resp && resp->success) printIoArray(resp->output, "DO");
+    if (resp && resp->success)
+      printIoArray(resp->output, "DO");
   }
 
   // ── 6. 设置数字输出 DO1=1 → 查询验证 ──
@@ -257,7 +276,8 @@ void tl_example::DigitalIoDemo::run()
   {
     auto req = std::make_shared<GetDigitalInputOutput::Request>();
     auto resp = callService<GetDigitalInputOutput>(get_dio_cli_, req, "get_digital_input_output（验证）");
-    if (resp && resp->success) printIoArray(resp->output, "DO");
+    if (resp && resp->success)
+      printIoArray(resp->output, "DO");
   }
 
   // ── 7. 运行状态（话题替代 SDK 的 get_robot_running_state）──
@@ -265,7 +285,8 @@ void tl_example::DigitalIoDemo::run()
   RCLCPP_INFO(this->get_logger(), "  说明：SDK 的 get_robot_running_state（0=停止/1=暂停/2=运行）");
   RCLCPP_INFO(this->get_logger(), "        在 ROS2 中用 /arm_status 话题（STOP/PAUSE/RUNNING）近似");
   auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
-  while (rclcpp::ok() && arm_run_state_ == "unknown" && std::chrono::steady_clock::now() < deadline) {
+  while (rclcpp::ok() && arm_run_state_ == "unknown" && std::chrono::steady_clock::now() < deadline)
+  {
     rclcpp::spin_some(this->get_node_base_interface());
     rclcpp::sleep_for(std::chrono::milliseconds(50));
   }
@@ -276,7 +297,7 @@ void tl_example::DigitalIoDemo::run()
   RCLCPP_INFO(this->get_logger(), "\n========== 8. 恢复示教模式 ==========");
   {
     auto req = std::make_shared<SetCurrentMode::Request>();
-    req->mode = 0;  // 示教模式
+    req->mode = 0; // 示教模式
     callService<SetCurrentMode>(set_mode_cli_, req, "set_current_mode(0)");
   }
 
@@ -294,10 +315,10 @@ void tl_example::DigitalIoDemo::run()
 //  main
 // ====================================================================
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<tl_example::DigitalIoDemo>();
-  node->run();  // run() 内部已处理 rclcpp::shutdown()
+  node->run(); // run() 内部已处理 rclcpp::shutdown()
   return 0;
 }

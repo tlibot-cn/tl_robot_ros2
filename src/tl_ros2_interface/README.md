@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
 
 # 天链机械臂接口函数使用说明书（ROS2）
 
@@ -259,79 +259,21 @@ __msg成员__
 
 ### 机器人DH参数RobotDHParam_msg
 ```
-float64 l1
-float64 l2
-float64 l3
-float64 l4
-float64 l5
-float64 l6
-float64 l7
-float64 l8
-float64 l9
-float64 l10
-float64 l11
-float64 l12
-float64 l13
-float64 l14
-float64 l15
-float64 l16
-float64 l17
-float64 l18
-float64 l19
-float64 l20
-
-float64 couple_coe_1_2
-float64 couple_coe_2_3
-float64 couple_coe_3_2
-float64 couple_coe_3_4
-float64 couple_coe_4_5
-float64 couple_coe_4_6
-float64 couple_coe_5_6
-
-float64 dynamic_limit_max
-float64 dynamic_limit_min
-
-float64 pitch
-float64 sliding_lead_value
-float64 uplift_lead_value
-float64 spray_distance
-
-float64 three_axis_direction
-float64 five_axis_direction
-
-float64	two_axis_convertion_ratio
-float64 three_axis_convertion_ratio
-float64 amplification_ratio
-
-float64 convertion_ratio_x
-float64 convertion_ratio_y
-float64 convertion_ratio_z
-
-float64 convertion_ratio_j1
-float64 convertion_ratio_j2
-float64 convertion_ratio_j3
-
-int32 upside_down
-
-float64 pc
-float64[] sp
-float64[] tl
+# 对应 SDK tl::RobotDHParam：alpha[6]/a[6]/theta[6]/d[6]/eulerAngle/mountingAngle
+float64[] alpha           # 1-6轴DH参数alpha，单位：deg
+float64[] a               # 1-6轴DH参数a，单位：mm
+float64[] theta           # 1-6轴DH参数theta，单位：deg
+float64[] d               # 1-6轴DH参数d，单位：mm
+int32 euler_angle         # 欧拉角模式
+float64 mounting_angle    # 机器人安装角度，单位：deg
 ```
 __msg成员__
-- l1..l20: 连杆长度参数
-- couple_coe_*: 联动系数
-- dynamic_limit_*: 动态限制
-- pitch: 螺距
-- sliding_lead_value: 滑动电动缸导程，酒槽机型用
-- uplift_lead_value: 顶升电动缸导程，酒槽机型用
-- spray_distance: 喷料距离，酒槽机型用
-- three_axis_direction: 3轴方向
-- five_axis_direction: 5轴方向
-- two_axis_convertion_ratio/three_axis_convertion_ratio/amplification_ratio: 转换比
-- convertion_ratio_x/convertion_ratio_y/convertion_ratio_z: 三轴转换比
-- convertion_ratio_j1/convertion_ratio_j2/convertion_ratio_j3: 关节转换比
-- upside_down: 反向标志
-- pc/sp/tl: 其他参数数组
+- alpha: 1-6轴DH参数alpha（deg）
+- a: 1-6轴DH参数a（mm）
+- theta: 1-6轴DH参数theta（deg）
+- d: 1-6轴DH参数d（mm）
+- euler_angle: 欧拉角模式
+- mounting_angle: 机器人安装角度（deg）
 
 ### 机械臂关节参数RobotJointParam_msg
 ```
