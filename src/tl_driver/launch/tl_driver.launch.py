@@ -43,7 +43,7 @@ def launch_setup(context, *args, **kwargs):
         executable="tl_driver",
         name="tl_driver",
         output="screen",
-        parameters=[config_path],
+        parameters=[config_path, {"arm_ip": LaunchConfiguration("arm_ip")}],
     )
 
     return [tl_driver_node]
@@ -72,4 +72,12 @@ def generate_launch_description():
         ],
     )
 
-    return LaunchDescription([declare_arm_type, OpaqueFunction(function=launch_setup)])
+    declare_arm_ip = DeclareLaunchArgument(
+        "arm_ip",
+        default_value="192.168.1.13",
+        description="机械臂控制器IP，可覆盖config中的默认值",
+    )
+
+    return LaunchDescription(
+        [declare_arm_type, declare_arm_ip, OpaqueFunction(function=launch_setup)]
+    )

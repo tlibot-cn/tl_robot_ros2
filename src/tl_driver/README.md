@@ -71,6 +71,20 @@ ros2 launch tl_driver tl_driver.launch.py arm_type:=<arm_type>
 ros2 launch tl_driver tl_tcb710_driver.launch.py
 ```
 
+### 指定机械臂 IP 启动
+
+默认 IP 为 config 文件中的 `192.168.1.13`。若机械臂 IP 不同，可直接在启动指令后追加 `arm_ip:=<IP>` 覆盖（优先于 config 文件，无需修改配置）：
+
+```bash
+ros2 launch tl_driver tl_tcb710_driver.launch.py arm_ip:=192.168.1.100
+```
+
+通用 launch 同样支持：
+
+```bash
+ros2 launch tl_driver tl_driver.launch.py arm_type:=tcb710 arm_ip:=192.168.1.100
+```
+
 启动成功后，将显示以下画面:
 
 ![image](doc/tl_driver1.png)  
