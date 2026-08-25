@@ -14,7 +14,7 @@
 
 ### 2026-08-25
 
-- 修复 tl_example 构建失败：移除已删除的 ex_driver_quick_test 目标，ex_info_query 的 DH 参数打印适配新标准 DH 消息（`（）`）
+- 修复 tl_example 构建失败：移除已删除的 ex_driver_quick_test 目标，ex_info_query 的 DH 参数打印适配新标准 DH 消息（`0d1eaf3`）
 
 ### 2026-08-21
 
