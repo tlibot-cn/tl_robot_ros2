@@ -26,7 +26,7 @@
  *   # 自定义偏移（度）
  *   ros2 run tl_example ex_queue_test --ros-args -p d1:=5.0 -p d2:=10.0
  *
- * @see ex_driver_quick_test.cpp — 驱动全接口快速自检
+ * @see ex_move_control.cpp — 运动控制示例（MoveJ/MoveL）
  */
 
 #include <chrono>
@@ -72,21 +72,20 @@ constexpr double kRadToDeg = 180.0 / M_PI;
 class QueueTestDemo : public rclcpp::Node
 {
 public:
-  explicit QueueTestDemo(const rclcpp::NodeOptions& options = rclcpp::NodeOptions())
-    : Node("ex_queue_test", options)
+  explicit QueueTestDemo(const rclcpp::NodeOptions& options = rclcpp::NodeOptions()) : Node("ex_queue_test", options)
   {
     // ── 参数 ──
-    this->declare_parameter("d1", 10.0);   // moveJ #1 关节偏移（度）
-    this->declare_parameter("d2", 20.0);  // moveJ #2 关节偏移（度）
-    this->declare_parameter("velocity", 20.0); // moveJ 速度（°/s，范围 (1,100]）
-    this->declare_parameter("l_dx", 50.0);   // moveL X 偏移（mm）
-    this->declare_parameter("l_dy", 0.0);    // moveL Y 偏移（mm）
-    this->declare_parameter("l_dz", 0.0);    // moveL Z 偏移（mm）
-    this->declare_parameter("l_vel", 30.0);  // moveL 速度（mm/s）
+    this->declare_parameter("d1", 10.0);           // moveJ #1 关节偏移（度）
+    this->declare_parameter("d2", 20.0);           // moveJ #2 关节偏移（度）
+    this->declare_parameter("velocity", 20.0);     // moveJ 速度（°/s，范围 (1,100]）
+    this->declare_parameter("l_dx", 50.0);         // moveL X 偏移（mm）
+    this->declare_parameter("l_dy", 0.0);          // moveL Y 偏移（mm）
+    this->declare_parameter("l_dz", 0.0);          // moveL Z 偏移（mm）
+    this->declare_parameter("l_vel", 30.0);        // moveL 速度（mm/s）
     this->declare_parameter("wait_timeout", 30.0); // 等待运动完成超时（秒）
     this->declare_parameter("startup_delay", 3.0); // 打开队列模式后等待伺服就绪（秒）
     this->declare_parameter("push_interval", 1.0); // 两条指令之间的入队间隔（秒）
-    this->declare_parameter("run_duration", 3.0); // 检测到 RUNNING 后先让机械臂走多久再 stop（秒）
+    this->declare_parameter("run_duration", 3.0);  // 检测到 RUNNING 后先让机械臂走多久再 stop（秒）
     d1_ = this->get_parameter("d1").as_double();
     d2_ = this->get_parameter("d2").as_double();
     velocity_ = this->get_parameter("velocity").as_double();
@@ -123,18 +122,23 @@ public:
     RCLCPP_INFO(this->get_logger(), "\n========== 队列运动测试 ==========");
 
     // 1. 等待服务就绪
-    if (!waitService("queue_motion_set_status", set_status_cli_) ||
-        !waitService("queue_motion_movej", movej_cli_) ||
-        !waitService("queue_motion_stop", stop_cli_) ||
-        !waitService("set_current_mode", set_mode_cli_)) {
+    if (!waitService("queue_motion_set_status", set_status_cli_) || !waitService("queue_motion_movej", movej_cli_) ||
+        !waitService("queue_motion_stop", stop_cli_) || !waitService("set_current_mode", set_mode_cli_))
+    {
       RCLCPP_ERROR(this->get_logger(), "tl_driver 队列服务未就绪，请先启动 tl_driver 节点");
       rclcpp::shutdown();
       return;
     }
 
     // 2. 等待当前关节角（作为安全基准）
-    spinWaitFor([this]() { return got_joint_state_; }, 5.0);
-    if (!got_joint_state_) {
+    spinWaitFor(
+        [this]()
+        {
+          return got_joint_state_;
+        },
+        5.0);
+    if (!got_joint_state_)
+    {
       RCLCPP_ERROR(this->get_logger(), "未收到 /joint_states，无法确定安全基准位，中止测试");
       rclcpp::shutdown();
       return;
@@ -145,7 +149,8 @@ public:
     setCurrentMode(2);
 
     // 4. 打开队列模式（SDK 会先下电再上电，需重新使能伺服）
-    if (!setQueueStatus(true)) {
+    if (!setQueueStatus(true))
+    {
       RCLCPP_ERROR(this->get_logger(), "打开队列模式失败，中止测试");
       rclcpp::shutdown();
       return;
@@ -166,25 +171,24 @@ public:
     target2[2] += d2_;
     target2[3] -= d1_ * 0.5; // 第4关节小幅反向，让路径更明显
 
-    pushMoveJ(target1, true);  // is_continue=true  → 排队，不立即执行
+    pushMoveJ(target1, true); // is_continue=true  → 排队，不立即执行
 
     RCLCPP_INFO(this->get_logger(), "等待第 1 条入队完成 %.1fs...", push_interval_);
     std::this_thread::sleep_for(std::chrono::duration<double>(push_interval_));
 
     // moveL：基于当前 TCP 位姿 + 偏移（m→mm，姿态保持当前 rad）
-    if (got_tcp_pose_) {
-      std::vector<double> moveL_target = {
-          current_tcp_mm_[0] + l_dx_,
-          current_tcp_mm_[1] + l_dy_,
-          current_tcp_mm_[2] + l_dz_,
-          current_tcp_rad_[3],
-          current_tcp_rad_[4],
-          current_tcp_rad_[5] };
+    if (got_tcp_pose_)
+    {
+      std::vector<double> moveL_target = {current_tcp_mm_[0] + l_dx_, current_tcp_mm_[1] + l_dy_,
+                                          current_tcp_mm_[2] + l_dz_, current_tcp_rad_[3],
+                                          current_tcp_rad_[4],        current_tcp_rad_[5]};
       pushMoveL(moveL_target, true); // 排队，不立即执行
 
       RCLCPP_INFO(this->get_logger(), "等待 moveL 入队完成 %.1fs...", push_interval_);
       std::this_thread::sleep_for(std::chrono::duration<double>(push_interval_));
-    } else {
+    }
+    else
+    {
       RCLCPP_WARN(this->get_logger(), "未收到 /tcp_pose，跳过 moveL 测试");
     }
 
@@ -217,9 +221,11 @@ private:
   // ── 回调 ──
   void jointStateCb(const JointState::SharedPtr msg)
   {
-    if (msg->position.empty()) return;
+    if (msg->position.empty())
+      return;
     current_joint_deg_.clear();
-    for (const auto& rad : msg->position) {
+    for (const auto& rad : msg->position)
+    {
       current_joint_deg_.push_back(rad * kRadToDeg);
     }
     got_joint_state_ = true;
@@ -233,17 +239,26 @@ private:
   void tcpPoseCb(const CartesianPose::SharedPtr msg)
   {
     // /tcp_pose 已是 ROS 单位：位置 m、姿态 rad → 转 mm 存一份
-    current_tcp_mm_ = {msg->position.x * 1000.0, msg->position.y * 1000.0, msg->position.z * 1000.0,
-                       msg->rpy.x, msg->rpy.y, msg->rpy.z};
-    current_tcp_rad_ = {msg->position.x * 1000.0, msg->position.y * 1000.0, msg->position.z * 1000.0,
-                        msg->rpy.x, msg->rpy.y, msg->rpy.z};
+    current_tcp_mm_ = {msg->position.x * 1000.0,
+                       msg->position.y * 1000.0,
+                       msg->position.z * 1000.0,
+                       msg->rpy.x,
+                       msg->rpy.y,
+                       msg->rpy.z};
+    current_tcp_rad_ = {msg->position.x * 1000.0,
+                        msg->position.y * 1000.0,
+                        msg->position.z * 1000.0,
+                        msg->rpy.x,
+                        msg->rpy.y,
+                        msg->rpy.z};
     got_tcp_pose_ = true;
   }
 
   // ── 工具函数 ──
   bool waitService(const std::string& name, rclcpp::ClientBase::SharedPtr cli, double timeout_s = 5.0)
   {
-    if (!cli->wait_for_service(std::chrono::duration<double>(timeout_s))) {
+    if (!cli->wait_for_service(std::chrono::duration<double>(timeout_s)))
+    {
       RCLCPP_ERROR(this->get_logger(), "服务 %s 未就绪", name.c_str());
       return false;
     }
@@ -259,10 +274,10 @@ private:
     // 关闭队列模式（status=false）时驱动内部会执行 set_current_mode + power_off，
     // 刚 stop 后可能较慢，给 30s 超时避免误判
     double timeout_s = status ? 10.0 : 30.0;
-    auto resp = callService<QueueMotionSetStatus>(set_status_cli_, req,
-                                                  status ? "queue_motion_set_status(true)  打开队列模式"
-                                                         : "queue_motion_set_status(false) 关闭队列模式",
-                                                  timeout_s);
+    auto resp = callService<QueueMotionSetStatus>(
+        set_status_cli_, req,
+        status ? "queue_motion_set_status(true)  打开队列模式" : "queue_motion_set_status(false) 关闭队列模式",
+        timeout_s);
     return resp != nullptr && resp->success;
   }
 
@@ -287,7 +302,7 @@ private:
   {
     auto req = std::make_shared<SetCurrentMode::Request>();
     req->mode = mode;
-    const char* name = (mode == 2) ? "set_current_mode(2) 运行模式" : "set_current_mode(0) 示教模式";
+    const char *name = (mode == 2) ? "set_current_mode(2) 运行模式" : "set_current_mode(0) 示教模式";
     auto resp = callService<SetCurrentMode>(set_mode_cli_, req, name);
     return resp != nullptr && resp->success;
   }
@@ -298,9 +313,9 @@ private:
     auto req = std::make_shared<QueueMotionMoveJ::Request>();
     req->is_continue = is_continue;
 
-    req->cmd.target_pos_type = 0;  // 0 = 直接点位（data）
+    req->cmd.target_pos_type = 0; // 0 = 直接点位（data）
     req->cmd.target_pos_name = "";
-    req->cmd.coord = 0;            // 0 = 关节坐标系
+    req->cmd.coord = 0; // 0 = 关节坐标系
     req->cmd.velocity = velocity_;
     req->cmd.velocity_sync = 0.0;
     req->cmd.acc = velocity_;
@@ -316,12 +331,13 @@ private:
 
     // 关节角放在 index 0~6（官方示例 make_movej_cmd 布局，前 7 位为关节角）
     req->cmd.target_pos_value.assign(14, 0.0);
-    for (size_t i = 0; i < joint_deg.size() && i < 7; ++i) {
+    for (size_t i = 0; i < joint_deg.size() && i < 7; ++i)
+    {
       req->cmd.target_pos_value[i] = joint_deg[i];
     }
 
-    std::string label = "queue_motion_movej #" + std::string(is_continue ? "1(排队)" : "2(执行)") +
-                        " -> [" + joinDeg(joint_deg) + "]";
+    std::string label =
+        "queue_motion_movej #" + std::string(is_continue ? "1(排队)" : "2(执行)") + " -> [" + joinDeg(joint_deg) + "]";
     auto resp = callService<QueueMotionMoveJ>(movej_cli_, req, label);
     return resp != nullptr && resp->success;
   }
@@ -332,10 +348,10 @@ private:
     auto req = std::make_shared<QueueMotionMoveJ::Request>();
     req->is_continue = is_continue;
 
-    req->cmd.target_pos_type = 0;  // 0 = 直接点位（data）
+    req->cmd.target_pos_type = 0; // 0 = 直接点位（data）
     req->cmd.target_pos_name = "";
-    req->cmd.coord = 1;            // 1 = 基坐标系（直角坐标系）
-    req->cmd.velocity = l_vel_;    // mm/s
+    req->cmd.coord = 1;         // 1 = 基坐标系（直角坐标系）
+    req->cmd.velocity = l_vel_; // mm/s
     req->cmd.velocity_sync = 0.0;
     req->cmd.acc = l_vel_;
     req->cmd.dec = l_vel_;
@@ -350,7 +366,8 @@ private:
 
     // 位姿放 index 0~5（官方示例 make_movel_cmd 布局），后 8 位置 0
     req->cmd.target_pos_value.assign(14, 0.0);
-    for (size_t i = 0; i < pose.size() && i < 6; ++i) {
+    for (size_t i = 0; i < pose.size() && i < 6; ++i)
+    {
       req->cmd.target_pos_value[i] = pose[i];
     }
 
@@ -364,16 +381,18 @@ private:
   {
     RCLCPP_INFO(this->get_logger(), "等待运动开始 (RUNNING)...");
     auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(wait_timeout_);
-    while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline) {
+    while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline)
+    {
       rclcpp::spin_some(this->get_node_base_interface());
-      if (arm_run_state_ == "RUNNING") {
+      if (arm_run_state_ == "RUNNING")
+      {
         RCLCPP_INFO(this->get_logger(), "  运动已开始 (run_state=RUNNING)");
         return;
       }
       rclcpp::sleep_for(std::chrono::milliseconds(50));
     }
-    RCLCPP_WARN(this->get_logger(), "  等待运动开始超时（%.0fs），当前 run_state=%s",
-                wait_timeout_, arm_run_state_.c_str());
+    RCLCPP_WARN(this->get_logger(), "  等待运动开始超时（%.0fs），当前 run_state=%s", wait_timeout_,
+                arm_run_state_.c_str());
   }
 
   /// 轮询 /arm_status，等待运动停止（回到 STOP）
@@ -381,40 +400,47 @@ private:
   {
     RCLCPP_INFO(this->get_logger(), "等待运动停止 (STOP)...");
     auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(wait_timeout_);
-    while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline) {
+    while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline)
+    {
       rclcpp::spin_some(this->get_node_base_interface());
-      if (arm_run_state_ == "STOP") {
+      if (arm_run_state_ == "STOP")
+      {
         RCLCPP_INFO(this->get_logger(), "  运动已停止 (run_state=STOP)");
         return;
       }
       rclcpp::sleep_for(std::chrono::milliseconds(50));
     }
-    RCLCPP_WARN(this->get_logger(), "  等待运动停止超时（%.0fs），当前 run_state=%s",
-                wait_timeout_, arm_run_state_.c_str());
+    RCLCPP_WARN(this->get_logger(), "  等待运动停止超时（%.0fs），当前 run_state=%s", wait_timeout_,
+                arm_run_state_.c_str());
   }
 
   /// 泛型服务调用：同步等待并打印成功/失败
   /// @param timeout_s 超时秒数（默认 10s；关闭队列模式等慢操作建议传更大值）
   template <typename Srv>
   typename Srv::Response::SharedPtr callService(const typename rclcpp::Client<Srv>::SharedPtr& cli,
-                                                typename Srv::Request::SharedPtr req,
-                                                const std::string& label,
+                                                typename Srv::Request::SharedPtr req, const std::string& label,
                                                 double timeout_s = 10.0)
   {
-    if (!cli->service_is_ready()) {
+    if (!cli->service_is_ready())
+    {
       RCLCPP_WARN(this->get_logger(), "  [%s] 服务未就绪，跳过", label.c_str());
       return nullptr;
     }
     auto future = cli->async_send_request(req);
     if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future,
-                                           std::chrono::duration<double>(timeout_s)) != rclcpp::FutureReturnCode::SUCCESS) {
+                                           std::chrono::duration<double>(timeout_s)) !=
+        rclcpp::FutureReturnCode::SUCCESS)
+    {
       RCLCPP_WARN(this->get_logger(), "  [%s] 调用超时/异常（%.0fs）", label.c_str(), timeout_s);
       return nullptr;
     }
     auto resp = future.get();
-    if (resp->success) {
+    if (resp->success)
+    {
       RCLCPP_INFO(this->get_logger(), "  ✓ %s 成功", label.c_str());
-    } else {
+    }
+    else
+    {
       RCLCPP_WARN(this->get_logger(), "  ✗ %s 失败: %s", label.c_str(), resp->message.c_str());
     }
     return resp;
@@ -424,7 +450,8 @@ private:
   void spinWaitFor(const std::function<bool()>& cond, double timeout_s = 2.0)
   {
     auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(timeout_s);
-    while (rclcpp::ok() && !cond() && std::chrono::steady_clock::now() < deadline) {
+    while (rclcpp::ok() && !cond() && std::chrono::steady_clock::now() < deadline)
+    {
       rclcpp::spin_some(this->get_node_base_interface());
       rclcpp::sleep_for(std::chrono::milliseconds(20));
     }
@@ -434,8 +461,10 @@ private:
   static std::string joinDeg(const std::vector<double>& deg)
   {
     std::string s;
-    for (size_t i = 0; i < deg.size(); ++i) {
-      if (i) s += ", ";
+    for (size_t i = 0; i < deg.size(); ++i)
+    {
+      if (i)
+        s += ", ";
       s += std::to_string(static_cast<int>(deg[i]));
     }
     return s;
@@ -445,12 +474,17 @@ private:
   static std::string joinPose(const std::vector<double>& pose)
   {
     std::string s;
-    for (size_t i = 0; i < pose.size(); ++i) {
-      if (i) s += ", ";
+    for (size_t i = 0; i < pose.size(); ++i)
+    {
+      if (i)
+        s += ", ";
       char buf[32];
-      if (i < 3) {
+      if (i < 3)
+      {
         snprintf(buf, sizeof(buf), "%.1f", pose[i]);
-      } else {
+      }
+      else
+      {
         snprintf(buf, sizeof(buf), "%.3f", pose[i]);
       }
       s += buf;
@@ -491,7 +525,7 @@ private:
 
 } // namespace tl_example
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<tl_example::QueueTestDemo>();

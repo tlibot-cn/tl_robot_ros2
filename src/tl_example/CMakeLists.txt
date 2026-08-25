@@ -35,26 +35,7 @@ install(TARGETS medical_demo
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# 驱动快速自检：遍历测试 tl_driver 全部服务/话题（危险接口自动跳过）
-add_executable(ex_driver_quick_test
-  src/ex_driver_quick_test.cpp
-)
 
-target_include_directories(ex_driver_quick_test PRIVATE
-  "${CMAKE_CURRENT_SOURCE_DIR}/include"
-)
-
-ament_target_dependencies(ex_driver_quick_test
-  rclcpp
-  std_srvs
-  std_msgs
-  sensor_msgs
-  tl_ros2_interface
-)
-
-install(TARGETS ex_driver_quick_test
-  DESTINATION lib/${PROJECT_NAME}
-)
 
 # 队列运动模式测试：打开队列 -> 添加两个 moveJ -> 触发执行 -> 关闭
 add_executable(ex_queue_test

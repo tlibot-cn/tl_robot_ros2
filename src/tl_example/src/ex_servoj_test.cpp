@@ -21,7 +21,7 @@
  *   ros2 run tl_example ex_servoj_test --ros-args -p joint:=0 -p target_angle:=50.0 \
  *       -p num_points:=200 -p rate:=100.0
  *
- * @see ex_driver_quick_test.cpp — 驱动全接口快速自检（§15 ServoJ）
+ * @see ex_servoj.cpp — ServoJ 关节实时跟踪示例（100Hz 高频下发）
  */
 
 #include <chrono>
@@ -50,19 +50,18 @@ using Float64MultiArray = std_msgs::msg::Float64MultiArray;
 class ServoJTestDemo : public rclcpp::Node
 {
 public:
-  explicit ServoJTestDemo(const rclcpp::NodeOptions& options = rclcpp::NodeOptions())
-    : Node("ex_servoj_test", options)
+  explicit ServoJTestDemo(const rclcpp::NodeOptions& options = rclcpp::NodeOptions()) : Node("ex_servoj_test", options)
   {
     // ── 参数 ──
-    this->declare_parameter("arm_joints", 7);       // 机械臂关节数
-    this->declare_parameter("joint", 0);            // 要运动的关节索引（J1 = 0）
-    this->declare_parameter("target_angle", 50.0);  // 目标角度（度）
-    this->declare_parameter("num_points", 200);     // 插值点数
-    this->declare_parameter("rate", 100.0);         // 下发频率（Hz）
-    this->declare_parameter("hold_time", 1.0);      // 到达目标后保持时间（秒）
-    this->declare_parameter("vmax", 80.0);          // ServoJ 最大速度
-    this->declare_parameter("amax", 3000.0);        // ServoJ 最大加速度
-    this->declare_parameter("jmax", 50000.0);       // ServoJ 最大加加速度
+    this->declare_parameter("arm_joints", 7);      // 机械臂关节数
+    this->declare_parameter("joint", 0);           // 要运动的关节索引（J1 = 0）
+    this->declare_parameter("target_angle", 50.0); // 目标角度（度）
+    this->declare_parameter("num_points", 200);    // 插值点数
+    this->declare_parameter("rate", 100.0);        // 下发频率（Hz）
+    this->declare_parameter("hold_time", 1.0);     // 到达目标后保持时间（秒）
+    this->declare_parameter("vmax", 80.0);         // ServoJ 最大速度
+    this->declare_parameter("amax", 3000.0);       // ServoJ 最大加速度
+    this->declare_parameter("jmax", 50000.0);      // ServoJ 最大加加速度
 
     arm_joints_ = this->get_parameter("arm_joints").as_int();
     joint_ = this->get_parameter("joint").as_int();
@@ -74,7 +73,8 @@ public:
     amax_ = this->get_parameter("amax").as_double();
     jmax_ = this->get_parameter("jmax").as_double();
 
-    if (joint_ < 0 || joint_ >= arm_joints_) {
+    if (joint_ < 0 || joint_ >= arm_joints_)
+    {
       RCLCPP_ERROR(this->get_logger(), "joint 索引 %d 超出关节数 %d，中止", joint_, arm_joints_);
       rclcpp::shutdown();
     }
@@ -86,8 +86,8 @@ public:
     // ── 话题发布 ──
     servoj_pub_ = this->create_publisher<Float64MultiArray>("/tl_driver/set_servoj_pos", 10);
 
-    RCLCPP_INFO(this->get_logger(), "ServoJ 插补测试节点启动 (J%d: 0° -> %.1f°, %d 点 @ %.0fHz)",
-                joint_ + 1, target_angle_, num_points_, rate_);
+    RCLCPP_INFO(this->get_logger(), "ServoJ 插补测试节点启动 (J%d: 0° -> %.1f°, %d 点 @ %.0fHz)", joint_ + 1,
+                target_angle_, num_points_, rate_);
   }
 
   /// 运行测试主流程
@@ -96,14 +96,16 @@ public:
     RCLCPP_INFO(this->get_logger(), "\n========== ServoJ 插补测试 ==========");
 
     // 1. 等待服务就绪
-    if (!waitService("open_servoj", open_cli_) || !waitService("close_servoj", close_cli_)) {
+    if (!waitService("open_servoj", open_cli_) || !waitService("close_servoj", close_cli_))
+    {
       RCLCPP_ERROR(this->get_logger(), "tl_driver ServoJ 服务未就绪，请先启动 tl_driver 节点");
       rclcpp::shutdown();
       return;
     }
 
     // 2. 开启 ServoJ 跟踪模式（示教模式下即可，无需 set_current_mode）
-    if (!openServoJ()) {
+    if (!openServoJ())
+    {
       RCLCPP_ERROR(this->get_logger(), "open_servoj 失败，中止测试");
       rclcpp::shutdown();
       return;
@@ -117,10 +119,16 @@ public:
     rclcpp::Rate rate(rate_);
     std::vector<double> pos(arm_joints_, 0.0);
     bool aborted = false;
-    try {
+    try
+    {
       // 3.1 插值 num_points 个点
-      for (int i = 0; i < num_points_; ++i) {
-        if (!rclcpp::ok()) { aborted = true; break; }
+      for (int i = 0; i < num_points_; ++i)
+      {
+        if (!rclcpp::ok())
+        {
+          aborted = true;
+          break;
+        }
         double fraction = (num_points_ > 1) ? static_cast<double>(i) / (num_points_ - 1) : 1.0;
         pos[joint_] = target_angle_ * fraction;
         publishPos(pos);
@@ -130,15 +138,19 @@ public:
       // 3.2 到达目标后保持 hold_time，避免停发导致机械臂急停
       pos[joint_] = target_angle_;
       auto hold_end = std::chrono::steady_clock::now() + std::chrono::duration<double>(hold_time_);
-      while (rclcpp::ok() && std::chrono::steady_clock::now() < hold_end) {
+      while (rclcpp::ok() && std::chrono::steady_clock::now() < hold_end)
+      {
         publishPos(pos);
         rate.sleep();
       }
 
-      if (rclcpp::ok() && !aborted) {
+      if (rclcpp::ok() && !aborted)
+      {
         RCLCPP_INFO(this->get_logger(), "插补完成：J%d 已到达 %.1f°", joint_ + 1, target_angle_);
       }
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception& e)
+    {
       RCLCPP_ERROR(this->get_logger(), "插补过程异常: %s", e.what());
       aborted = true;
     }
@@ -154,7 +166,8 @@ private:
   // ── 工具函数 ──
   bool waitService(const std::string& name, rclcpp::ClientBase::SharedPtr cli, double timeout_s = 5.0)
   {
-    if (!cli->wait_for_service(std::chrono::duration<double>(timeout_s))) {
+    if (!cli->wait_for_service(std::chrono::duration<double>(timeout_s)))
+    {
       RCLCPP_ERROR(this->get_logger(), "服务 %s 未就绪", name.c_str());
       return false;
     }
@@ -165,24 +178,29 @@ private:
   /// 泛型服务调用：同步等待并打印成功/失败
   template <typename Srv>
   typename Srv::Response::SharedPtr callService(const typename rclcpp::Client<Srv>::SharedPtr& cli,
-                                                typename Srv::Request::SharedPtr req,
-                                                const std::string& label,
+                                                typename Srv::Request::SharedPtr req, const std::string& label,
                                                 double timeout_s = 5.0)
   {
-    if (!cli->service_is_ready()) {
+    if (!cli->service_is_ready())
+    {
       RCLCPP_WARN(this->get_logger(), "  [%s] 服务未就绪，跳过", label.c_str());
       return nullptr;
     }
     auto future = cli->async_send_request(req);
     if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future,
-                                           std::chrono::duration<double>(timeout_s)) != rclcpp::FutureReturnCode::SUCCESS) {
+                                           std::chrono::duration<double>(timeout_s)) !=
+        rclcpp::FutureReturnCode::SUCCESS)
+    {
       RCLCPP_WARN(this->get_logger(), "  [%s] 调用超时/异常（%.0fs）", label.c_str(), timeout_s);
       return nullptr;
     }
     auto resp = future.get();
-    if (resp->success) {
+    if (resp->success)
+    {
       RCLCPP_INFO(this->get_logger(), "  ✓ %s 成功", label.c_str());
-    } else {
+    }
+    else
+    {
       RCLCPP_WARN(this->get_logger(), "  ✗ %s 失败: %s", label.c_str(), resp->message.c_str());
     }
     return resp;
@@ -233,7 +251,7 @@ private:
 
 } // namespace tl_example
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<tl_example::ServoJTestDemo>();
