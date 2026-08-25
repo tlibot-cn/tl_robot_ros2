@@ -15,8 +15,8 @@
 ### 2026-08-25
 
 - 修复 tl_example 构建失败：移除已删除的 ex_driver_quick_test 目标，ex_info_query 的 DH 参数打印适配新标准 DH 消息（`0d1eaf3`）
-- 统一全部 14 种臂型默认通讯 IP 为 `192.168.1.13`（tl_tcb610v 配置同步更新）
-- 所有 tl_driver launch 文件新增 `arm_ip` 参数，启动时可覆盖默认 IP（优先于 config 文件）
+- 统一全部 14 种臂型默认通讯 IP 为 `192.168.1.13`（tl_tcb610v 配置同步更新）（`880076b`）
+- 所有 tl_driver launch 文件新增 `arm_ip` 参数，启动时可覆盖默认 IP（优先于 config 文件）（`880076b`）
 
 ### 2026-08-21
 
