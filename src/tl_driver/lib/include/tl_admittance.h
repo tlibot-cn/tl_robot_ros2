@@ -21,7 +21,7 @@
  *   std::vector<double> wrench = {fx, fy, fz, mx, my, mz};
  *   std::vector<double> compensated(6);
  *   ctrl.CompensatePose(wrench, target, compensated);
- *   servo_movej(sock_tcp, sock_udp, compensated, 1);
+ *   servo_movej(sock_tcp, sock_7000, compensated, 1);
  */
 
 #ifndef TL_EXTENSION_TL_ADMITTANCE_H_

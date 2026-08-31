@@ -80,7 +80,8 @@ TL_API Result queue_motion_restart(SOCKETFD socketFd);
  * @deprecated 该接口已废弃，建议使用 `queue_motion_stop_not_power_off` 替代。
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API TL_DEPRECATED("use queue_motion_stop_not_power_off instead") Result queue_motion_stop(SOCKETFD socketFd);
+TL_DEPRECATED("use queue_motion_stop_not_power_off instead")
+TL_API Result queue_motion_stop(SOCKETFD socketFd);
 
 /**
  * @brief 停止连续运动保持上电状态

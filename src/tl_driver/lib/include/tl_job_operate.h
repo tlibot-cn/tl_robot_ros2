@@ -53,6 +53,26 @@ TL_API Result job_open(SOCKETFD socketFd, const std::string& jobName);
 TL_API Result job_run(SOCKETFD socketFd, const std::string& jobName);
 
 /**
+ * @brief 获取当前打开的作业文件名称
+ * @param jobName 输出：当前打开的作业文件
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result job_get_current_file(SOCKETFD socketFd, std::string& jobName);
+
+/**
+ * @brief 停止作业文件（不会下电）
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result job_stop(SOCKETFD socketFd);
+
+/**
+ * @brief 获取当前打开的作业文件运行到的行数
+ * @param line 输出：运行到的行数
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result job_get_current_line(SOCKETFD socketFd, int& line);
+
+/**
  * @brief 根据文件名上传一个作业文件
  * @param filePath 文件的完整路径
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误（如文件不存在）；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
@@ -100,9 +120,17 @@ TL_API Result job_insert_moveL(SOCKETFD socketFd, int line, MoveCmd moveCmd);
 TL_API Result job_insert_moveC(SOCKETFD socketFd, int line, MoveCmd moveCmd);
 
 /**
+ * @brief 向作业文件插入一条 moveS 样条运动
+ * @param line 插入的行号
+ * @param moveCmd 运动指令参数，详见 MoveCmd
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误（如行号越界或参数非法）；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result job_insert_moveS(SOCKETFD socketFd, int line, MoveCmd moveCmd);
+
+/**
  * @brief 向作业文件插入一条增量指令 IMOVE
  * @param line 插入的行号
- * @param moveCmd 运动指令参数，详见 MoveCmd；增量指令需 targetPosType=3（变量）、targetPosName="RP0001"（厂商约定）
+ * @param moveCmd 运动指令参数，详见 MoveCmd；增量指令需 targetPosType=3（变量）、targetPosName="RP0001"（控制器协议约定）
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误（如行号越界或参数非法）；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result job_insert_imove(SOCKETFD socketFd, int line, MoveCmd moveCmd);

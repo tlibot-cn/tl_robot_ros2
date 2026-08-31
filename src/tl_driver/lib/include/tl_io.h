@@ -23,9 +23,21 @@ TL_API Result get_io_type(SOCKETFD socketFd, IOtype& io_type);
  * @brief 设置数字输出
  * @param port 端口号 【1，最大端口数】
  * @param value 输出端口值 0 or 1
+ * @deprecated 请使用 IoLevel 枚举重载版本
+ * @note 推荐使用枚举重载（IoLevel::OFF / IoLevel::ON），避免魔法数字
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误（如端口号越界）；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
+TL_DEPRECATED("use IoLevel enum overload instead")
 TL_API Result set_digital_output(SOCKETFD socketFd, int port, int value);
+
+/**
+ * @brief 设置数字输出（IoLevel 枚举重载）
+ * @param port 端口号 【1，最大端口数】
+ * @param value IoLevel::OFF（输出关闭）/ IoLevel::ON（输出打开）
+ * @note 推荐使用本枚举重载版本，避免魔法数字
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误（如端口号越界）；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result set_digital_output(SOCKETFD socketFd, int port, IoLevel value);
 
 /**
  * @brief 一次获取所有数字输出
@@ -63,28 +75,33 @@ TL_API Result get_analog_output(SOCKETFD socketFd, std::vector<double>& aout);
  */
 TL_API Result get_analog_input(SOCKETFD socketFd, std::vector<double>& ain);
 
-/**
- * @brief 设置远程IO功能
- * @param robotNum 机器人编号(1-4)
- * @param general 通用功能远程IO参数设置,如启动、暂停、停止,清除报警等,详见 RemoteControl
- * @param program 远程控制程序参数设置, 详见 RemoteProgram, program.size() 必须与 num 相等
- * @param num 远程IO数量,若是24.03版本必须与控制器端远程IO参数设置中的 num 一致,22.07版本没有该参数
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误（如 program.size() 与 num 不一致）；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
- */
-TL_API Result set_remote_function(SOCKETFD socketFd, int robotNum, RemoteControl general, std::vector<RemoteProgram> program,
-                           int num = 10);
+
 
 /**
- * @brief 获取远程IO功能设置数据
+ * @brief 获取IO复位相关参数
  * @param robotNum 机器人编号(1-4)
- * @param num 远程IO数量,22.07版本没有该参数,22.07版本调用此接口num将返回-1
- * @param time IO重复触发屏蔽时间,单位 ms
- * @param general 通用功能远程IO参数设置,如启动、暂停、停止,清除报警等,详见 RemoteControl
- * @param program 远程控制程序参数设置
+ * @param type 设置类型：1 远程IO复位 / 2 切模式停止 / 3 程序报错
+ * @param enable 输出：是否复位容器，大小为所有IO板输出端口数，从第二块IO板开始，每一块IO板的起始位置为上一块IO板的末位端口的顺延
+ * @param value 输出：复位值容器，大小为所有IO板输出端口数，从第二块IO板开始，每一块IO板的起始位置为上一块IO板的末位端口的顺延
+ * @deprecated 请使用 IoResetType 枚举重载版本
+ * @note 推荐使用枚举重载（IoResetType::REMOTE_IO / IoResetType::MODE_STOP / IoResetType::PROGRAM_ERROR），避免魔法数字
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result get_remote_function(SOCKETFD socketFd, int robotNum, int& num, int& time, RemoteControl& general,
-                           std::vector<RemoteProgram>& program);
+TL_DEPRECATED("use IoResetType enum overload instead")
+TL_API Result get_IO_reset_function(SOCKETFD socketFd, int robotNum, int type, std::vector<int>& enable,
+                                    std::vector<int>& value);
+
+/**
+ * @brief 获取IO复位相关参数（IoResetType 枚举重载）
+ * @param robotNum 机器人编号(1-4)
+ * @param type IoResetType::REMOTE_IO（远程IO复位）/ IoResetType::MODE_STOP（切模式停止）/ IoResetType::PROGRAM_ERROR（程序报错）
+ * @param enable 输出：是否复位容器，大小为所有IO板输出端口数，从第二块IO板开始，每一块IO板的起始位置为上一块IO板的末位端口的顺延
+ * @param value 输出：复位值容器，大小为所有IO板输出端口数，从第二块IO板开始，每一块IO板的起始位置为上一块IO板的末位端口的顺延
+ * @note 推荐使用本枚举重载版本，避免魔法数字
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result get_IO_reset_function(SOCKETFD socketFd, int robotNum, IoResetType type, std::vector<int>& enable,
+                                    std::vector<int>& value);
 
 } // namespace tl
 

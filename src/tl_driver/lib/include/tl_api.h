@@ -17,4 +17,6 @@
 #include "tl_modbus.h"
 #include "tl_track.h"
 
+#include "tl_clamp.h"
+#include "tl_dexterous_hands.h"
 #endif /* TL_SDK_TL_API_H */

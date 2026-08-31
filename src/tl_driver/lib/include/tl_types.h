@@ -17,7 +17,8 @@
 
 // 接口废弃标记：调用处产生编译警告（C++14 标准属性 [[deprecated]]，
 // MSVC VS2015+ / GCC / Clang 均支持，含消息形式）
-// 用法: TL_API TL_DEPRECATED("use new_api instead") Result old_api(...);
+// 用法: TL_DEPRECATED("use new_api instead")
+//       TL_API Result old_api(...);
 // 配套在 Doxygen 注释中写 @deprecated 说明（随存根生成进入 pyi docstring）。
 #define TL_DEPRECATED(msg) [[deprecated(msg)]]
 
@@ -55,6 +56,82 @@ enum class Coord
   BASE = 1,  // 基坐标系（直角坐标系）
   TOOL = 2,  // 工具坐标系
   USER = 3   // 用户坐标系
+};
+
+// 机器人模式（对应 set_current_mode / get_current_mode 的 mode 参数）
+enum class RobotMode
+{
+  TEACH = 0,  // 示教模式
+  REMOTE = 1, // 远程模式
+  RUN = 2     // 运行模式
+};
+
+// 伺服状态（对应 set_servo_state / get_servo_state 的 state 参数）
+enum class ServoState
+{
+  STOP = 0,    // 停止状态
+  READY = 1,   // 就绪状态
+  ALARM = 2,   // 报警状态
+  RUNNING = 3  // 运行状态
+};
+
+// 程序运行状态（对应 get_robot_running_state 的 status 参数）
+enum class RunState
+{
+  STOP = 0,    // 停止
+  PAUSE = 1,   // 暂停
+  RUNNING = 2  // 运行
+};
+
+// 示教模式类型（对应 set_teach_type / get_teach_type 的 type 参数）
+enum class TeachType
+{
+  JOG = 0,  // 点动
+  DRAG = 1  // 拖拽
+};
+
+// 拖拽方式（对应 set_darg_mode 的 mode 参数）
+enum class DragMode
+{
+  NONE = 0,     // 无
+  MOUSE_3D = 1, // 3D鼠标
+  TORQUE = 2,   // 力矩模式
+  POSITION = 3  // 位置模式
+};
+
+// 工具手标定类型（对应 tool_hand_2_or_20_point_* 系列的 calibrationType 参数）
+// 2/12/15/20/21 用于 2-20 点标定；6/7 用于 4/6/7 点标定
+enum class CalibrationType
+{
+  POINT_2 = 2,   // 两点标定
+  POINT_6 = 6,   // 六点标定
+  POINT_7 = 7,   // 七点标定
+  POINT_12 = 12, // 十二点标定
+  POINT_15 = 15, // 十五点标定
+  POINT_20 = 20, // 二十点标定
+  POINT_21 = 21  // 二十一点标定
+};
+
+// 视觉手眼标定计算类型（对应 vision_hand_eye_calibration_calculation 的 calculateType 参数）
+enum class VisionCalculateType
+{
+  EYE_IN_HAND = 0, // 眼在手内
+  EYE_TO_HAND = 1  // 眼在手外
+};
+
+// IO 复位类型（对应 get_IO_reset_function 的 type 参数）
+enum class IoResetType
+{
+  REMOTE_IO = 1,    // 远程IO复位
+  MODE_STOP = 2,    // 切模式停止
+  PROGRAM_ERROR = 3 // 程序报错
+};
+
+// 数字输出电平（对应 set_digital_output 的 value 参数）
+enum class IoLevel
+{
+  OFF = 0, // 输出关闭（低电平）
+  ON = 1   // 输出打开（高电平）
 };
 
 // 机器人类型（对应 get_robot_type 返回值）
@@ -187,14 +264,14 @@ struct CollisionPara
   unsigned int axisum{6};                   ///< 机器人轴数，默认为六轴机器人
 };
 
-// 碰撞安全参数（对应厂商 CollisionSafeParam，24.03+ 固件）
+// 碰撞安全参数（对应控制器协议 CollisionSafeParam，24.03+ 固件）
 struct CollisionSafeParam
 {
   std::vector<double> safe_coeff;            // 碰撞检测系数，第几位为第几轴
   std::vector<double> servo_execution_delay; // 伺服执行响应时间，第几位为第几轴，单位 ms
 };
 
-// 关节参数（对应厂商 RobotJointParam）
+// 关节参数（对应控制器协议 RobotJointParam）
 struct RobotJointParam
 {
   double angleToDistance{0};        // 关节角度转距离转换比
@@ -216,7 +293,7 @@ struct RobotJointParam
   double reverseClearance{0};       // 反向间隙
 };
 
-// 笛卡尔参数（对应厂商 CartesianParam）
+// 笛卡尔参数（对应控制器协议 CartesianParam）
 struct CartesianParam
 {
   double maxSpeed{1000};      // 最大线速度 (mm/s)
@@ -288,8 +365,6 @@ struct Sensor6DData
   double mxDataSubBase = 0.0;
   double myDataSubBase = 0.0;
   double mzDataSubBase = 0.0;
-  std::vector<double> torqueConvertData; // 扭矩转换数据
-  Sensor6DData() : torqueConvertData(6, 0.0) {}
 };
 
 struct SensorBaseParam
@@ -305,28 +380,6 @@ struct SensorBaseParam
   }
 };
 
-struct RemoteProgram
-{
-  int port;  // 远程程序端口绑定
-  int value; // 使用远程IO功能时有效参数(0/1),使用远程状态提示功能时有效参数(0/1/2)
-};
-
-struct RemoteControl
-{
-  int clearStashPort; // 清除断电保持数据绑定端口
-  int faultResetPort; // 清除报警端口
-  int pausePort;      // 暂停端口
-  int startPort;      // 启动端口
-  int stopPort;       // 停止端口
-
-  int clearStashValue; // 清除断电保持数据端口的有效参数(0/1),与clearStashPort相对应
-  int faultResetValue; // 清除报警端口的有效参数(0/1),与faultResetPort相对应
-  int pauseValue;      // 暂停端口的有效参数(0/1),与pausePort相对应
-  int startValue;      // 启动端口的有效参数(0/1),与startPort相对应
-  int stopValue;       // 停止端口的有效参数(0/1),与stopPort相对应
-
-  std::vector<RemoteProgram> program; // 远程程序端口设置,详见 RemoteProgram
-};
 
 struct IOtype
 {
@@ -367,7 +420,7 @@ struct ModbusMasterParameter
 
 // ==================== VERSION_DEV 新增结构体 ====================
 
-// 用户坐标参数（对应厂商 UserCoordParam）
+// 用户坐标参数（对应控制器协议 UserCoordParam）
 struct UserCoordParam
 {
   int location_type{0};           // 用户坐标类型 0:静态 1:联动 2:动态
@@ -379,7 +432,61 @@ struct UserCoordParam
   int related_coord_num{0};       // 联动坐标编号
 };
 
-// 伺服运动参数（对应厂商 ServoMovePara）
+// ==================== 0827 新增结构体 ====================
+
+// 夹爪参数（对应控制器协议 ClampParam）
+struct ClampParam
+{
+  int mode{0};             // 通讯模式 0:modbus_rtu 1:RS485
+  int speed{0};            // 速度
+  int force_threshold{0};  // 力阈值
+};
+
+// 夹爪状态（对应控制器协议 ClampStatus）
+struct ClampStatus
+{
+  bool device_enable{false};      // 设备使能
+  bool device_connect{false};     // 设备连接
+  int clamp_pressure{0};          // 夹爪压力
+  int clamp_opening_degree{0};    // 夹爪张开度
+  int clamp_temperature{0};       // 夹爪温度
+  int clamp_status{0};            // 状态码: 1-张开到最大且空闲 2-闭合到最小且空闲 3-停止且空闲 4-正在闭合 5-正在张开 6-闭合遇力控停止
+};
+
+// 灵巧手力阈值（对应控制器协议 ForceThreshold）
+struct ForceThreshold
+{
+  int thumb{0};   // 拇指阈值
+  int index{0};   // 食指阈值
+  int middle{0};  // 中指阈值
+  int ring{0};    // 无名指阈值
+  int little{0};  // 小指阈值
+};
+
+// 灵巧手参数（对应控制器协议 DexterousHandsParam）
+struct DexterousHandsParam
+{
+  int mode{0};                    // 通讯模式 0:modbus_rtu 1:RS485
+  int speed{0};                   // 速度
+  ForceThreshold force_threshold; // 力阈值（按指设置）
+};
+
+// 拖拽力矩参数（对应控制器协议 DragTorqueParam，24.03+ 固件）
+struct DragTorqueParam
+{
+  std::vector<double> deviation_coeff;   // 模型偏差阈值，第几位为第几轴的参数
+  std::vector<double> start_coeff;       // 关节传感器启动阈值，第几位为第几轴的参数
+  double start_threshold_F{0.0};         // 六维力启动阈值 F
+  double start_threshold_M{0.0};         // 六维力启动阈值 M
+  std::vector<double> friction_offset;   // 摩擦力补偿系数，第几位为第几轴的参数
+  int joint_vel_limit{0};                // 关节速度限制，单位 °/s
+  std::vector<double> resistance_coeff;  // 超限阻力系数，第几位为第几轴的参数
+  std::vector<double> sensor_coeff;      // 关节传感器灵敏系数，第几位为第几轴的参数
+  std::vector<double> target_torq_coeff; // 目标扭矩矫正系数，第几位为第几轴的参数
+  int wait_cycle{0};                     // 等待周期
+};
+
+// 伺服运动参数（对应控制器协议 ServoMovePara）
 struct ServoMovePara
 {
   bool clearBuffer{false};              // 是否清除之前未开始插补的点位
@@ -397,7 +504,7 @@ struct ServoMovePara
   std::vector<double> timeStamp;             // 到达时间戳 (ms)
 };
 
-// 伺服点位运动参数（对应厂商 ServoPointMovePara）
+// 伺服点位运动参数（对应控制器协议 ServoPointMovePara）
 struct ServoPointMovePara
 {
   bool end{false};                          // 是否清除之前未开始的点位
@@ -406,28 +513,7 @@ struct ServoPointMovePara
   std::vector<std::vector<double>> pos;     // 点位，二维[帧数][12维: 本体7+外部轴5]
 };
 
-// 机器人速度参数（对应厂商 RobotSpeedParam）
-struct RobotSpeedParam
-{
-  bool handwheel_control{false};          // 是否为手轮模式
-  double micro_dot_speed_ACS{0};          // 步进距离(ACS)
-  double micro_dot_speed_MCS{0};          // 手轮距离(MCS)
-  std::string name;                       // 当前速度名称
-  int segment{1};                         // 段号
-  int speed{0};                           // 当前速度档位值
-  std::vector<std::string> speed_segment_name; // 速度档名称列表
-  std::vector<int> speed_segment;         // 速度档数值列表
-  int type{0};                            // 速度类型 0:档位 1:ACS步进 2:MCS步进
-};
-
-// 机器人速度段参数（对应厂商 RobotSpeedSegmentParam）
-struct RobotSpeedSegmentParam
-{
-  std::vector<std::string> speed_segment_name; // 速度段名称列表，最大20
-  std::vector<int> speed_segment;              // 速度段速度列表
-};
-
-// 拖动示教参数（对应厂商 DragParam）
+// 拖动示教参数（对应控制器协议 DragParam）
 struct DragParam
 {
   int drag_mode{0};              // 拖动模式 0:自由 1:位置 2:姿态
@@ -440,7 +526,7 @@ struct DragParam
   double drag_mass[6]{0};        // 质量系数[X,Y,Z,A,B,C]
 };
 
-// VFD 运行参数（对应厂商 VFDRunParam）
+// VFD 运行参数（对应控制器协议 VFDRunParam）
 struct VFDRunParam
 {
   int dir{0};               // 方向
@@ -450,7 +536,7 @@ struct VFDRunParam
   bool independent_axis{true}; // 是否为主轴
 };
 
-// VFD 状态（对应厂商 VFDState）
+// VFD 状态（对应控制器协议 VFDState）
 struct VFDState
 {
   int motor_vel{0};       // 电机转速
@@ -458,7 +544,7 @@ struct VFDState
   double spindle_angle{0}; // 主轴角度
 };
 
-// 独立轴参数（对应厂商 IndependentAxisParam）
+// 独立轴参数（对应控制器协议 IndependentAxisParam）
 struct IndependentAxisParam
 {
   int axis_num{0};                             // 轴编号
@@ -478,7 +564,7 @@ struct IndependentAxisParam
   int select_bind_servo{0};                    // 选择绑定的伺服编号
 };
 
-// 独立轴运行（对应厂商 IndependentAxisRun）
+// 独立轴运行（对应控制器协议 IndependentAxisRun）
 struct IndependentAxisRun
 {
   int axis_num{0};   // 轴编号
@@ -488,7 +574,7 @@ struct IndependentAxisRun
   double dec{0};     // 减速度
 };
 
-// 传感器负载参数（对应厂商 PayloadParamBySensor）
+// 传感器负载参数（对应控制器协议 PayloadParamBySensor）
 struct PayloadParamBySensor
 {
   double payloadMass{0};         // 负载质量 (kg)
@@ -497,7 +583,7 @@ struct PayloadParamBySensor
   double payloadMassCenterZ{0};  // 负载质心Z (mm)
 };
 
-// 逆运动学参数（对应厂商 InverseKinParameter）
+// 逆运动学参数（对应控制器协议 InverseKinParameter）
 struct InverseKinParameter
 {
   int configuration{0};  // 1:左手系 2:右手系 0:自适应

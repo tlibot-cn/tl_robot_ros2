@@ -12,13 +12,14 @@
  *   ctrl.SetDesiredWrench(desired_wrench);
  *
  *   // 2. 开启恒力控制（立即返回）
- *   open_constforce(sock_tcp, sock_udp, base_pose, ctrl, my_sensor_cb, user_data, params);
+ *   open_constforce(socketFd, socket_servo, base_pose, ctrl, my_sensor_cb, user_data, params);
  *
  *   // 3. 主线程可做其他事；需要停止时
  *   Result reason = close_constforce();
  *
  * @attention 需要六维力传感器正常连接（数据由调用方回调提供）
  * @note 运行前提: 机器人已上电、已切运行模式(2)、已运动到接触位
+ * @attention 本文件恒力驻留控制为 SDK 扩展实现（非控制器原生功能），接口与行为可能随版本调整
  */
 
 #ifndef TL_EXTENSION_TL_CONSTANT_FORCE_H
@@ -94,12 +95,13 @@ struct TL_API ConstForceStatus
 
 /**
  * @brief 开启恒力驻留控制（异步，立即返回）
+ * @attention 实验性接口：SDK 扩展实现（非控制器原生功能），接口与行为可能随版本调整
  *
  * 后台线程持续运行，无时长上限：
  *   sensor_callback → EMA 滤波 → 死区 → 导纳补偿 → 工具系→基系旋转 → IK → set_servoJ_pos
  *
- * @param socket_tcp       TCP socket (6001)：仅 IK 使用
- * @param socket_udp       UDP socket (7000)：servoJ
+ * @param socketFd        TCP socket (6001)：仅 IK 使用
+ * @param socket_servo    TCP socket (7000)：servoJ
  * @param base_pose        初始目标位姿 [X,Y,Z,RX,RY,RZ] (mm, rad)，后台闭环以此为基准；
  *                         运行中可用 set_constforce_target_pose 实时更新
  * @param admittance       已 Configure + SetDesiredWrench（含重力补偿 + 目标力）的导纳实例
@@ -117,12 +119,13 @@ struct TL_API ConstForceStatus
  * @warning 控制频率由 admittance.GetControlPeriod() 决定，循环定时与导纳积分共享同一时间源
  * @warning open_constforce 与 close_constforce 需串行调用（非线程安全）
  */
-TL_API Result open_constforce(SOCKETFD socket_tcp, SOCKETFD socket_udp, const std::vector<double>& base_pose,
+TL_API Result open_constforce(SOCKETFD socketFd, SOCKETFD socket_servo, const std::vector<double>& base_pose,
                        AdmittanceController& admittance, ForceSensorCallback sensor_callback, void *sensor_user_data,
                        const ConstantForceParams& params);
 
 /**
  * @brief 实时更新恒力控制的目标位姿（运动接口）
+ * @attention 实验性接口：SDK 扩展实现（非控制器原生功能），接口与行为可能随版本调整
  *
  * 后台闭环每周期读取最新目标位姿，下一周期即以新目标为基准做导纳补偿。
  * 主线程可据此实现任意运动（直线移动、扫动、圆弧等），轨迹平滑由调用方保证
@@ -139,6 +142,7 @@ TL_API Result set_constforce_target_pose(const std::vector<double>& target_pose)
 
 /**
  * @brief 查询恒力控制运行时状态（线程安全）
+ * @attention 实验性接口：SDK 扩展实现（非控制器原生功能），接口与行为可能随版本调整
  *
  * 返回后台闭环最近一个控制周期更新的快照：运行标志、原始/滤波后六维力、
  * 当前目标位姿、结束原因。未 open 时返回 SUCCESS 且 running=false。
@@ -150,6 +154,7 @@ TL_API Result get_constforce_status(ConstForceStatus& status);
 
 /**
  * @brief 关闭恒力控制并阻塞等待后台循环退出（幂等，可随时调用）
+ * @attention 实验性接口：SDK 扩展实现（非控制器原生功能），接口与行为可能随版本调整
  *
  * 三种场景：
  *   1. 后台循环运行中 → 置停止标志 → join → 返回结束原因
