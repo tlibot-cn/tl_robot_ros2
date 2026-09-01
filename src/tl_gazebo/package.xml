@@ -2,19 +2,11 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>tl_gazebo</name>
-  <version>0.3.0</version>
-  <description>
-     An automatically generated package with all the configuration and launch files for using the tl_description with the MoveIt Motion Planning Framework
-  </description>
-  <maintainer email="tl@robot.com">tl</maintainer>
+  <version>2.0.1</version>
+  <description>天链机械臂 Gazebo 仿真功能包（ros2_control + MoveIt2 集成）</description>
+  <maintainer email="tlibot@tlibot.com">天链机器人</maintainer>
 
-  <license>BSD</license>
-
-  <url type="website">http://moveit.ros.org/</url>
-  <url type="bugtracker">https://github.com/ros-planning/moveit2/issues</url>
-  <url type="repository">https://github.com/ros-planning/moveit2</url>
-
-  <maintainer email="tl@robot.com">tl</maintainer>
+  <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

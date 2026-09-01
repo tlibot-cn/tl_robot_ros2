@@ -145,67 +145,33 @@ tl_driver:
 │   ├── tl_tcb705v_driver.launch.py
 │   ├── tl_tcb710_driver.launch.py
 │   └── tl_tcb710v_driver.launch.py
-├── lib                            # API依赖库
-│   ├── arm                         # ARM 架构库文件
-│   │   ├── _tl_host.so
-│   │   ├── libtl_host.so
-│   │   ├── libservoJ_wrapper.so
-│   │   ├── libmodbus_wrapper.so
-│   │   ├── libmath_wrapper.so
-│   │   └── tl_interface.py
-│   ├── include                     # C/C++ API 头文件
-│   │   ├── c                       # C 语言头文件
-│   │   │   ├── interface
-│   │   │   │   ├── tl_c_craft_pallet.h
-│   │   │   │   ├── tl_c_interface.h
-│   │   │   │   ├── tl_c_io.h
-│   │   │   │   ├── tl_c_job_operate.h
-│   │   │   │   └── tl_c_queue_operate.h
-│   │   │   └── parameter
-│   │   │       ├── tl_define.h
-│   │   │       └── tl_interface_parameter.h
-│   │   └── cpp                     # C++ 头文件
-│   │       ├── interface
-│   │       │   ├── tl_api.h
-│   │       │   ├── tl_craft_conveyor_belt_track.h
-│   │       │   ├── tl_craft_laser_cutting.h
-│   │       │   ├── tl_craft_pallet.h
-│   │       │   ├── tl_craft_track.h
-│   │       │   ├── tl_craft_vision.h
-│   │       │   ├── tl_craft_weld.h
-│   │       │   ├── tl_dual_arm.h
-│   │       │   ├── tl_interface.h
-│   │       │   ├── tl_io.h
-│   │       │   ├── tl_job_operate.h
-│   │       │   ├── tl_modbus.h
-│   │       │   ├── tl_queue_operate.h
-│   │       │   ├── tl_track.h
-│   │       │   └── tl_vfd_ctr.h
-│   │       └── parameter
-│   │           ├── tl_craft_conveyor_belt_track_parameter.h
-│   │           ├── tl_craft_laser_cutting_parameter.h
-│   │           ├── tl_craft_track_parameter.h
-│   │           ├── tl_craft_vision_parameter.h
-│   │           ├── tl_craft_weld_parameter.h
-│   │           ├── tl_define.h
-│   │           ├── tl_interface_parameter.h
-│   │           ├── tl_io_parameter.h
-│   │           ├── tl_modbus_parameter.h
-│   │           └── tl_parameter.h
-│   └── x86                        # x86 架构库文件
-│       ├── _tl_host.so
-│       └── tl_interface.py
+├── lib                            # 专有库（V3.0.2，不可修改）
+│   ├── arm                        # ARM 架构
+│   │   └── libtl_host.so
+│   ├── include                    # C/C++ API 头文件（扁平结构）
+│   │   ├── tl_admittance.h
+│   │   ├── tl_api.h
+│   │   ├── tl_clamp.h
+│   │   ├── tl_constant_force.h
+│   │   ├── tl_dexterous_hands.h
+│   │   ├── tl_force.h
+│   │   ├── tl_interface.h
+│   │   ├── tl_io.h
+│   │   ├── tl_job_operate.h
+│   │   ├── tl_modbus.h
+│   │   ├── tl_queue_operate.h
+│   │   ├── tl_servo_ext.h
+│   │   ├── tl_track.h
+│   │   └── tl_types.h
+│   └── x86                        # x86 架构
+│       └── libtl_host.so
 ├── package.xml
 ├── README.md
-├── 修改说明.md
 ├── src                        # 驱动代码源文件
 │   └── tl_driver.cpp
-└── test                       # 测试脚本
-    ├── test_job_insert_moveJ.sh
-    ├── test_job_insert_moveL.sh
-    ├── test_moveJ.sh
-    ├── test_moveL.sh
-    └── test_publisher.py
+└── test                       # 接口测试
+    ├── test_all_interfaces.py   # 全接口测试脚本
+    └── tl_driver_接口测试.md    # 接口测试说明文档
 ```
 ## tl_driver功能包话题与服务说明
 tl_driver功能包的服务和话题较多，可以通过如下指令了解其话题信息。

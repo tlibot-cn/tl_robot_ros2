@@ -98,10 +98,14 @@ tl_gazebo/
 │   ├── gazebo_tcb705lv_description.urdf.xacro  # TCB705LV Gazebo模型描述文件
 │   ├── gazebo_tcb705v_description.urdf.xacro   # TCB705V Gazebo模型描述文件
 │   ├── gazebo_tcb710_description.urdf.xacro    # TCB710 Gazebo模型描述文件
-│   └── gazebo_tcb710v_description.urdf.xacro   # TCB710V Gazebo模型描述文件
+│   ├── gazebo_tcb710v_description.urdf.xacro   # TCB710V Gazebo模型描述文件
+│   ├── gazebo_6axis_f710_sim.urdf.xacro        # 6 轴 F710 手柄仿真模型描述文件
+│   ├── gazebo_7axis_f710_sim.urdf.xacro        # 7 轴 F710 手柄仿真模型描述文件
+│   ├── ros2_controllers_f710_sim_6axis.yaml    # 6 轴 F710 仿真控制器配置
+│   └── ros2_controllers_f710_sim_7axis.yaml    # 7 轴 F710 仿真控制器配置
 ├── doc
-│   ├── tl_gazebo1.png                      # Gazebo仿真界面截图
-│   └── tl_gazebo2.png                      # RViz2+MoveIt2控制界面截图
+│   ├── image1.png                          # Gazebo仿真界面截图
+│   └── image2.png                          # RViz2+MoveIt2控制界面截图
 ├── launch
 │   ├── gazebo_tcb605_demo.launch.py        # TCB605 Gazebo启动文件
 │   ├── gazebo_tcb605f_demo.launch.py       # TCB605F Gazebo启动文件
@@ -116,7 +120,9 @@ tl_gazebo/
 │   ├── gazebo_tcb705lv_demo.launch.py      # TCB705LV Gazebo启动文件
 │   ├── gazebo_tcb705v_demo.launch.py       # TCB705V Gazebo启动文件
 │   ├── gazebo_tcb710_demo.launch.py        # TCB710 Gazebo启动文件
-│   └── gazebo_tcb710v_demo.launch.py       # TCB710V Gazebo启动文件
+│   ├── gazebo_tcb710v_demo.launch.py       # TCB710V Gazebo启动文件
+│   ├── gazebo_6axis_f710_sim.launch.py     # 6 轴 F710 手柄仿真启动文件
+│   └── gazebo_7axis_f710_sim.launch.py     # 7 轴 F710 手柄仿真启动文件
 ├── package.xml                             # 依赖说明文件
 └── README.md                               # 说明文档
 ```

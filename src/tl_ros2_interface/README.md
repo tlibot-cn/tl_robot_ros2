@@ -30,6 +30,7 @@ TL 系列机械臂 ROS2 接口说明
 * 4.9 [机器人DH参数RobotDHParam_msg](#机器人DH参数RobotDHParam_msg)
 * 4.10 [机械臂关节参数RobotJointParam_msg](#机械臂关节参数RobotJointParam_msg)
 * 4.11 [工具参数ToolParam_msg](#工具参数ToolParam_msg)
+* 4.12 [ServoL直线伺服ServolMove_msg](#servol直线伺服servolmove_msg)
 * 5 [tl_ros2_interface服务（srv）说明](#tl_ros2_interface服务srv说明)
 * 5.1 [坐标转换CoordTransform_srv](#坐标转换CoordTransform_srv)
 * 5.2 [所有作业文件名GetAllJobFileName_srv](#所有作业文件名GetAllJobFileName_srv)
@@ -99,6 +100,7 @@ tl_ros2_interface/
 │   ├── ObjectInfo.msg
 │   ├── RobotDHParam.msg
 │   ├── RobotJointParam.msg
+│   ├── ServolMove.msg
 │   └── ToolParam.msg
 ├── srv/                  # 服务定义
 │   ├── CoordTransform.srv
@@ -332,6 +334,19 @@ __msg成员__
 - payload_mass_center_x: 负载质心X
 - payload_mass_center_y: 负载质心Y
 - payload_mass_center_z: 负载质心Z
+
+### ServoL直线伺服ServolMove_msg
+```
+float64[] target_pose     # [x, y, z, rx, ry, rz] 目标笛卡尔位姿
+float64 step_size         # 插值步长 (mm)，相邻插值点之间的最大笛卡尔距离，默认 2.0
+int32 coord               # 坐标系：1=基座标系(Base) 2=工具坐标系(Tool) 3=用户坐标系(User)
+```
+__msg成员__
+- target_pose: 目标笛卡尔位姿 [x, y, z, rx, ry, rz]
+- step_size: 插值步长（mm），默认 2.0
+- coord: 坐标系编号（1=基座标系，2=工具坐标系，3=用户坐标系）
+
+> 前置条件：需先调用 `open_servoj` 打开关节跟踪模式；每次收到该话题消息，节点自动获取当前位姿，插值并 IK 转为关节角后通过 servoj 发送。
 
 ## tl_ros2_interface服务（srv）说明
 下面列出 srv 文件的请求/响应字段及简要说明。
