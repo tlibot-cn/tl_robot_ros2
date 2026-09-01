@@ -4,12 +4,49 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)：
 
-- 最新发布版本：`[2.0.0]`（2026-08-21，git tag `V2.0.0`）
+- 最新发布版本：`[2.0.1]`（2026-09-01，git tag `V2.0.1`）
 - 已发布的版本章节按变更类型整理（新增/修复/变更/移除/文档/工程），不再按日期分组
 - 未发布的变更记录在 `[Unreleased]` 下，按日期（新 → 旧）分组整理
 - 正式发布时，将 `[Unreleased]` 内容合并进版本号章节（`## [x.y.z] - YYYY-MM-DD`），并重置 `[Unreleased]`
 - 条目末尾括号内为提交短哈希，便于溯源
 
+## [Unreleased]
+
+（暂无）
+
+## [2.0.1] - 2026-09-01
+
+### 新增
+
+- tl_example 示例程序：数字 IO、信息查询、运动控制、队列运动、ServoJ、示教控制及医疗/实验室 moveL 队列示例（`b74b1e0`）
+- `fk_workspace.py` 支持 `--arm-type` 指定臂型，覆盖全部 14 种型号，图表标题与输出文件名随臂型联动（`3b62410`）
+
+### 修复
+
+- tl_driver 专有库更新到 V3.0.2，修复控制器返回角度而非弧度的问题（`4b5dff0`）
+- 清除 tl_driver 全部编译警告：SDK 弃用 int 接口迁移到枚举重载（RobotMode/ServoState/Coord/DragMode/IoLevel/RunState），SDK 返回值统一为 `Result` 类型（纯类型收紧，行为不变）（`8dca93f`）
+- 修复 tl_example 构建失败：移除已删除的 ex_driver_quick_test 目标，ex_info_query 的 DH 参数打印适配新标准 DH 消息（`b4ad6ca`）
+
+### 变更
+
+- 全部功能包 `cmake_minimum_required` 统一升级到 3.16（`923080a`）
+- 统一全部 14 种臂型默认通讯 IP 为 `192.168.1.13`（tl_tcb610v 配置同步更新）（`ffe0a3d`）
+- 所有 tl_driver launch 文件新增 `arm_ip` 参数，启动时可覆盖默认 IP（优先于 config 文件）（`ffe0a3d`）
+- 迁移接口测试脚本到 `tl_driver/test`，清理旧测试（`b0c5057`）
+- 取消注释并测试全部接口（跳过危险与运动接口）（`0c00b3e`）
+- 重新提交 `tl_driver.cpp`（`f9bcc3a`）
+- tl_driver SDK 更新到 V3.0 版本（`2f8ac51`）
+- tl_driver 补充遗漏的接口（`16980c7`）
+- tl_driver 调整部分接口调用（`2930bd0`）
+- 修复 `get/set_dh_param`，适配新 SDK 标准 DH 参数（`dda23c0`）
+
+### 文档
+
+- 新增 tl_driver ROS2 接口全面测试文档（`7d6ca97`）
+
+### 工程
+
+- 忽略 hetest 测试文件（`dd71277`）
 ## [2.0.0] - 2026-08-21
 
 ### 新增
@@ -84,3 +121,11 @@
 - 更新 .gitignore（`16624b1`、`4c2c577`、`b9c163f`）
 - 更新 AGENT.md（`4687476`）
 - 更新 gitnexus 配置（`c4b779f`）
+
+---
+
+**备注**：
+- `a9139ac`（保存工作）为临时保存，已被 `f0cb692`（Revert "保存工作"）回退，未计入本版本。
+- `829c416`（Merge PR #3 from tlibot-cn/dev）为合并提交，无独立用户可见变更。
+- 标签 `V2.0.0` 指向 `1ce6ad6`（2026-08-21），master 分支 tip；tag 之后的分支提交记入 `[2.0.1]`。
+- 当前发版分支为 `release`，历史经重放后部分提交哈希与旧 master 线不同，`[2.0.1]` 内哈希均以 `release` 分支实际提交为准。

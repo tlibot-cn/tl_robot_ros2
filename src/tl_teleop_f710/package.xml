@@ -2,10 +2,10 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>tl_teleop_f710</name>
-  <version>1.0.0</version>
+  <version>2.0.1</version>
   <description>天链机械臂 Logitech F710 手柄遥操作功能包 (C++)</description>
-  <maintainer email="example@mail.com">root</maintainer>
-  <license>Proprietary</license>
+  <maintainer email="tlibot@tlibot.com">天链机器人</maintainer>
+  <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

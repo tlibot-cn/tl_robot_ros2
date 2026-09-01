@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.16)
 project(tl_driver)
 
 if(NOT CMAKE_CXX_STANDARD)
@@ -33,10 +33,10 @@ else()
   message(FATAL_ERROR "tl_driver: unsupported architecture '${CMAKE_SYSTEM_PROCESSOR}', expected x86_64 or aarch64")
 endif()
 
-# 导入已有动态库（仅 _tl_host.so 被 C++ 链接）
+# 导入已有动态库（仅 libtl_host.so 被 C++ 链接）
 add_library(tl_host_lib SHARED IMPORTED)
 set_target_properties(tl_host_lib PROPERTIES
-  IMPORTED_LOCATION "${TL_LIB_DIR}/_tl_host.so"
+  IMPORTED_LOCATION "${TL_LIB_DIR}/libtl_host.so"
 )
 
 add_executable(tl_driver
@@ -46,10 +46,6 @@ add_executable(tl_driver
 target_include_directories(tl_driver PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/include"
   "${CMAKE_CURRENT_SOURCE_DIR}/lib/include"
-  "${CMAKE_CURRENT_SOURCE_DIR}/lib/include/cpp/interface"
-  "${CMAKE_CURRENT_SOURCE_DIR}/lib/include/cpp/parameter"
-  "${CMAKE_CURRENT_SOURCE_DIR}/lib/include/c/interface"
-  "${CMAKE_CURRENT_SOURCE_DIR}/lib/include/c/parameter"
 )
 
 ament_target_dependencies(tl_driver
@@ -80,11 +76,9 @@ install(TARGETS tl_driver
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# 安装 TL 动态库及 Python 接口
-# C++ 链接的 _tl_host.so 和 Python 使用的 tl_interface.py
+# 安装 TL 动态库（新库为单一 libtl_host.so，不再需要 Python 接口 tl_interface.py）
 install(FILES
-  "${TL_LIB_DIR}/_tl_host.so"
-  "${TL_LIB_DIR}/tl_interface.py"
+  "${TL_LIB_DIR}/libtl_host.so"
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -96,16 +90,8 @@ install(CODE "
   )
 ")
 
-# ARM64 额外的 Python ctypes 依赖库（x86_64 版没有这些）
-if(TL_ARCH STREQUAL "aarch64")
-  install(FILES
-    "${TL_LIB_DIR}/libtl_host.so"
-    "${TL_LIB_DIR}/libmath_wrapper.so"
-    "${TL_LIB_DIR}/libmodbus_wrapper.so"
-    "${TL_LIB_DIR}/libservoJ_wrapper.so"
-    DESTINATION lib/${PROJECT_NAME}
-  )
-endif()
+# ARM64 额外的依赖库：新 libtl_host.so 已自包含，无需 libmath/libmodbus/libservoJ_wrapper
+# 若未来厂商提供额外依赖库，可在 arm/ 下放置后在此追加安装
 
 install(DIRECTORY config
   DESTINATION share/${PROJECT_NAME}

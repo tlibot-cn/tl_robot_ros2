@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
 
 # 天链机械臂 ROS2 功能包使用说明书
 
@@ -10,6 +10,7 @@
 | :---: | :---- | :--- |
 | V1.0 | 2026-5-22 | 拟制 |
 | V1.1 | 2026-6-30 | 新增 F710 手柄遥操作功能包 |
+| V1.2 | 2026-9-1 | 同步 2.0.1 发版：接口 12 个 msg、包版本统一 2.0.1 |
 
 </div>
 
@@ -46,7 +47,7 @@ src/
 ├── tl_driver/               # 硬件驱动（C++ 节点）
 │   ├── config/              # 14 套通信参数配置
 │   ├── launch/              # 驱动节点 launch
-│   ├── lib/                 # NexMotion SWIG 封装
+│   ├── lib/                 # TL 专有库（libtl_host.so + API 头文件）
 │   └── src/                 # 驱动节点源码
 ├── tl_example/              # 使用示例
 ├── tl_gazebo/               # Gazebo 仿真
@@ -64,7 +65,7 @@ src/
 │   ├── ...
 │   └── tl_tcb710v_config/
 ├── tl_ros2_interface/       # ROS2 消息与服务接口
-│   ├── msg/                 # 11 个 msg 定义文件
+│   ├── msg/                 # 12 个 msg 定义文件
 │   └── srv/                 # 45 个 srv 定义文件
 ├── tl_teleop/               # VR 遥操作（C++ 节点，PXREA SDK）
 │   ├── config/

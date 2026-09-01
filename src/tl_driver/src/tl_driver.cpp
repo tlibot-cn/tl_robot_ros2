@@ -2,6 +2,7 @@
 #include <thread>
 
 #include "tl_driver/tl_driver.h"
+using namespace tl;
 
 namespace
 {
@@ -18,21 +19,21 @@ struct RobotStateMessageBuffer
 
 RobotStateMessageBuffer g_robot_state_msg_buffer;
 
-// 普通 C 风格函数指针回调
-void robot_state_recv_callback(int msg_id, const char *msg)
+// 新 SDK：7000 端口机器人状态专用回调（robot_state_callback）
+void robot_state_callback_handler(const char *state)
 {
   {
     std::lock_guard<std::mutex> lock(g_robot_state_msg_buffer.mutex);
 
-    g_robot_state_msg_buffer.last_msg_id = msg_id;
-    g_robot_state_msg_buffer.last_msg = msg ? msg : "";
+    g_robot_state_msg_buffer.last_msg_id = MessageLists::ROBOT_STATE;
+    g_robot_state_msg_buffer.last_msg = state ? state : "";
     ++g_robot_state_msg_buffer.seq;
   }
 
   g_robot_state_msg_buffer.cv.notify_all();
 
   std::cout << "\033[32m"
-            << "id = " << msg_id << ", msg = " << (msg ? msg : "") << "\033[0m" << std::endl;
+            << "robot_state = " << (state ? state : "") << "\033[0m" << std::endl;
 }
 
 void receive_error_or_warning_message_callback(int messageType, const char *message, int messageCode)
@@ -42,7 +43,7 @@ void receive_error_or_warning_message_callback(int messageType, const char *mess
             << "\033[0m" << std::endl;
 }
 
-const char *result_to_string(int ret)
+const char *result_to_string(Result ret)
 {
   switch (ret)
   {
@@ -468,7 +469,7 @@ void TL_Arm::init()
   if (connect())
   {
     // 切换到示教模式
-    int ret = set_current_mode(socket_fd_, 0);
+    Result ret = set_current_mode(socket_fd_, RobotMode::TEACH);
     if (ret != Result::SUCCESS)
     {
       RCLCPP_ERROR(this->get_logger(), "[Init]: failed to set teach mode, result=%s", result_to_string(ret));
@@ -510,70 +511,71 @@ bool TL_Arm::is_powered()
 
 bool TL_Arm::power_on()
 {
-  int state = -1;
+  ServoState state = static_cast<ServoState>(-1); // -1 哨兵值：查询失败时落入 default 分支
   get_servo_state(socket_fd_, state);
 
   switch (state)
   {
-    case 0:
-      set_servo_state(socket_fd_, 1);
+    case ServoState::STOP:
+      set_servo_state(socket_fd_, ServoState::READY);
       RCLCPP_INFO(this->get_logger(), "[PowerOn]: waiting 2s for servo ready...");
       std::this_thread::sleep_for(std::chrono::seconds(2));
       set_servo_poweron(socket_fd_);
       break;
-    case 1:
+    case ServoState::READY:
       set_servo_poweron(socket_fd_);
       break;
-    case 2:
+    case ServoState::ALARM:
       RCLCPP_WARN(this->get_logger(), "[PowerOn]: servo alarm state (2), clearing error first");
       clear_error(socket_fd_);
-      set_servo_state(socket_fd_, 1);
+      set_servo_state(socket_fd_, ServoState::READY);
       set_servo_poweron(socket_fd_);
       break;
-    case 3:
+    case ServoState::RUNNING:
       RCLCPP_INFO(this->get_logger(), "[PowerOn]: servo_state=3, re-executing power on");
-      set_servo_state(socket_fd_, 1);
+      set_servo_state(socket_fd_, ServoState::READY);
       set_servo_poweron(socket_fd_);
       break;
+
     default:
-      RCLCPP_ERROR(this->get_logger(), "[PowerOn]: unknown servo state %d", state);
+      RCLCPP_ERROR(this->get_logger(), "[PowerOn]: unknown servo state %d", static_cast<int>(state));
       return false;
   }
 
   get_servo_state(socket_fd_, state);
-  RCLCPP_INFO(this->get_logger(), "[PowerOn]: servo_state = %d", state);
-  if (state == 3)
+  RCLCPP_INFO(this->get_logger(), "[PowerOn]: servo_state = %d", static_cast<int>(state));
+  if (state == ServoState::RUNNING)
   {
     is_powered_ = true;
     return true;
   }
   else
   {
-    RCLCPP_ERROR(this->get_logger(), "[PowerOn]: failed to power on, servo_state = %d", state);
+    RCLCPP_ERROR(this->get_logger(), "[PowerOn]: failed to power on, servo_state = %d", static_cast<int>(state));
     return false;
   }
 }
 
 bool TL_Arm::power_off()
 {
-  int state = -1;
+  ServoState state = static_cast<ServoState>(-1); // -1 哨兵值：查询失败时落入 default 分支
   get_servo_state(socket_fd_, state);
   switch (state)
   {
-    case 0:
-    case 2:
+    case ServoState::STOP:
+    case ServoState::ALARM:
       break;
-    case 1:
+    case ServoState::READY:
       RCLCPP_INFO(this->get_logger(), "[PowerOff]: already power off");
       return true;
-    case 3:
+    case ServoState::RUNNING:
       set_servo_poweroff(socket_fd_);
       get_servo_state(socket_fd_, state);
-      RCLCPP_INFO(this->get_logger(), "[PowerOff]: successfully power off, servo_state = %d", state);
+      RCLCPP_INFO(this->get_logger(), "[PowerOff]: successfully power off, servo_state = %d", static_cast<int>(state));
       is_powered_ = false;
       return true;
   }
-  RCLCPP_INFO(this->get_logger(), "[PowerOff]: fail to power off, servo_state = %d", state);
+  RCLCPP_INFO(this->get_logger(), "[PowerOff]: fail to power off, servo_state = %d", static_cast<int>(state));
   return false;
 }
 
@@ -610,7 +612,8 @@ bool TL_Arm::connect()
 
   set_receive_error_or_warnning_message_callback(socket_fd_aux_, receive_error_or_warning_message_callback);
 
-  recv_message(socket_fd_aux_, robot_state_recv_callback);
+  // 新 SDK：机器人状态通过 robot_state_callback（7000 端口）接收，不再使用旧的 recv_message 机制
+  robot_state_callback(socket_fd_aux_, robot_state_callback_handler);
 
   RCLCPP_INFO(this->get_logger(), "[Connect]: successfully connected to arm at %s:%s,%s", arm_ip_.c_str(),
               arm_port_.c_str(), arm_port_aux_.c_str());
@@ -715,10 +718,7 @@ void TL_Arm::handle_clear_error_service(const std::shared_ptr<std_srvs::srv::Tri
     return;
   }
 
-  int state = -1;
-  get_servo_state(socket_fd_, state);
-
-  int ret = clear_error(socket_fd_);
+  Result ret = clear_error(socket_fd_);
   response->success = (ret == Result::SUCCESS);
   response->message =
       response->success ? "Clear error successfully" : std::string("Clear error failed: ") + result_to_string(ret);
@@ -741,7 +741,7 @@ void TL_Arm::handle_set_speed_service(const std::shared_ptr<tl_ros2_interface::s
     return;
   }
 
-  int ret = set_speed(socket_fd_, request->speed);
+  Result ret = set_speed(socket_fd_, request->speed);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Set speed successfully" : "Failed to set speed";
 }
@@ -758,7 +758,7 @@ void TL_Arm::handle_get_speed_service(const std::shared_ptr<tl_ros2_interface::s
   }
 
   int speed;
-  int ret = get_speed(socket_fd_, speed);
+  Result ret = get_speed(socket_fd_, speed);
   if (ret != Result::SUCCESS)
   {
     response->success = false;
@@ -789,7 +789,7 @@ void TL_Arm::handle_get_quat2rpy_service(
   }
 
   std::vector<double> rpy;
-  int ret = get_quat2rpy(socket_fd_, request->input, rpy);
+  Result ret = get_quat2rpy(socket_fd_, request->input, rpy);
   if (ret == Result::SUCCESS)
   {
     response->success = true;
@@ -822,7 +822,7 @@ void TL_Arm::handle_get_rpy2quat_service(
   }
 
   std::vector<double> quat;
-  int ret = get_rpy2quat(socket_fd_, request->input, quat);
+  Result ret = get_rpy2quat(socket_fd_, request->input, quat);
   if (ret == Result::SUCCESS)
   {
     response->success = true;
@@ -854,7 +854,7 @@ void TL_Arm::handle_get_rpy2r_service(const std::shared_ptr<tl_ros2_interface::s
   }
 
   std::vector<double> rot;
-  int ret = get_rpy2r(socket_fd_, request->input, rot);
+  Result ret = get_rpy2r(socket_fd_, request->input, rot);
   if (ret == Result::SUCCESS)
   {
     response->success = true;
@@ -886,7 +886,7 @@ void TL_Arm::handle_get_tr2r_service(const std::shared_ptr<tl_ros2_interface::sr
   }
 
   std::vector<double> rot;
-  int ret = get_tr2r(socket_fd_, request->input, rot);
+  Result ret = get_tr2r(socket_fd_, request->input, rot);
   if (ret == Result::SUCCESS)
   {
     response->success = true;
@@ -918,7 +918,7 @@ void TL_Arm::handle_get_r2tr_service(const std::shared_ptr<tl_ros2_interface::sr
   }
 
   std::vector<double> tr_matrix;
-  int ret = get_r2tr(socket_fd_, request->input, tr_matrix);
+  Result ret = get_r2tr(socket_fd_, request->input, tr_matrix);
   if (ret == Result::SUCCESS)
   {
     response->success = true;
@@ -943,7 +943,7 @@ void TL_Arm::handle_set_controller_ip_service(
     return;
   }
 
-  int ret = set_controller_ip(socket_fd_, request->name, request->addr, request->gateway, request->dns);
+  Result ret = set_controller_ip(socket_fd_, request->name, request->addr, request->gateway, request->dns);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Set controller IP successfully" : "Failed to set controller IP";
 }
@@ -959,10 +959,10 @@ void TL_Arm::handle_get_controller_id_service(const std::shared_ptr<std_srvs::sr
     return;
   }
 
-  char id[128] = {0};
-  int ret = get_controller_id(socket_fd_, id);
+  std::string id{};
+  Result ret = get_controller_id(socket_fd_, id);
   response->success = (ret == Result::SUCCESS);
-  response->message = response->success ? std::string(id) : "Failed to get controller ID";
+  response->message = response->success ? id : "Failed to get controller id, ret=" + std::to_string(ret);
 }
 
 void TL_Arm::handle_start_jogging_service(const std::shared_ptr<tl_ros2_interface::srv::Jogging::Request> request,
@@ -982,7 +982,7 @@ void TL_Arm::handle_start_jogging_service(const std::shared_ptr<tl_ros2_interfac
     return;
   }
 
-  int ret = robot_start_jogging(socket_fd_, request->axis, request->direction);
+  Result ret = robot_start_jogging(socket_fd_, request->axis, request->direction);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Start jogging successfully" : "Failed to start jogging";
 }
@@ -1004,7 +1004,7 @@ void TL_Arm::handle_stop_jogging_service(const std::shared_ptr<tl_ros2_interface
     return;
   }
 
-  int ret = robot_stop_jogging(socket_fd_, request->axis);
+  Result ret = robot_stop_jogging(socket_fd_, request->axis);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Stop jogging successfully" : "Failed to stop jogging";
 }
@@ -1032,13 +1032,21 @@ void TL_Arm::handle_get_robot_state_service(
   param.ioPort = request->io_port;
   param.optional = request->optional;
 
+  // 新 SDK：io_state=true 但 io_port 为空会返回 PARAM_ERR(-3)，请求 IO 时必须指定端口
+  if (param.ioState && param.ioPort.empty())
+  {
+    RCLCPP_WARN(this->get_logger(), "[GetRobotState]: io_state=true but io_port empty, force io_state=false");
+    param.ioState = false;
+  }
+
   uint64_t start_seq = 0;
   {
     std::lock_guard<std::mutex> lock(g_robot_state_msg_buffer.mutex);
     start_seq = g_robot_state_msg_buffer.seq;
   }
 
-  int ret = get_robot_state(socket_fd_, param);
+  // get_robot_state 需使用 7000 端口（socket_fd_aux_），回调亦注册在 7000 端口
+  Result ret = get_robot_state(socket_fd_aux_, param);
   if (ret != Result::SUCCESS)
   {
     response->success = false;
@@ -1102,24 +1110,21 @@ void TL_Arm::handle_get_robot_joint_param_service(
   }
 
   RobotJointParam param{};
-  int ret = get_robot_joint_param(socket_fd_, request->id, param);
+  Result ret = get_robot_joint_param(socket_fd_, request->id, param);
   if (ret == Result::SUCCESS)
   {
     response->success = true;
     response->message = "Get robot joint param successfully";
-    response->param.reduction_ratio = param.reducRatio;
+    response->param.reduction_ratio = param.reduceRatio;
     response->param.encoder_resolution = param.encoderResolution;
-    response->param.pos_sw_limit = param.posSWLimit;
-    response->param.neg_sw_limit = param.negSWLimit;
+    response->param.pos_sw_limit = param.maxPos;
+    response->param.neg_sw_limit = param.minPos;
     response->param.rated_rot_speed = param.ratedRotSpeed;
-    response->param.rated_derot_speed = param.ratedDeRotSpeed;
     response->param.max_rot_speed = param.maxRotSpeed;
-    response->param.max_derot_speed = param.maxDeRotSpeed;
-    response->param.rated_vel = param.ratedVel;
-    response->param.rated_devel = param.deRatedVel;
     response->param.max_acc = param.maxAcc;
-    response->param.max_dec = param.maxDecel;
-    response->param.direction = param.direction;
+    response->param.max_dec = param.maxDec;
+    response->param.direction = param.axisDirection;
+    // 新 SDK 无 rated_derot_speed / max_derot_speed / rated_vel / rated_devel 对应字段，保持默认 0
   }
   else
   {
@@ -1147,21 +1152,18 @@ void TL_Arm::handle_set_robot_joint_param_service(
   }
 
   RobotJointParam param{};
-  param.reducRatio = request->param.reduction_ratio;
+  param.reduceRatio = request->param.reduction_ratio;
   param.encoderResolution = request->param.encoder_resolution;
-  param.posSWLimit = request->param.pos_sw_limit;
-  param.negSWLimit = request->param.neg_sw_limit;
+  param.maxPos = request->param.pos_sw_limit;
+  param.minPos = request->param.neg_sw_limit;
   param.ratedRotSpeed = request->param.rated_rot_speed;
-  param.ratedDeRotSpeed = request->param.rated_derot_speed;
   param.maxRotSpeed = request->param.max_rot_speed;
-  param.maxDeRotSpeed = request->param.max_derot_speed;
-  param.ratedVel = request->param.rated_vel;
-  param.deRatedVel = request->param.rated_devel;
   param.maxAcc = request->param.max_acc;
-  param.maxDecel = request->param.max_dec;
-  param.direction = request->param.direction;
+  param.maxDec = request->param.max_dec;
+  param.axisDirection = request->param.direction;
+  // 新 SDK 无 rated_derot_speed / max_derot_speed / rated_vel / rated_devel 对应字段，忽略
 
-  int ret = set_robot_joint_param(socket_fd_, request->id, param);
+  Result ret = set_robot_joint_param(socket_fd_, request->id, param);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Set robot joint param successfully" : "Falied to set robot joint param";
 
@@ -1183,7 +1185,7 @@ void TL_Arm::handle_get_joint_temperature_service(
   }
 
   std::vector<double> temperatures;
-  int ret = get_joint_temperature(socket_fd_, temperatures);
+  Result ret = get_joint_temperature(socket_fd_, temperatures);
   if (ret == Result::SUCCESS)
   {
     response->success = true;
@@ -1211,7 +1213,7 @@ void TL_Arm::handle_get_joint_voltage_service(
 
   std::vector<double> joint_voltage;
   std::vector<double> positioner_voltage;
-  int ret = get_joint_voltage(socket_fd_, joint_voltage, positioner_voltage);
+  Result ret = get_joint_voltage(socket_fd_, joint_voltage, positioner_voltage);
   if (ret == Result::SUCCESS)
   {
     response->success = true;
@@ -1238,8 +1240,9 @@ void TL_Arm::handle_get_motor_current_service(
     return;
   }
 
-  std::vector<double> motor_current;
-  int ret = get_current_motor_current_independent(socket_fd_, motor_current);
+  std::vector<double> motor_current{};
+  std::vector<double> motor_current_sync{};
+  Result ret = get_current_motor_current(socket_fd_, motor_current, motor_current_sync);
   if (ret == Result::SUCCESS)
   {
     response->success = true;
@@ -1249,7 +1252,7 @@ void TL_Arm::handle_get_motor_current_service(
   else
   {
     response->success = false;
-    response->message = "Failed to get motor current";
+    response->message = "Failed to get motor current, ret=" + std::to_string(ret);
   }
 }
 
@@ -1272,7 +1275,7 @@ void TL_Arm::handle_get_joint_software_version_service(
   }
 
   std::string version;
-  int ret = query_joint_software_version(socket_fd_, request->axis_num, version);
+  Result ret = query_joint_software_version(socket_fd_, request->axis_num, version);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? version : "Failed to get joint software version";
 }
@@ -1289,9 +1292,9 @@ void TL_Arm::handle_get_nexmotion_lib_version_service(const std::shared_ptr<std_
   }
 
   std::string version;
-  int ret = get_nexmotion_lib_version(socket_fd_, version);
+  Result ret = get_nexmotion_lib_version(socket_fd_, version);
   response->success = (ret == Result::SUCCESS);
-  response->message = response->success ? version : "Failed to get nexmotion lib version";
+  response->message = response->success ? version : "Failed to get nexmotion lib version, ret=" + std::to_string(ret);
 }
 
 void TL_Arm::handle_restore_default_dh_param_service(
@@ -1305,7 +1308,7 @@ void TL_Arm::handle_restore_default_dh_param_service(
     return;
   }
 
-  int ret = restore_default_param_DH(socket_fd_, request->robot_num);
+  Result ret = restore_default_param_DH(socket_fd_, request->robot_num);
   response->success = (ret == Result::SUCCESS);
   response->message =
       response->success ? "Restore default DH param successfully" : "Failed to restore default DH param";
@@ -1322,7 +1325,7 @@ void TL_Arm::handle_set_default_cartesian_param_service(const std::shared_ptr<st
     return;
   }
 
-  int ret = set_default_cartesian_params(socket_fd_);
+  Result ret = set_default_cartesian_params(socket_fd_);
   response->success = (ret == Result::SUCCESS);
   response->message =
       response->success ? "Set default cartesian param successfully" : "Failed to set default cartesian param";
@@ -1338,7 +1341,7 @@ void TL_Arm::handle_log_download_service(const std::shared_ptr<tl_ros2_interface
     return;
   }
 
-  int ret = log_download_by_quantity(socket_fd_, request->count, request->directory_path);
+  Result ret = log_download_by_quantity(socket_fd_, request->count, request->directory_path);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Log download successfully" : "Failed to download log";
 }
@@ -1360,7 +1363,7 @@ void TL_Arm::handle_set_drag_mode_service(const std::shared_ptr<tl_ros2_interfac
     return;
   }
 
-  int ret = set_darg_mode(socket_fd_, request->mode);
+  Result ret = set_darg_mode(socket_fd_, static_cast<DragMode>(request->mode));
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Set drag mode successfully" : "Failed to set drag mode";
 }
@@ -1377,7 +1380,7 @@ void TL_Arm::handle_get_drag_status_service(const std::shared_ptr<std_srvs::srv:
   }
 
   bool endFlag = false;
-  int ret = get_drag_thread_is_end(socket_fd_, endFlag);
+  Result ret = get_drag_thread_is_end(socket_fd_, endFlag);
   if (ret == Result::SUCCESS)
   {
     response->success = endFlag;
@@ -1400,7 +1403,7 @@ void TL_Arm::handle_track_save_service(const std::shared_ptr<tl_ros2_interface::
     return;
   }
 
-  int ret = track_record_save(socket_fd_, request->traj_name);
+  Result ret = track_record_save(socket_fd_, request->traj_name);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Track save successfully" : "Failed to save track";
 }
@@ -1416,7 +1419,7 @@ void TL_Arm::handle_track_playback_service(
     return;
   }
 
-  int ret = track_record_playback(socket_fd_, request->vel);
+  Result ret = track_record_playback(socket_fd_, request->vel);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Track playback successfully" : "Failed to playback track";
 }
@@ -1444,7 +1447,7 @@ void TL_Arm::handle_set_tool_param_service(const std::shared_ptr<tl_ros2_interfa
   param.payloadMassCenter_Y = request->param.payload_mass_center_y;
   param.payloadMassCenter_Z = request->param.payload_mass_center_z;
 
-  int ret = set_tool_hand_param(socket_fd_, request->tool_num, param);
+  Result ret = set_tool_hand_param(socket_fd_, request->tool_num, param);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Set tool hand param successfully" : "Failed to set tool hand param";
 }
@@ -1459,10 +1462,17 @@ void TL_Arm::handle_set_user_coord_service(const std::shared_ptr<tl_ros2_interfa
     return;
   }
 
-  std::vector<double> pos = {request->pos.position.x, request->pos.position.y, request->pos.position.z,
-                             request->pos.rpy.x,      request->pos.rpy.y,      request->pos.rpy.z};
+  // 使用新 SDK 推荐的 UserCoordParam 重载（旧的 vector 重载已标记 deprecated）
+  UserCoordParam param{};
+  param.location_type = 0; // 静态用户坐标
+  param.position[0] = request->pos.position.x;
+  param.position[1] = request->pos.position.y;
+  param.position[2] = request->pos.position.z;
+  param.position[3] = request->pos.rpy.x;
+  param.position[4] = request->pos.rpy.y;
+  param.position[5] = request->pos.rpy.z;
 
-  int ret = set_user_coordinate_data(socket_fd_, request->user_num, pos);
+  Result ret = set_user_coordinate_data(socket_fd_, request->user_num, param);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Set user coordinate successfully" : "Failed to set user coordinate";
 }
@@ -1478,7 +1488,7 @@ void TL_Arm::handle_set_axis_zero_pos_service(
     return;
   }
 
-  int ret = set_axis_zero_position(socket_fd_, request->axis);
+  Result ret = set_axis_zero_position(socket_fd_, request->axis);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Set user coordinate successfully" : "Failed to set user coordinate";
 }
@@ -1494,7 +1504,7 @@ void TL_Arm::handle_set_current_coord_service(
     return;
   }
 
-  int ret = set_current_coord(socket_fd_, request->coord);
+  Result ret = set_current_coord(socket_fd_, static_cast<Coord>(request->coord));
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Set current coordinate successfully" : "Failed to set current coordinate";
 }
@@ -1511,13 +1521,13 @@ void TL_Arm::handle_get_current_coord_service(
     return;
   }
 
-  int coord;
-  int ret = get_current_coord(socket_fd_, coord);
+  Coord coord = Coord::JOINT;
+  Result ret = get_current_coord(socket_fd_, coord);
   if (ret == Result::SUCCESS)
   {
     response->success = true;
     response->message = "Get current coordinate successfully";
-    response->coord = coord;
+    response->coord = static_cast<int>(coord);
   }
   else
   {
@@ -1536,7 +1546,7 @@ void TL_Arm::handle_set_coord_num_service(const std::shared_ptr<tl_ros2_interfac
     return;
   }
 
-  int ret = set_tool_hand_number(socket_fd_, request->tool_num);
+  Result ret = set_tool_hand_number(socket_fd_, request->tool_num);
   int ret1 = set_user_coord_number(socket_fd_, request->user_num);
   if (ret == Result::SUCCESS && ret1 == Result::SUCCESS)
   {
@@ -1562,7 +1572,7 @@ void TL_Arm::handle_get_coord_num_service(const std::shared_ptr<tl_ros2_interfac
   }
 
   int toolNum = -1, userNum = -1;
-  int ret = get_tool_hand_number(socket_fd_, toolNum);
+  Result ret = get_tool_hand_number(socket_fd_, toolNum);
   int ret1 = get_user_coord_number(socket_fd_, userNum);
   if (ret == Result::SUCCESS && ret1 == Result::SUCCESS)
   {
@@ -1596,7 +1606,7 @@ void TL_Arm::handle_set_digital_output_service(
     return;
   }
 
-  int ret = set_digital_output(socket_fd_, request->port, request->value);
+  Result ret = set_digital_output(socket_fd_, request->port, static_cast<IoLevel>(request->value));
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Set digital output successfully" : "Failed to set digital output";
 }
@@ -1615,7 +1625,7 @@ void TL_Arm::handle_get_digital_input_output_service(
 
   std::vector<int> digitalInput;
   std::vector<int> digitalOutput;
-  int ret = get_digital_input(socket_fd_, digitalInput);
+  Result ret = get_digital_input(socket_fd_, digitalInput);
   int ret1 = get_digital_output(socket_fd_, digitalOutput);
   if (ret == Result::SUCCESS && ret1 == Result::SUCCESS)
   {
@@ -1643,6 +1653,12 @@ void TL_Arm::handle_modbus_write_service(const std::shared_ptr<tl_ros2_interface
 
   ModbusMasterParameter master_param;
   master_param.type = request->master_param.type;
+  // 兼容大小写：统一转大写后判断（SDK 期望 "TCP"/"RTU"）
+  for (auto& c : master_param.type)
+  {
+    if (c >= 'a' && c <= 'z')
+      c -= 32;
+  }
   master_param.startAddress = request->master_param.start_addr;
 
   if (master_param.type == "TCP")
@@ -1666,7 +1682,7 @@ void TL_Arm::handle_modbus_write_service(const std::shared_ptr<tl_ros2_interface
     return;
   }
 
-  int ret = modbus_set_master_parameter(socket_fd_, request->master_id, master_param);
+  Result ret = modbus_set_master_parameter(socket_fd_, request->master_id, master_param);
   if (ret != Result::SUCCESS)
   {
     response->success = false;
@@ -1700,6 +1716,12 @@ void TL_Arm::handle_modbus_read_service(const std::shared_ptr<tl_ros2_interface:
 
   ModbusMasterParameter master_param;
   master_param.type = request->master_param.type;
+  // 兼容大小写：统一转大写后判断（SDK 期望 "TCP"/"RTU"）
+  for (auto& c : master_param.type)
+  {
+    if (c >= 'a' && c <= 'z')
+      c -= 32;
+  }
   master_param.startAddress = request->master_param.start_addr;
 
   if (master_param.type == "TCP")
@@ -1723,7 +1745,7 @@ void TL_Arm::handle_modbus_read_service(const std::shared_ptr<tl_ros2_interface:
     return;
   }
 
-  int ret = modbus_set_master_parameter(socket_fd_, request->master_id, master_param);
+  Result ret = modbus_set_master_parameter(socket_fd_, request->master_id, master_param);
   if (ret != Result::SUCCESS)
   {
     response->success = false;
@@ -1739,7 +1761,7 @@ void TL_Arm::handle_modbus_read_service(const std::shared_ptr<tl_ros2_interface:
     return;
   }
 
-  std::vector<int> data;
+  std::vector<int> data{};
   ret = modbus_read_holding_registers(socket_fd_, request->master_id, request->addr, request->quantity, data);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Modbus read successfully" : "Failed to read Modbus";
@@ -1775,8 +1797,9 @@ void TL_Arm::handle_coord_transform_service(
   std::vector<double> referencePos = request->reference_pos;
   std::vector<double> targetPos;
 
-  int ret = get_origin_coord_to_target_coord(socket_fd_, request->origin_coord, originPos, request->target_coord,
-                                             targetPos, request->form, referencePos);
+  Result ret = get_origin_coord_to_target_coord(socket_fd_, static_cast<Coord>(request->origin_coord), originPos,
+                                                static_cast<Coord>(request->target_coord), targetPos, request->form,
+                                                referencePos);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Coord transform successfully" : "Failed to transform coord";
   response->target_pos = targetPos;
@@ -1803,7 +1826,7 @@ void TL_Arm::handle_get_pos_reachable_service(
   std::vector<double> queryPos = request->pos;
 
   bool result = false;
-  int ret = get_pos_reachable(socket_fd_, queryPos, request->move_type, result);
+  Result ret = get_pos_reachable(socket_fd_, queryPos, request->move_type, result);
   if (ret == Result::SUCCESS)
   {
     response->success = result;
@@ -1812,7 +1835,7 @@ void TL_Arm::handle_get_pos_reachable_service(
   else
   {
     response->success = false;
-    response->message = "Fail to get pos reachable status";
+    response->message = "Fail to get pos reachable status" + std::to_string(ret);
   }
 }
 
@@ -1826,74 +1849,31 @@ void TL_Arm::handle_set_dh_param_service(const std::shared_ptr<tl_ros2_interface
     return;
   }
 
-  RobotDHParam dh_param{};
-  dh_param.L1 = request->param.l1;
-  dh_param.L2 = request->param.l2;
-  dh_param.L3 = request->param.l3;
-  dh_param.L4 = request->param.l4;
-  dh_param.L5 = request->param.l5;
-  dh_param.L6 = request->param.l6;
-  dh_param.L7 = request->param.l7;
-  dh_param.L8 = request->param.l8;
-  dh_param.L9 = request->param.l9;
-  dh_param.L10 = request->param.l10;
-  dh_param.L11 = request->param.l11;
-  dh_param.L12 = request->param.l12;
-  dh_param.L13 = request->param.l13;
-  dh_param.L14 = request->param.l14;
-  dh_param.L15 = request->param.l15;
-  dh_param.L16 = request->param.l16;
-  dh_param.L17 = request->param.l17;
-  dh_param.L18 = request->param.l18;
-  dh_param.L19 = request->param.l19;
-  dh_param.L20 = request->param.l20;
+  // 新 SDK: 标准DH参数 alpha/a/theta/d，逐字段映射到 SDK 的 tl::RobotDHParam
+  RobotDHParam dh{};
+  const auto& p = request->param;
+  for (int i = 0; i < 6 && i < static_cast<int>(p.alpha.size()); ++i)
+    dh.alpha[i] = p.alpha[i];
+  for (int i = 0; i < 6 && i < static_cast<int>(p.a.size()); ++i)
+    dh.a[i] = p.a[i];
+  for (int i = 0; i < 6 && i < static_cast<int>(p.theta.size()); ++i)
+    dh.theta[i] = p.theta[i];
+  for (int i = 0; i < 6 && i < static_cast<int>(p.d.size()); ++i)
+    dh.d[i] = p.d[i];
+  dh.eulerAngle = p.euler_angle;
+  dh.mountingAngle = p.mounting_angle;
 
-  dh_param.Couple_Coe_1_2 = request->param.couple_coe_1_2;
-  dh_param.Couple_Coe_2_3 = request->param.couple_coe_2_3;
-  dh_param.Couple_Coe_3_2 = request->param.couple_coe_3_2;
-  dh_param.Couple_Coe_3_4 = request->param.couple_coe_3_4;
-  dh_param.Couple_Coe_4_5 = request->param.couple_coe_4_5;
-  dh_param.Couple_Coe_4_6 = request->param.couple_coe_4_6;
-  dh_param.Couple_Coe_5_6 = request->param.couple_coe_5_6;
-
-  dh_param.dynamicLimit_max = request->param.dynamic_limit_max;
-  dh_param.dynamicLimit_min = request->param.dynamic_limit_max;
-
-  dh_param.pitch = request->param.pitch;
-  dh_param.sliding_lead_value = request->param.sliding_lead_value;
-  dh_param.uplift_lead_value = request->param.uplift_lead_value;
-  dh_param.spray_distance = request->param.spray_distance;
-
-  dh_param.threeAxisDirection = request->param.three_axis_direction;
-  dh_param.fiveAxisDirection = request->param.five_axis_direction;
-
-  dh_param.twoAxisConversionRatio = request->param.two_axis_convertion_ratio;
-  dh_param.threeAxisConversionRatio = request->param.three_axis_convertion_ratio;
-  dh_param.amplificationRatio = request->param.amplification_ratio;
-
-  dh_param.conversionratio_x = request->param.convertion_ratio_x;
-  dh_param.conversionratio_y = request->param.convertion_ratio_y;
-  dh_param.conversionratio_z = request->param.convertion_ratio_z;
-
-  dh_param.conversionratio_J1 = request->param.convertion_ratio_j1;
-  dh_param.conversionratio_J2 = request->param.convertion_ratio_j2;
-  dh_param.conversionratio_J3 = request->param.convertion_ratio_j3;
-  dh_param.upsideDown = request->param.upside_down;
-  dh_param.hanyu.PC = request->param.pc;
-
-  for (size_t i = 0; i < 3; i++)
+  Result ret = set_robot_dh_param(socket_fd_, dh);
+  if (ret == Result::SUCCESS)
   {
-    dh_param.hanyu.SP[i] = (i < request->param.sp.size()) ? request->param.sp[i] : 0.0;
-    dh_param.hanyu.TL[i] = (i < request->param.tl.size()) ? request->param.tl[i] : 0.0;
+    response->success = true;
+    response->message = "Set DH param successfully";
   }
-
-  int ret = set_robot_dh_param(socket_fd_, dh_param);
-  response->success = (ret == Result::SUCCESS);
-  response->message = response->success ? "Set DH param successfully" : "Failed to set DH param";
-
-  // 设置参数后机械臂会下电
-  power_off();
-  power_on();
+  else
+  {
+    response->success = false;
+    response->message = "Failed to set DH param, ret=" + std::to_string(ret);
+  }
 }
 
 void TL_Arm::handle_get_dh_param_service(const std::shared_ptr<tl_ros2_interface::srv::GetDHParam::Request> request,
@@ -1907,67 +1887,26 @@ void TL_Arm::handle_get_dh_param_service(const std::shared_ptr<tl_ros2_interface
     return;
   }
 
-  RobotDHParam dh_param{};
-  int ret = get_robot_dh_param(socket_fd_, dh_param);
-  response->success = (ret == Result::SUCCESS);
-  response->message = response->success ? "Get DH param successfully" : "Failed to get DH param";
-
-  response->param.l1 = dh_param.L1;
-  response->param.l2 = dh_param.L2;
-  response->param.l3 = dh_param.L3;
-  response->param.l4 = dh_param.L4;
-  response->param.l5 = dh_param.L5;
-  response->param.l6 = dh_param.L6;
-  response->param.l7 = dh_param.L7;
-  response->param.l8 = dh_param.L8;
-  response->param.l9 = dh_param.L9;
-  response->param.l10 = dh_param.L10;
-  response->param.l11 = dh_param.L11;
-  response->param.l12 = dh_param.L12;
-  response->param.l13 = dh_param.L13;
-  response->param.l14 = dh_param.L14;
-  response->param.l15 = dh_param.L15;
-  response->param.l16 = dh_param.L16;
-  response->param.l17 = dh_param.L17;
-  response->param.l18 = dh_param.L18;
-  response->param.l19 = dh_param.L19;
-  response->param.l20 = dh_param.L20;
-
-  response->param.couple_coe_1_2 = dh_param.Couple_Coe_1_2;
-  response->param.couple_coe_2_3 = dh_param.Couple_Coe_2_3;
-  response->param.couple_coe_3_2 = dh_param.Couple_Coe_3_2;
-  response->param.couple_coe_3_4 = dh_param.Couple_Coe_3_4;
-  response->param.couple_coe_4_5 = dh_param.Couple_Coe_4_5;
-  response->param.couple_coe_4_6 = dh_param.Couple_Coe_4_6;
-  response->param.couple_coe_5_6 = dh_param.Couple_Coe_5_6;
-
-  response->param.dynamic_limit_max = dh_param.dynamicLimit_max;
-  response->param.dynamic_limit_min = dh_param.dynamicLimit_min;
-
-  response->param.pitch = dh_param.pitch;
-  response->param.sliding_lead_value = dh_param.sliding_lead_value;
-  response->param.uplift_lead_value = dh_param.uplift_lead_value;
-  response->param.spray_distance = dh_param.spray_distance;
-
-  response->param.three_axis_direction = dh_param.threeAxisDirection;
-  response->param.five_axis_direction = dh_param.fiveAxisDirection;
-
-  response->param.two_axis_convertion_ratio = dh_param.twoAxisConversionRatio;
-  response->param.three_axis_convertion_ratio = dh_param.threeAxisConversionRatio;
-  response->param.amplification_ratio = dh_param.amplificationRatio;
-
-  response->param.convertion_ratio_x = dh_param.conversionratio_x;
-  response->param.convertion_ratio_y = dh_param.conversionratio_y;
-  response->param.convertion_ratio_z = dh_param.conversionratio_z;
-
-  response->param.convertion_ratio_j1 = dh_param.conversionratio_J1;
-  response->param.convertion_ratio_j2 = dh_param.conversionratio_J2;
-  response->param.convertion_ratio_j3 = dh_param.conversionratio_J3;
-
-  response->param.upside_down = dh_param.upsideDown;
-  response->param.pc = dh_param.hanyu.PC;
-  response->param.sp.assign(dh_param.hanyu.SP, dh_param.hanyu.SP + 3);
-  response->param.tl.assign(dh_param.hanyu.TL, dh_param.hanyu.TL + 3);
+  // 新 SDK: 标准DH参数 alpha/a/theta/d，逐字段映射到 ROS2 消息
+  RobotDHParam dh{};
+  Result ret = get_robot_dh_param(socket_fd_, dh);
+  if (ret == Result::SUCCESS)
+  {
+    auto& p = response->param;
+    p.alpha.assign(dh.alpha, dh.alpha + 6);
+    p.a.assign(dh.a, dh.a + 6);
+    p.theta.assign(dh.theta, dh.theta + 6);
+    p.d.assign(dh.d, dh.d + 6);
+    p.euler_angle = dh.eulerAngle;
+    p.mounting_angle = dh.mountingAngle;
+    response->success = true;
+    response->message = "Get DH param successfully";
+  }
+  else
+  {
+    response->success = false;
+    response->message = "Failed to get DH param, ret=" + std::to_string(ret);
+  }
 }
 
 void TL_Arm::handle_get_all_job_filename_service(
@@ -1983,7 +1922,7 @@ void TL_Arm::handle_get_all_job_filename_service(
   }
 
   std::vector<std::vector<std::string>> robotsFile;
-  int ret = job_get_all_jobfile_name(socket_fd_, robotsFile);
+  Result ret = job_get_all_jobfile_name(socket_fd_, robotsFile);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Get all job filename successfully" : "Failed to get all job filename";
   response->robots_file.clear();
@@ -2005,7 +1944,7 @@ void TL_Arm::handle_job_run_service(const std::shared_ptr<tl_ros2_interface::srv
     return;
   }
 
-  int ret = job_run(socket_fd_, request->job_name);
+  Result ret = job_run(socket_fd_, request->job_name);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Job run successfully" : "Failed to run job";
 
@@ -2024,7 +1963,7 @@ void TL_Arm::handle_job_delete_service(const std::shared_ptr<tl_ros2_interface::
     return;
   }
 
-  int ret = job_delete(socket_fd_, request->job_name);
+  Result ret = job_delete(socket_fd_, request->job_name);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Job delete successfully" : "Failed to delete job";
 }
@@ -2043,7 +1982,7 @@ void TL_Arm::handle_job_insert_movej_service(
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = request->cmd.coord;
+  cmd.coord = static_cast<Coord>(request->cmd.coord);
   cmd.velocity = request->cmd.velocity;
   cmd.velocitySync = request->cmd.velocity_sync;
   cmd.acc = request->cmd.acc;
@@ -2058,7 +1997,7 @@ void TL_Arm::handle_job_insert_movej_service(
   cmd.parasync = request->cmd.para_sync;
   cmd.targetPosValue = request->cmd.target_pos_value;
 
-  int ret = job_insert_moveJ(socket_fd_, request->line, cmd);
+  Result ret = job_insert_moveJ(socket_fd_, request->line, cmd);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Job insert movej successfully" : "Failed to insert job movej";
 }
@@ -2077,7 +2016,7 @@ void TL_Arm::handle_job_insert_movel_service(
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = request->cmd.coord;
+  cmd.coord = static_cast<Coord>(request->cmd.coord);
   cmd.velocity = request->cmd.velocity;
   cmd.velocitySync = request->cmd.velocity_sync;
   cmd.acc = request->cmd.acc;
@@ -2092,7 +2031,7 @@ void TL_Arm::handle_job_insert_movel_service(
   cmd.parasync = request->cmd.para_sync;
   cmd.targetPosValue = request->cmd.target_pos_value;
 
-  int ret = job_insert_moveL(socket_fd_, request->line, cmd);
+  Result ret = job_insert_moveL(socket_fd_, request->line, cmd);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Job insert movel successfully" : "Failed to insert job movel";
 }
@@ -2111,7 +2050,7 @@ void TL_Arm::handle_job_insert_imove_service(
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = request->cmd.coord;
+  cmd.coord = static_cast<Coord>(request->cmd.coord);
   cmd.velocity = request->cmd.velocity;
   cmd.velocitySync = request->cmd.velocity_sync;
   cmd.acc = request->cmd.acc;
@@ -2126,7 +2065,7 @@ void TL_Arm::handle_job_insert_imove_service(
   cmd.parasync = request->cmd.para_sync;
   cmd.targetPosValue = request->cmd.target_pos_value;
 
-  int ret = job_insert_imove(socket_fd_, request->line, cmd);
+  Result ret = job_insert_imove(socket_fd_, request->line, cmd);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Job insert imove successfully" : "Failed to insert job imove";
 }
@@ -2145,7 +2084,7 @@ void TL_Arm::handle_job_insert_movec_service(
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = request->cmd.coord;
+  cmd.coord = static_cast<Coord>(request->cmd.coord);
   cmd.velocity = request->cmd.velocity;
   cmd.velocitySync = request->cmd.velocity_sync;
   cmd.acc = request->cmd.acc;
@@ -2160,7 +2099,7 @@ void TL_Arm::handle_job_insert_movec_service(
   cmd.parasync = request->cmd.para_sync;
   cmd.targetPosValue = request->cmd.target_pos_value;
 
-  int ret = job_insert_moveC(socket_fd_, request->line, cmd);
+  Result ret = job_insert_moveC(socket_fd_, request->line, cmd);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Job insert movec successfully" : "Failed to insert job movec";
 }
@@ -2192,7 +2131,7 @@ void TL_Arm::handle_set_global_pos_service(const std::shared_ptr<tl_ros2_interfa
     return;
   }
 
-  int ret = set_global_position(socket_fd_, request->pos_name, request->pos_info);
+  Result ret = set_global_position(socket_fd_, request->pos_name, request->pos_info);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Set global pos successfully" : "Failed to set global pos";
 }
@@ -2225,7 +2164,7 @@ void TL_Arm::handle_get_global_pos_service(const std::shared_ptr<tl_ros2_interfa
   }
 
   std::vector<double> pos;
-  int ret = get_global_position(socket_fd_, request->pos_name, pos);
+  Result ret = get_global_position(socket_fd_, request->pos_name, pos);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Get global pos successfully" : "Failed to get global pos";
   response->pos = pos;
@@ -2249,7 +2188,7 @@ void TL_Arm::handle_set_current_mode_service(
     return;
   }
 
-  int ret = set_current_mode(socket_fd_, request->mode);
+  Result ret = set_current_mode(socket_fd_, static_cast<RobotMode>(request->mode));
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Set current mode successfully" : "Failed to set current mode";
 }
@@ -2266,9 +2205,9 @@ void TL_Arm::handle_get_current_mode_service(
     return;
   }
 
-  int mode = -1;
-  int ret = get_current_mode(socket_fd_, mode);
-  response->mode = mode;
+  RobotMode mode = static_cast<RobotMode>(-1); // -1 哨兵值：查询失败时 response->mode 保持 -1
+  Result ret = get_current_mode(socket_fd_, mode);
+  response->mode = static_cast<int>(mode);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Get current mode successfully" : "Failed to get current mode";
 }
@@ -2287,7 +2226,7 @@ void TL_Arm::handle_open_servoj_service(const std::shared_ptr<tl_ros2_interface:
   std::vector<double> amax = request->amax;
   std::vector<double> jmax = request->jmax;
 
-  int ret = open_servoJ(socket_fd_aux_, vmax, amax, jmax);
+  Result ret = open_servoJ(socket_fd_aux_, vmax, amax, jmax);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "ServoJ open successfully" : "Failed to open ServoJ";
 }
@@ -2303,7 +2242,7 @@ void TL_Arm::handle_close_servoj_service(const std::shared_ptr<std_srvs::srv::Tr
     return;
   }
 
-  int ret = close_servoJ(socket_fd_aux_);
+  Result ret = close_servoJ(socket_fd_aux_);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "ServoJ close successfully" : "Failed to close ServoJ";
 }
@@ -2319,14 +2258,14 @@ void TL_Arm::handle_queue_motion_set_status_service(
     return;
   }
 
-  int ret = queue_motion_set_status(socket_fd_, request->status);
+  Result ret = queue_motion_set_status(socket_fd_, request->status);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? "Set queue motion status successfully" : "Failed to set queue motion status";
 
   // 关闭连续运动模式后设置为示教模式
   if (!request->status)
   {
-    if (set_current_mode(socket_fd_, 0) == Result::SUCCESS)
+    if (set_current_mode(socket_fd_, RobotMode::TEACH) == Result::SUCCESS)
     {
       power_off();
     }
@@ -2347,7 +2286,7 @@ void TL_Arm::handle_queue_motion_movej_service(
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = request->cmd.coord;
+  cmd.coord = static_cast<Coord>(request->cmd.coord);
   cmd.velocity = request->cmd.velocity;
   cmd.velocitySync = request->cmd.velocity_sync;
   cmd.acc = request->cmd.acc;
@@ -2362,7 +2301,7 @@ void TL_Arm::handle_queue_motion_movej_service(
   cmd.parasync = request->cmd.para_sync;
   cmd.targetPosValue = request->cmd.target_pos_value;
 
-  int ret = queue_motion_push_back_moveJ(socket_fd_, cmd);
+  Result ret = queue_motion_push_back_moveJ(socket_fd_, cmd);
   if (ret != Result::SUCCESS)
   {
     response->success = false;
@@ -2370,7 +2309,10 @@ void TL_Arm::handle_queue_motion_movej_service(
     return;
   }
 
-  ret = queue_motion_send_to_controller(socket_fd_, request->is_continue);
+  // 新 SDK 签名: queue_motion_send_to_controller(socketFd, int size, bool isContinue = false)
+  //   size=0 表示发送全部队列指令；isContinue=true 继续排队不运动，false 立即执行
+  // 旧写法把 bool 传给了 size 参数，导致 is_continue=true 时只发送第 1 条，已修正
+  ret = queue_motion_send_to_controller(socket_fd_, 0, request->is_continue);
   response->success = (ret == Result::SUCCESS);
   response->message =
       response->success ? "Queue motion movej execute successfully" : "Failed to execute queue motion movej";
@@ -2388,7 +2330,7 @@ void TL_Arm::handle_queue_motion_stop_service(const std::shared_ptr<std_srvs::sr
   }
 
   bool status = false;
-  int ret = queue_motion_get_status(socket_fd_, status);
+  Result ret = queue_motion_get_status(socket_fd_, status);
   if (ret != Result::SUCCESS)
   {
     response->success = false;
@@ -2433,7 +2375,7 @@ void TL_Arm::handle_get_current_motor_torque_service(
   else
   {
     response->success = false;
-    response->message = "Failed to get current motor torque";
+    response->message = "Failed to get current motor torque, ret=" + std::to_string(ret);
   }
 }
 
@@ -2450,14 +2392,14 @@ void TL_Arm::handle_get_current_line_joint_speed_service(
     return;
   }
 
-  double line_speed{0.0};
+  double line_speed = 0.0;
   std::vector<double> joint_speed{};
   std::vector<double> joint_speed_sync{};
   Result ret = get_current_line_speed_and_joint_speed(socket_fd_, line_speed, joint_speed, joint_speed_sync);
   if (ret == Result::SUCCESS)
   {
     response->success = true;
-    response->message = "Get current line and joint speed successfully";
+    response->message = "Get current line joint speed successfully";
     response->line_speed = line_speed;
     response->joint_speed = joint_speed;
     response->joint_speed_sync = joint_speed_sync;
@@ -2465,7 +2407,7 @@ void TL_Arm::handle_get_current_line_joint_speed_service(
   else
   {
     response->success = false;
-    response->message = "Failed to get current line and joint speed";
+    response->message = "Failed to get current line joint speed, ret=" + std::to_string(ret);
   }
 }
 
@@ -2480,7 +2422,7 @@ void TL_Arm::handle_movej_topic(const tl_ros2_interface::msg::MoveCommand::Share
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = msg->coord;
+  cmd.coord = static_cast<Coord>(msg->coord);
   cmd.velocity = msg->velocity;
   cmd.velocitySync = msg->velocity_sync;
   cmd.acc = msg->acc;
@@ -2495,7 +2437,7 @@ void TL_Arm::handle_movej_topic(const tl_ros2_interface::msg::MoveCommand::Share
   cmd.parasync = msg->para_sync;
   cmd.targetPosValue = msg->target_pos_value;
 
-  int ret = robot_movej(socket_fd_, cmd);
+  Result ret = robot_movej(socket_fd_, cmd);
 
   RCLCPP_INFO(this->get_logger(), "[MoveJ]: result=%s", result_to_string(ret));
 }
@@ -2511,7 +2453,7 @@ void TL_Arm::handle_movel_topic(const tl_ros2_interface::msg::MoveCommand::Share
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = msg->coord;
+  cmd.coord = static_cast<Coord>(msg->coord);
   cmd.velocity = msg->velocity;
   cmd.velocitySync = msg->velocity_sync;
   cmd.acc = msg->acc;
@@ -2526,7 +2468,7 @@ void TL_Arm::handle_movel_topic(const tl_ros2_interface::msg::MoveCommand::Share
   cmd.parasync = msg->para_sync;
   cmd.targetPosValue = msg->target_pos_value;
 
-  int ret = robot_movel(socket_fd_, cmd);
+  Result ret = robot_movel(socket_fd_, cmd);
 
   RCLCPP_INFO(this->get_logger(), "[MoveL]: result=%s", result_to_string(ret));
 }
@@ -2543,7 +2485,7 @@ void TL_Arm::handle_set_servoj_pos_topic(const std_msgs::msg::Float64MultiArray:
   }
 
   std::vector<double> pos = msg->data;
-  int ret = set_servoJ_pos(socket_fd_aux_, pos);
+  Result ret = set_servoJ_pos(socket_fd_aux_, pos);
   RCLCPP_INFO(this->get_logger(), "[ServoJ]: result=%s", result_to_string(ret));
 }
 
@@ -2643,7 +2585,7 @@ void TL_Arm::handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMov
   }
 
   std::vector<double> current_pos;
-  int ret = get_current_position(socket_fd_, coord, current_pos);
+  Result ret = get_current_position(socket_fd_, static_cast<Coord>(coord), current_pos);
   if (ret != Result::SUCCESS || current_pos.size() < 6)
   {
     RCLCPP_ERROR(this->get_logger(), "[ServoL]: Failed to get current position");
@@ -2705,11 +2647,12 @@ void TL_Arm::handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMov
 
     // IK: 笛卡尔(coord) -> 关节(0)
     std::vector<double> joint_pos;
-    ret = get_origin_coord_to_target_coord(socket_fd_, coord, interp_pos, 0, joint_pos, 0, ref_pos);
+    ret = get_origin_coord_to_target_coord(socket_fd_, static_cast<Coord>(coord), interp_pos, Coord::JOINT, joint_pos,
+                                           0, ref_pos);
 
     if (ret != Result::SUCCESS)
     {
-      RCLCPP_WARN(this->get_logger(), "[ServoL] IK failed at point %d/%d, ret=%d", i, N, ret);
+      RCLCPP_WARN(this->get_logger(), "[ServoL] IK failed at point %d/%d, ret=%d", i, N, static_cast<int>(ret));
       next_time += period;
       continue;
     }
@@ -2718,7 +2661,8 @@ void TL_Arm::handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMov
     ret = set_servoJ_pos(socket_fd_aux_, joint_pos);
     if (ret != Result::SUCCESS)
     {
-      RCLCPP_WARN(this->get_logger(), "[ServoL] set_servoJ_pos failed at point %d/%d, ret=%d", i, N, ret);
+      RCLCPP_WARN(this->get_logger(), "[ServoL] set_servoJ_pos failed at point %d/%d, ret=%d", i, N,
+                  static_cast<int>(ret));
     }
 
     next_time += period;
@@ -2746,7 +2690,7 @@ void TL_Arm::publish_arm_state()
   joint_pose.clear();
   tcp_pose.clear();
 
-  if (get_current_position(socket_fd_, 0, joint_pose) == Result::SUCCESS)
+  if (get_current_position(socket_fd_, Coord::JOINT, joint_pose) == Result::SUCCESS)
   {
     // 将角度转换为弧度(批量转换)
     const double deg_to_rad = M_PI / 180.0;
@@ -2759,7 +2703,7 @@ void TL_Arm::publish_arm_state()
     publish_joint_pose(joint_pose);
   }
 
-  if (get_current_position(socket_fd_, 1, tcp_pose) == Result::SUCCESS)
+  if (get_current_position(socket_fd_, Coord::BASE, tcp_pose) == Result::SUCCESS)
   {
     publish_tcp_pose(tcp_pose);
   }
@@ -2785,13 +2729,16 @@ void TL_Arm::publish_joint_pose(const std::vector<double>& joint_pose)
 
 void TL_Arm::publish_tcp_pose(const std::vector<double>& tcp_pose)
 {
+  // SDK 返回：位置 mm、欧拉角弧度（rad）→ 统一转换为 ROS 标准单位：m 和 rad
+  constexpr double kMmToM = 1.0 / 1000.0;
+
   tl_ros2_interface::msg::CartesianPose msg;
   msg.header.stamp = this->now();
   msg.header.frame_id = "base_link";
 
-  msg.position.x = tcp_pose[0];
-  msg.position.y = tcp_pose[1];
-  msg.position.z = tcp_pose[2];
+  msg.position.x = tcp_pose[0] * kMmToM;
+  msg.position.y = tcp_pose[1] * kMmToM;
+  msg.position.z = tcp_pose[2] * kMmToM;
 
   msg.rpy.x = tcp_pose[3];
   msg.rpy.y = tcp_pose[4];
@@ -2812,8 +2759,8 @@ void TL_Arm::publish_tcp_pose(const std::vector<double>& tcp_pose)
 
 void TL_Arm::publish_running_status()
 {
-  int running_status = -1;
-  int ret = get_robot_running_state(socket_fd_, running_status);
+  RunState running_status = RunState::STOP;
+  Result ret = get_robot_running_state(socket_fd_, running_status);
   if (ret != Result::SUCCESS)
   {
     RCLCPP_INFO(this->get_logger(), "[Read Running Status]: failed to read running status, result=%s",
@@ -2826,13 +2773,13 @@ void TL_Arm::publish_running_status()
   msg.stamp = this->now();
   switch (running_status)
   {
-    case 0:
+    case RunState::STOP:
       msg.run_state = "STOP";
       break;
-    case 1:
+    case RunState::PAUSE:
       msg.run_state = "PAUSE";
       break;
-    case 2:
+    case RunState::RUNNING:
       msg.run_state = "RUNNING";
       break;
   }

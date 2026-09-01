@@ -572,7 +572,7 @@ ros2 service call /tl_driver/get_current_coord tl_ros2_interface/srv/GetCurrentC
 ros2 service call /tl_driver/get_coord_num tl_ros2_interface/srv/GetCoordNum "{}"
 ```
 ### 4.15 查询机械臂DH参数
-| 功能描述 | 查询机械臂的DH几何参数（连杆长度、耦合系数、动态限制等） |
+| 功能描述 | 查询机械臂的标准DH几何参数（alpha/a/theta/d、安装角等） |
 | :---: | :---- |
 | 通信机制 | ROS2服务 |
 | 服务名 | `/tl_driver/get_dh_param` |
@@ -586,7 +586,7 @@ ros2 service call /tl_driver/get_coord_num tl_ros2_interface/srv/GetCoordNum "{}
 |--------|------|------|------|
 | success | bool | — | `true` = 查询成功，`false` = 查询失败 |
 | message | string | — | 失败时包含错误描述 |
-| param | RobotDHParam | — | 机械臂DH参数结构体，主要字段：l1~l20（连杆长度，mm）、couple_coe_*（联动系数）、dynamic_limit_max/min（动态限制）等 |
+| param | RobotDHParam | — | 机械臂DH参数结构体，字段：alpha/a/theta/d（1-6轴标准DH参数，deg/mm）、euler_angle（欧拉角模式）、mounting_angle（安装角，deg） |
 #### 命令示例
 ```
 ros2 service call /tl_driver/get_dh_param tl_ros2_interface/srv/GetDHParam
@@ -872,7 +872,7 @@ ros2 service call /tl_driver/coord_transform tl_ros2_interface/srv/CoordTransfor
 }'
 ```
 ### 5.7 设置机械臂DH参数
-| 功能描述 | 设置机械臂的DH几何参数（连杆长度等） |
+| 功能描述 | 设置机械臂的标准DH几何参数（alpha/a/theta/d、安装角等） |
 | :---: | :---- |
 | 通信机制 | ROS2服务 |
 | 服务名 | `/tl_driver/set_dh_param` |
@@ -881,7 +881,7 @@ ros2 service call /tl_driver/coord_transform tl_ros2_interface/srv/CoordTransfor
 **输入参数**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| param | RobotDHParam | — | 机械臂DH参数结构体，主要字段：l1~l20（连杆长度，mm）、couple_coe_*（联动系数）等 |
+| param | RobotDHParam | — | 机械臂DH参数结构体，字段：alpha/a/theta/d（1-6轴标准DH参数，deg/mm）、euler_angle（欧拉角模式）、mounting_angle（安装角，deg） |
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
@@ -896,7 +896,12 @@ ros2 service call /tl_driver/set_dh_param tl_ros2_interface/srv/SetDHParam \
 "{
     param:
     {
-        l1: 127.5
+        alpha: [0.0, -90.0, 0.0, 0.0, 0.0, 0.0],
+        a: [0.0, 340.0, 0.0, 0.0, 0.0, 0.0],
+        theta: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        d: [0.0, 0.0, 320.0, 400.0, 0.0, 0.0],
+        euler_angle: 0,
+        mounting_angle: 0.0
     }
 }"
 ```

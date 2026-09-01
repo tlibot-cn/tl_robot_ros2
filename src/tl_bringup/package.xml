@@ -2,10 +2,10 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>tl_bringup</name>
-  <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="tl@todo.todo">rm</maintainer>
-  <license>TODO: License declaration</license>
+  <version>2.0.1</version>
+  <description>天链机械臂一键启动聚合功能包（tl_driver + tl_description）</description>
+  <maintainer email="tlibot@tlibot.com">天链机器人</maintainer>
+  <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
