@@ -536,6 +536,7 @@ bool TL_Arm::power_on()
       set_servo_state(socket_fd_, ServoState::READY);
       set_servo_poweron(socket_fd_);
       break;
+
     default:
       RCLCPP_ERROR(this->get_logger(), "[PowerOn]: unknown servo state %d", static_cast<int>(state));
       return false;
