@@ -12,6 +12,10 @@
 
 ## [Unreleased]
 
+### 2026-09-01
+
+- 清除 tl_driver 全部编译警告：SDK 弃用 int 接口迁移到枚举重载（RobotMode/ServoState/Coord/DragMode/IoLevel/RunState），全部 SDK 返回值变量从 `int ret` 改为 `Result ret`（纯类型收紧，行为不变），`cmake_minimum_required` 升级到 3.16
+
 ### 2026-08-25
 
 - 修复 tl_example 构建失败：移除已删除的 ex_driver_quick_test 目标，ex_info_query 的 DH 参数打印适配新标准 DH 消息（`0d1eaf3`）
