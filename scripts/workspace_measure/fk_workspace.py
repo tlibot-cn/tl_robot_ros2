@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-TCB705 机械臂工作空间分析 + 包络图
+机械臂工作空间蒙特卡洛分析 + 包络图
 
 - 从 URDF 加载运动学链
 - 蒙特卡洛采样 100k 个关节构型 → 计算末端位置
@@ -8,6 +8,7 @@ TCB705 机械臂工作空间分析 + 包络图
 - 绘制 3D 包络图 + XZ 截面 + XY 截面
 """
 
+import argparse
 import numpy as np
 import matplotlib
 
@@ -195,8 +196,34 @@ def compute_envelope(pts, n_theta=72, n_phi=36):
 
 
 def main():
+    arm_types = [
+        "tcb605",
+        "tcb605f",
+        "tcb605l",
+        "tcb605lv",
+        "tcb605v",
+        "tcb610",
+        "tcb610v",
+        "tcb705",
+        "tcb705f",
+        "tcb705l",
+        "tcb705lv",
+        "tcb705v",
+        "tcb710",
+        "tcb710v",
+    ]
+    parser = argparse.ArgumentParser(description="机械臂工作空间蒙特卡洛分析 + 包络图")
+    parser.add_argument(
+        "--arm-type",
+        required=True,
+        choices=arm_types,
+        help="机械臂型号（小写），对应 tl_description/urdf/<arm_type>.urdf",
+    )
+    args = parser.parse_args()
+    arm_type = args.arm_type
+
     script_dir = Path(__file__).resolve().parent
-    urdf_path = script_dir.parent.parent / "src" / "tl_description" / "urdf" / "tcb705.urdf"
+    urdf_path = script_dir.parent.parent / "src" / "tl_description" / "urdf" / f"{arm_type}.urdf"
     results_dir = script_dir / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
 
@@ -283,7 +310,7 @@ def main():
     ax1.set_xlabel("X (m)")
     ax1.set_ylabel("Y (m)")
     ax1.set_zlabel("Z (m)")
-    ax1.set_title(f"TCB705 Workspace Envelope (3D)\n({n_samples} samples)")
+    ax1.set_title(f"{arm_type.upper()} Workspace Envelope (3D)\n({n_samples} samples)")
     ax1.set_box_aspect([1, 1, 1])
 
     # ── 图2: XZ 截面 ──
@@ -304,7 +331,6 @@ def main():
             pass
 
     ax2.plot(0, 0, "ks", markersize=8, label="Base")
-    ax2.plot(0, 0.11555, "k^", markersize=6, label="J1")
     ax2.set_xlabel("X (m)")
     ax2.set_ylabel("Z (m)")
     ax2.set_title("XZ Slice (|Y| < 0.05 m)")
@@ -341,15 +367,15 @@ def main():
     ax3.grid(True, alpha=0.3)
     ax3.legend(fontsize=8)
     # ── 保存 ──
-    output_path = results_dir / "tcb705_workspace.png"
+    output_path = results_dir / f"{arm_type}_workspace.png"
     plt.tight_layout()
     plt.savefig(str(output_path), dpi=200, bbox_inches="tight")
     print(f"\n✅ 图已保存: {output_path}")
 
     # 也输出统计数据到文件
-    stats_path = results_dir / "tcb705_workspace_stats.txt"
+    stats_path = results_dir / f"{arm_type}_workspace_stats.txt"
     with open(stats_path, "w") as f:
-        f.write(f"TCB705 Workspace Analysis\n")
+        f.write(f"{arm_type.upper()} Workspace Analysis\n")
         f.write(f"{'='*50}\n")
         f.write(f"Samples: {n_samples}\n")
         f.write(f"Joints: {n_joints}\n\n")

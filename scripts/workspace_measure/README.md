@@ -1,6 +1,6 @@
-# TCB705 机械臂工作空间测量工具
+# 机械臂工作空间测量工具
 
-两个脚本，两种方法测量 TCB705 七轴机械臂的工作范围。
+两个脚本，两种方法测量七轴机械臂的工作范围。FK 脚本通过 `--arm-type` 指定臂型。
 
 ```
 workspace_measure/
@@ -22,10 +22,10 @@ workspace_measure/
 
 ```bash
 cd workspace_measure
-python3 fk_workspace.py
+python3 fk_workspace.py --arm-type tcb705
 ```
 
-输出：`results/tcb705_workspace.png` + `results/tcb705_workspace_stats.txt`
+输出：`results/<arm_type>_workspace.png` + `results/<arm_type>_workspace_stats.txt`
 
 **运行时间**：约 30 秒。
 
@@ -107,10 +107,10 @@ result = measurer.measure_workspace(
 
 ## 4. 支持其他臂型
 
-修改 `fk_workspace.py` 中的 URDF 路径：
+FK 脚本：`--arm-type` 取值即 `src/tl_description/urdf/` 下的 URDF 文件名（14 种臂型全部支持），例如：
 
-```python
-urdf_path = script_dir.parent / 'src' / 'tl_description' / 'urdf' / 'tcb705.urdf'
+```bash
+python3 fk_workspace.py --arm-type tcb605
 ```
 
 `ik_workspace.py` 通过 MoveIt2 加载模型（启动对应臂型的 demo.launch.py 即可），不需要改脚本路径。
