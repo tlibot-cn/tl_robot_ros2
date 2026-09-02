@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>tl_hardware</name>
-  <version>2.0.1</version>
+  <version>3.0.0</version>
   <description>ROS2 control hardware interface for TL robot arm</description>
 
   <maintainer email="tlibot@tlibot.com">天链机器人</maintainer>
