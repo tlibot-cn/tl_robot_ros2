@@ -227,8 +227,8 @@ def plot_results(result, stats_str, output_path="tcb705_workspace_ik.png"):
     unreachable = result["unreachable"]
     boundary = result["boundary"]
 
-    fig = plt.figure(figsize=(22, 7))
-    gs = fig.add_gridspec(1, 3, width_ratios=[1.1, 0.9, 0.9])
+    fig = plt.figure(figsize=(14, 12))
+    gs = fig.add_gridspec(2, 2)
 
     # ── 图1: 3D 包络 ──
     ax1 = fig.add_subplot(gs[0], projection="3d")
@@ -348,6 +348,50 @@ def plot_results(result, stats_str, output_path="tcb705_workspace_ik.png"):
     ax3.set_aspect("equal")
     ax3.grid(True, alpha=0.3)
     ax3.legend(fontsize=8)
+
+    # ── 图4: YZ 截面 ──
+    ax4 = fig.add_subplot(gs[3])
+    for pts, color, alpha, s in [
+        (reachable, None, 0.15, 0.5),
+        (unreachable, "red", 0.03, 0.3),
+    ]:
+        mask = np.abs(pts[:, 0]) < 0.08 if len(pts) > 0 else []
+        if np.any(mask):
+            yz = pts[mask]
+            if color is None:
+                ax4.scatter(
+                    yz[:, 1],
+                    yz[:, 2],
+                    c=np.linalg.norm(yz, axis=1),
+                    cmap="viridis",
+                    s=s,
+                    alpha=alpha,
+                )
+            else:
+                ax4.scatter(yz[:, 1], yz[:, 2], c=color, s=s, alpha=alpha)
+
+    # 包络线
+    if len(boundary) >= 4:
+        mask_b = np.abs(boundary[:, 0]) < 0.08
+        if np.any(mask_b):
+            byz = boundary[mask_b]
+            try:
+                from scipy.spatial import ConvexHull
+
+                hull_yz = ConvexHull(byz[:, [1, 2]])
+                for sim in hull_yz.simplices:
+                    yz = byz[sim, [1, 2]]
+                    ax4.plot(yz[:, 0], yz[:, 1], "r-", lw=1)
+            except Exception:
+                pass
+
+    ax4.plot(0, 0, "ks", markersize=8, label="Base")
+    ax4.set_xlabel("Y (m)")
+    ax4.set_ylabel("Z (m)")
+    ax4.set_title("YZ Slice (|X| < 0.08 m)")
+    ax4.set_aspect("equal")
+    ax4.grid(True, alpha=0.3)
+    ax4.legend(fontsize=8)
 
     # 统计信息
     fig.text(
