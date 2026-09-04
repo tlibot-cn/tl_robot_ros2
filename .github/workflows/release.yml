@@ -69,19 +69,10 @@ jobs:
             fi
           fi
 
-      # ------------------------------------------------------
-      # 1. 格式检查（与 ci.yml 相同逻辑）
-      # ------------------------------------------------------
       - name: 安装格式检查工具
         if: steps.guard.outputs.release == 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            clang-format python3-pip
-
-      - name: 安装 black（版本锁定，保证格式化结果与本地一致）
-        if: steps.guard.outputs.release == 'true'
-        run: pip3 install black==26.5.1
+        # clang-format / black 经 pip 固定版本，与 ci.yml 一致，避免版本漂移
+        run: pip install clang-format==14.0.6 black==26.5.1
 
       - name: 检查 C++ 格式
         if: steps.guard.outputs.release == 'true'

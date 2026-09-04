@@ -11,8 +11,8 @@
 # 不做 CI 构建: 依赖环境过重（MoveIt/RViz/ros2_control 全量安装），
 # 编译验证由本地 Docker 开发环境完成。
 #
-# 环境: 格式检查容器用 ubuntu:22.04（clang-format 14），与本地工具链
-# 版本一致，避免 clang-format 新版本格式化结果漂移导致 CI 误报。
+# 环境: clang-format / black 经 pip 固定版本（14.0.6 / 26.5.1），
+# 与本地工具链一致，避免版本漂移导致 CI 误报。
 #
 # 打标签发布流程见 .github/workflows/release.yml
 # ============================================================
@@ -41,22 +41,18 @@ jobs:
   #        因此检查方式: 先格式化，再 git diff --exit-code 判断是否产生变更。
   #        自动跳过预编译 SDK 头文件（src/*/lib/include/）。
   #   Python: black --check（版本与仓库重排所用版本一致，配置见 pyproject.toml）
+  #   clang-format / black 均经 pip 固定版本，保证跨机器格式化结果一致；
+  #   不在容器里跑 git diff：容器 job 中 step 进程存在仓库发现问题
+  #   （实测 actions/checkout 成功后 git diff 仍报 Not a git repository）
   # ----------------------------------------------------------
   format-check:
     name: 格式检查 (clang-format + black)
     runs-on: ubuntu-24.04
-    container: ubuntu:22.04
     steps:
-      - name: 安装格式检查工具
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            git clang-format python3-pip
-
       - uses: actions/checkout@v4
 
-      - name: 安装 black（版本锁定，保证格式化结果与本地一致）
-        run: pip3 install black==26.5.1
+      - name: 安装格式检查工具
+        run: pip install clang-format==14.0.6 black==26.5.1
 
       - name: 检查 C++ 格式
         run: |
