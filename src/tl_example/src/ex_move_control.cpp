@@ -58,7 +58,7 @@ class MoveControlDemo : public rclcpp::Node
 {
 public:
   explicit MoveControlDemo(const rclcpp::NodeOptions& options = rclcpp::NodeOptions())
-    : Node("ex_move_control", options)
+      : Node("ex_move_control", options)
   {
     RCLCPP_INFO(this->get_logger(), "============================================================");
     RCLCPP_INFO(this->get_logger(), "  运动控制测试节点启动 (MoveJ / MoveL)");
@@ -66,12 +66,12 @@ public:
     RCLCPP_INFO(this->get_logger(), "============================================================");
 
     // ── 服务客户端 ──
-    connect_cli_      = this->create_client<Trigger>("/tl_driver/connect_arm");
-    disconnect_cli_   = this->create_client<Trigger>("/tl_driver/disconnect_arm");
-    power_on_cli_     = this->create_client<Trigger>("/tl_driver/power_on");
-    power_off_cli_    = this->create_client<Trigger>("/tl_driver/power_off");
-    set_mode_cli_     = this->create_client<SetCurrentMode>("/tl_driver/set_current_mode");
-    set_speed_cli_    = this->create_client<SetSpeed>("/tl_driver/set_speed");
+    connect_cli_ = this->create_client<Trigger>("/tl_driver/connect_arm");
+    disconnect_cli_ = this->create_client<Trigger>("/tl_driver/disconnect_arm");
+    power_on_cli_ = this->create_client<Trigger>("/tl_driver/power_on");
+    power_off_cli_ = this->create_client<Trigger>("/tl_driver/power_off");
+    set_mode_cli_ = this->create_client<SetCurrentMode>("/tl_driver/set_current_mode");
+    set_speed_cli_ = this->create_client<SetSpeed>("/tl_driver/set_speed");
 
     // ── 运动指令发布 ──
     movej_pub_ = this->create_publisher<MoveCommand>("/tl_driver/moveJ", 10);
@@ -109,14 +109,18 @@ private:
   double wait_timeout_s_ = 60.0; // 等待运动完成超时（秒）
 
   // ── 话题回调 ──
-  void onArmStatus(const ArmStatus::SharedPtr msg) { arm_run_state_ = msg->run_state; }
+  void onArmStatus(const ArmStatus::SharedPtr msg)
+  {
+    arm_run_state_ = msg->run_state;
+  }
 
   // ── 辅助方法 ──
 
   /// 等待单个服务就绪
   bool waitService(const std::string& name, rclcpp::ClientBase::SharedPtr cli, double timeout_s = 3.0)
   {
-    if (!cli->wait_for_service(std::chrono::duration<double>(timeout_s))) {
+    if (!cli->wait_for_service(std::chrono::duration<double>(timeout_s)))
+    {
       RCLCPP_ERROR(this->get_logger(), "  服务 %s 未就绪（%.0fs 超时）", name.c_str(), timeout_s);
       return false;
     }
@@ -127,22 +131,28 @@ private:
   /// 调用 Trigger 服务
   bool callTrigger(rclcpp::Client<Trigger>::SharedPtr cli, const std::string& label)
   {
-    if (!cli->service_is_ready()) {
+    if (!cli->service_is_ready())
+    {
       RCLCPP_WARN(this->get_logger(), "  [%s] 服务未就绪，跳过", label.c_str());
       return false;
     }
     auto req = std::make_shared<Trigger::Request>();
     auto future = cli->async_send_request(req);
-    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future,
-                                           std::chrono::seconds(10)) != rclcpp::FutureReturnCode::SUCCESS) {
+    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future, std::chrono::seconds(10)) !=
+        rclcpp::FutureReturnCode::SUCCESS)
+    {
       RCLCPP_WARN(this->get_logger(), "  [%s] 调用超时/异常", label.c_str());
       return false;
     }
     const auto& resp = future.get();
-    if (resp->success) {
+    if (resp->success)
+    {
       RCLCPP_INFO(this->get_logger(), "  ✓ %s 成功", label.c_str());
-      if (!resp->message.empty()) RCLCPP_INFO(this->get_logger(), "      返回: %s", resp->message.c_str());
-    } else {
+      if (!resp->message.empty())
+        RCLCPP_INFO(this->get_logger(), "      返回: %s", resp->message.c_str());
+    }
+    else
+    {
       RCLCPP_WARN(this->get_logger(), "  ✗ %s 失败: %s", label.c_str(), resp->message.c_str());
     }
     return resp->success;
@@ -151,23 +161,27 @@ private:
   /// 泛型服务调用：同步等待并打印结果，返回响应供调用方打印额外字段
   template <typename Srv>
   typename Srv::Response::SharedPtr callService(const typename rclcpp::Client<Srv>::SharedPtr& cli,
-                                                typename Srv::Request::SharedPtr req,
-                                                const std::string& label)
+                                                typename Srv::Request::SharedPtr req, const std::string& label)
   {
-    if (!cli->service_is_ready()) {
+    if (!cli->service_is_ready())
+    {
       RCLCPP_WARN(this->get_logger(), "  [%s] 服务未就绪，跳过", label.c_str());
       return nullptr;
     }
     auto future = cli->async_send_request(req);
-    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future,
-                                           std::chrono::seconds(10)) != rclcpp::FutureReturnCode::SUCCESS) {
+    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future, std::chrono::seconds(10)) !=
+        rclcpp::FutureReturnCode::SUCCESS)
+    {
       RCLCPP_WARN(this->get_logger(), "  [%s] 调用超时/异常", label.c_str());
       return nullptr;
     }
     auto resp = future.get();
-    if (resp->success) {
+    if (resp->success)
+    {
       RCLCPP_INFO(this->get_logger(), "  ✓ %s 成功", label.c_str());
-    } else {
+    }
+    else
+    {
       RCLCPP_WARN(this->get_logger(), "  ✗ %s 失败: %s", label.c_str(), resp->message.c_str());
     }
     return resp;
@@ -177,7 +191,8 @@ private:
   bool spinWaitFor(const std::function<bool()>& cond, double timeout_s)
   {
     auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(timeout_s);
-    while (rclcpp::ok() && !cond() && std::chrono::steady_clock::now() < deadline) {
+    while (rclcpp::ok() && !cond() && std::chrono::steady_clock::now() < deadline)
+    {
       rclcpp::spin_some(this->get_node_base_interface());
       rclcpp::sleep_for(std::chrono::milliseconds(50));
     }
@@ -193,17 +208,18 @@ private:
   {
     MoveCommand msg;
     msg.target_pos_value.assign(14, 0.0);
-    for (size_t i = 0; i < pos.size() && i < 14; ++i) {
+    for (size_t i = 0; i < pos.size() && i < 14; ++i)
+    {
       msg.target_pos_value[i] = pos[i];
     }
     msg.target_pos_name = "";
-    msg.target_pos_type = 0;   // 自定义数组
-    msg.coord = coord;         // 0=关节 1=直角
+    msg.target_pos_type = 0; // 自定义数组
+    msg.coord = coord;       // 0=关节 1=直角
     msg.velocity = motion_speed_;
     msg.velocity_sync = 0.0;
     msg.acc = acc_dec_;
     msg.dec = acc_dec_;
-    msg.pl = 0;                // 精确到达
+    msg.pl = 0; // 精确到达
     msg.time = 0;
     msg.tool_num = 0;
     msg.user_num = 0;
@@ -218,14 +234,26 @@ private:
   bool waitMotionDone(const std::string& label)
   {
     RCLCPP_INFO(this->get_logger(), "  等待 %s 启动...", label.c_str());
-    if (!spinWaitFor([this]() { return arm_run_state_ == "RUNNING"; }, 10.0)) {
+    if (!spinWaitFor(
+            [this]()
+            {
+              return arm_run_state_ == "RUNNING";
+            },
+            10.0))
+    {
       RCLCPP_WARN(this->get_logger(), "  未检测到运动启动（run_state=%s），继续等待完成", arm_run_state_.c_str());
     }
 
     RCLCPP_INFO(this->get_logger(), "  等待 %s 完成...", label.c_str());
-    if (!spinWaitFor([this]() { return arm_run_state_ == "STOP"; }, wait_timeout_s_)) {
-      RCLCPP_WARN(this->get_logger(), "  %s 等待超时（%.0fs），run_state=%s",
-                  label.c_str(), wait_timeout_s_, arm_run_state_.c_str());
+    if (!spinWaitFor(
+            [this]()
+            {
+              return arm_run_state_ == "STOP";
+            },
+            wait_timeout_s_))
+    {
+      RCLCPP_WARN(this->get_logger(), "  %s 等待超时（%.0fs），run_state=%s", label.c_str(), wait_timeout_s_,
+                  arm_run_state_.c_str());
       return false;
     }
     RCLCPP_INFO(this->get_logger(), "  ✓ %s 完成", label.c_str());
@@ -243,10 +271,9 @@ void tl_example::MoveControlDemo::run()
 {
   // ── 1. 检查核心服务就绪 ──
   RCLCPP_INFO(this->get_logger(), "\n========== 1. 检查核心服务就绪 ==========");
-  if (!waitService("connect_arm", connect_cli_) ||
-      !waitService("set_current_mode", set_mode_cli_) ||
-      !waitService("power_on", power_on_cli_) ||
-      !waitService("disconnect_arm", disconnect_cli_)) {
+  if (!waitService("connect_arm", connect_cli_) || !waitService("set_current_mode", set_mode_cli_) ||
+      !waitService("power_on", power_on_cli_) || !waitService("disconnect_arm", disconnect_cli_))
+  {
     RCLCPP_ERROR(this->get_logger(), "tl_driver 核心服务未就绪，请先启动 tl_driver 节点");
     rclcpp::shutdown();
     return;
@@ -254,7 +281,8 @@ void tl_example::MoveControlDemo::run()
 
   // ── 2. 连接机械臂 ──
   RCLCPP_INFO(this->get_logger(), "\n========== 2. 连接机械臂 ==========");
-  if (!callTrigger(connect_cli_, "connect_arm")) {
+  if (!callTrigger(connect_cli_, "connect_arm"))
+  {
     RCLCPP_ERROR(this->get_logger(), "连接失败，退出测试");
     rclcpp::shutdown();
     return;
@@ -264,13 +292,14 @@ void tl_example::MoveControlDemo::run()
   RCLCPP_INFO(this->get_logger(), "\n========== 3. 切换示教模式 ==========");
   {
     auto req = std::make_shared<SetCurrentMode::Request>();
-    req->mode = 0;  // 示教模式（0=示教，1=远程，2=运行）
+    req->mode = 0; // 示教模式（0=示教，1=远程，2=运行）
     callService<SetCurrentMode>(set_mode_cli_, req, "set_current_mode(0)");
   }
 
   // ── 4. 上电 ──
   RCLCPP_INFO(this->get_logger(), "\n========== 4. 机械臂上电 ==========");
-  if (!callTrigger(power_on_cli_, "power_on")) {
+  if (!callTrigger(power_on_cli_, "power_on"))
+  {
     RCLCPP_ERROR(this->get_logger(), "上电失败，退出测试");
     callTrigger(disconnect_cli_, "disconnect_arm（清理）");
     rclcpp::shutdown();
@@ -292,7 +321,8 @@ void tl_example::MoveControlDemo::run()
     MoveCommand msg = makeMoveCmd(0, {20.0, 10.0, -10.0, 0.0, 0.0, 0.0, 0.0});
     RCLCPP_INFO(this->get_logger(), "  目标关节角: [20, 10, -10, 0, 0, 0]°，速度 %.0f", motion_speed_);
     movej_pub_->publish(msg);
-    if (!waitMotionDone("MoveJ")) {
+    if (!waitMotionDone("MoveJ"))
+    {
       RCLCPP_WARN(this->get_logger(), "MoveJ 未确认完成，继续执行 MoveL");
     }
   }
@@ -304,7 +334,8 @@ void tl_example::MoveControlDemo::run()
     MoveCommand msg = makeMoveCmd(1, {280.0, 90.0, 270.0, 3.14, 0.0, 0.0});
     RCLCPP_INFO(this->get_logger(), "  目标位姿: pos(280, 90, 270)mm rpy(3.14, 0, 0)rad，速度 %.0f", motion_speed_);
     movel_pub_->publish(msg);
-    if (!waitMotionDone("MoveL")) {
+    if (!waitMotionDone("MoveL"))
+    {
       RCLCPP_WARN(this->get_logger(), "MoveL 未确认完成");
     }
   }
@@ -327,10 +358,10 @@ void tl_example::MoveControlDemo::run()
 //  main
 // ====================================================================
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<tl_example::MoveControlDemo>();
-  node->run();  // run() 内部已处理 rclcpp::shutdown()
+  node->run(); // run() 内部已处理 rclcpp::shutdown()
   return 0;
 }

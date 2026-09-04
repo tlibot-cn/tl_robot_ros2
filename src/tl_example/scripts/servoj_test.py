@@ -38,12 +38,12 @@ class ServoJTestNode(Node):
         super().__init__("servoj_test_node")
 
         # ========== 可调参数 ==========
-        self.declare_parameter("arm_joints", 6)       # 机械臂关节数
-        self.declare_parameter("joint", 0)            # 要运动的关节索引（J1 = 0）
+        self.declare_parameter("arm_joints", 6)  # 机械臂关节数
+        self.declare_parameter("joint", 0)  # 要运动的关节索引（J1 = 0）
         self.declare_parameter("target_angle", 50.0)  # 目标角度（度）
-        self.declare_parameter("num_points", 200)     # 插值点数
-        self.declare_parameter("rate", 100.0)         # 下发频率（Hz）
-        self.declare_parameter("hold_time", 1.0)      # 到达目标后保持时间（秒）
+        self.declare_parameter("num_points", 200)  # 插值点数
+        self.declare_parameter("rate", 100.0)  # 下发频率（Hz）
+        self.declare_parameter("hold_time", 1.0)  # 到达目标后保持时间（秒）
 
         # ServoJ 运动学参数（沿用 tl_teleop 默认值）
         self.declare_parameter("vmax", 80.0)
