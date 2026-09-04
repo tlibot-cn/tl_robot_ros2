@@ -47,19 +47,17 @@ pip install black isort ruff
 
 项目统一使用以下格式化配置，所有成员在提交前需确保代码格式一致。
 
-### 启用 git hook（必须）
+### CI 格式检查
 
-克隆后执行一次，C++ 文件提交时会自动格式化：
-
-```bash
-git config core.hooksPath .githooks
-```
+仓库已接入 GitHub Actions（`.github/workflows/ci.yml`）：push 到 master/dev、
+提交 PR 时自动执行格式检查（纯文档变更不触发），格式不合格会阻断合并。
+发布流程见 `.github/workflows/release.yml`（打版本标签触发）。
 
 ### C++ 格式
 
 - 配置：`.clang-format`（clang-format v14）
 - Allman 大括号风格，2 空格缩进，120 列宽限制
-- 已配置 pre-commit hook，提交时自动格式化所有 `.cpp/.h/.hpp/.cc/.cxx` 文件
+- CI 强制格式检查，提交时请先本地格式化
 
 手动格式化（自动跳过三方 SDK 头文件）：
 ```bash

@@ -126,6 +126,16 @@ scripts/           （工作空间测量等工具脚本，不参与 colcon 构�
 
 | `/tf`、`/tf_static` | tl_description（robot_state_publisher） | — | `tf2_msgs/TFMessage` |
 
+## CI（GitHub Actions）
+
+|文件|触发|内容|
+|---|---|---|
+|`.github/workflows/ci.yml`|push master/dev、pull_request（`**.md`、`docs/**`、`.github/**` 变更不触发）|格式检查：clang-format（C++，经 `scripts/format-cpp.sh`）+ black（Python，版本锁定 26.5.1）|
+|`.github/workflows/release.yml`|任意标签推送|guard 校验（标签名 `v主.次.补[-rc/beta]` + 位于 master/dev）→ 格式检查 → 创建 GitHub Release（自动 notes，rc/beta 为 prerelease）|
+
+- **CI 不做构建**：依赖环境过重（MoveIt/RViz/ros2_control 全量安装），编译验证在本地 Docker 开发环境完成
+- 格式检查容器为 `ubuntu:22.04`（clang-format 14），与本地工具链版本一致，避免新版 clang-format 格式化结果漂移
+
 ## 注意事项
 
 - **`_tl_host.so`** 是预编译专有库，禁止尝试重新编译或修改。构建时链接，安装到 `lib/tl_driver/`。
