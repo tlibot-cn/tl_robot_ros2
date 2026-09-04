@@ -5,7 +5,7 @@
 - 从 URDF 加载运动学链
 - 蒙特卡洛采样 100k 个关节构型 → 计算末端位置
 - 输出工作空间统计
-- 绘制 3D 包络图 + XZ 截面 + XY 截面
+- 绘制 3D 包络图 + XZ 截面 + XY 截面 + YZ 截面
 """
 
 import argparse
@@ -279,8 +279,8 @@ def main():
 
     # ── 绘图 ──
     print("\n🎨 绘制包络图...")
-    fig = plt.figure(figsize=(22, 7))
-    gs = fig.add_gridspec(1, 3, width_ratios=[1.1, 0.9, 0.9])
+    fig = plt.figure(figsize=(14, 12))
+    gs = fig.add_gridspec(2, 2)
 
     # ── 图1: 3D 包络 ──
     ax1 = fig.add_subplot(gs[0], projection="3d")
@@ -366,6 +366,31 @@ def main():
     ax3.set_aspect("equal")
     ax3.grid(True, alpha=0.3)
     ax3.legend(fontsize=8)
+
+    # ── 图4: YZ 截面 ──
+    ax4 = fig.add_subplot(gs[3])
+    slice_yz_mask = np.abs(pts[:, 0]) < 0.05
+    slice_yz = pts[slice_yz_mask]
+    slice_yz_r = radii[slice_yz_mask]
+
+    ax4.scatter(slice_yz[:, 1], slice_yz[:, 2], c=slice_yz_r, cmap="viridis", s=0.5, alpha=0.3)
+
+    if len(slice_yz) > 3:
+        try:
+            hull_yz = ConvexHull(slice_yz[:, [1, 2]])
+            for simplex in hull_yz.simplices:
+                yz = slice_yz[simplex, [1, 2]]
+                ax4.plot(yz[:, 0], yz[:, 1], "r-", lw=0.8, alpha=0.6)
+        except Exception:
+            pass
+
+    ax4.plot(0, 0, "ks", markersize=8, label="Base")
+    ax4.set_xlabel("Y (m)")
+    ax4.set_ylabel("Z (m)")
+    ax4.set_title("YZ Slice (|X| < 0.05 m)")
+    ax4.set_aspect("equal")
+    ax4.grid(True, alpha=0.3)
+    ax4.legend(fontsize=8)
     # ── 保存 ──
     output_path = results_dir / f"{arm_type}_workspace.png"
     plt.tight_layout()

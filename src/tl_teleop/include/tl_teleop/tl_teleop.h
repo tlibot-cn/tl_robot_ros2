@@ -3,6 +3,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <mutex>
 #include <string>
@@ -69,6 +70,9 @@ public:
 
 private:
   VRState vr_state_;
+  // PXREA 状态帧率统计（仅在 PXREA 回调线程访问，无需加锁）
+  int pxrea_frame_count_{0};
+  std::chrono::steady_clock::time_point pxrea_rate_window_start_{std::chrono::steady_clock::now()};
 
   std::array<double, 7> vr_home_pose_{0.0};
   std::array<double, 4> base_arm_quat_{0.0};

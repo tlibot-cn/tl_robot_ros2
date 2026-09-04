@@ -1,0 +1,107 @@
+# ============================================================
+# 天链机器人 ROS2 工作空间 — GitHub Actions 发布流程（打标签触发）
+#
+# 单 job 流程:
+#   1. guard   — 校验发布条件（两个判据都满足才发布）:
+#                a. 标签名符合 v主.次.补[-rc/beta] 命名规则
+#                   （alpha 等其它后缀、里程碑/内部标记不发布）
+#                b. 标签位于 master/dev 分支（tag push 事件不携带
+#                   分支信息，用提交祖先关系判断）
+#   2. format  — 格式检查（与 ci.yml 相同逻辑）
+#   3. publish — 创建 GitHub Release（自动生成 notes，不附构建产物；
+#                rc/beta 标记为 prerelease）
+#
+# 不做 CI 构建: 依赖环境过重（MoveIt/RViz/ros2_control 全量安装），
+# 发布前请在本地 Docker 环境完成编译验证。
+#
+# 触发: 任意 tag 推送；不满足发布条件时仅提示并跳过格式检查与发布。
+# 日常验证（push/PR）见 .github/workflows/ci.yml
+# ============================================================
+name: Release
+
+on:
+  push:
+    tags: ['**']
+
+permissions:
+  contents: write   # 创建 GitHub Release 需要写权限
+
+jobs:
+  release:
+    name: 发布 (guard + 格式检查 + GitHub Release)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 需要完整历史做 merge-base 祖先判断
+          fetch-depth: 0
+
+      # ------------------------------------------------------
+      # 0. 发布条件校验 — 两个判据都满足才发布:
+      #    1) 标签名符合版本命名规则（主判据，表达发布意图，V/v 前缀均可）:
+      #       v主.次.补            → 正式发布
+      #       v主.次.补-rc[N]      → 预发布 (prerelease)
+      #       v主.次.补-beta[N]    → 预发布 (prerelease)
+      #       其它（alpha、里程碑、内部标记等）→ 不发布
+      #    2) 标签位于 master/dev 分支（兜底，防止 feature 分支上
+      #       长得像版本号的标签误触发发布）
+      # ------------------------------------------------------
+      - name: 校验发布条件
+        id: guard
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master \
+             && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/dev; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::标签 ${TAG} 不在 master/dev 分支上，跳过发布"
+          elif ! [[ "$TAG" =~ ^[vV]?[0-9]+\.[0-9]+\.[0-9]+(-(rc|beta)[0-9.]*)?$ ]]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::标签 ${TAG} 不符合版本命名规则 (v主.次.补[-rc/beta])，视为里程碑/内部标记，跳过发布"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            # 带后缀 (rc/beta) 的标签发布为 prerelease，不带后缀为正式版
+            if [[ "$TAG" == *-* ]]; then
+              echo "prerelease=true" >> "$GITHUB_OUTPUT"
+              echo "标签 ${TAG} 为预发布版本"
+            else
+              echo "prerelease=false" >> "$GITHUB_OUTPUT"
+              echo "标签 ${TAG} 为正式版本"
+            fi
+          fi
+
+      - name: 安装格式检查工具
+        if: steps.guard.outputs.release == 'true'
+        # clang-format / black 经 pip 固定版本，与 ci.yml 一致，避免版本漂移
+        run: pip install clang-format==14.0.6 black==26.5.1
+
+      - name: 检查 C++ 格式
+        if: steps.guard.outputs.release == 'true'
+        run: |
+          ./scripts/format-cpp.sh
+          if ! git diff --exit-code --stat; then
+            echo "::error::存在未格式化的 C++ 文件，请运行 ./scripts/format-cpp.sh 后提交"
+            exit 1
+          fi
+
+      - name: 检查 Python 格式
+        if: steps.guard.outputs.release == 'true'
+        run: |
+          if ! black --check .; then
+            echo "::error::存在未格式化的 Python 文件，请运行 black . 后提交"
+            exit 1
+          fi
+
+      # ------------------------------------------------------
+      # 2. 发布 — 创建 GitHub Release，notes 由 GitHub 自动生成
+      #    （不附构建产物；rc/beta 标签加 --prerelease，不占用 Latest）
+      # ------------------------------------------------------
+      - name: 创建 GitHub Release
+        if: steps.guard.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE_FLAG: ${{ steps.guard.outputs.prerelease == 'true' && '--prerelease' || '' }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "tl_robot_ros2 ${GITHUB_REF_NAME}" \
+            $PRERELEASE_FLAG \
+            --generate-notes

@@ -12,7 +12,18 @@
 
 ## [Unreleased]
 
-（暂无）
+### 2026-09-04
+- 接入 GitHub Actions：push master/dev 与 PR 自动执行格式检查（clang-format + black），纯文档变更不触发；打版本标签（`v主.次.补[-rc/beta]` 且位于 master/dev）自动创建 GitHub Release（`64b3a7a`）
+- 移除 `.githooks` pre-commit 钩子及 `core.hooksPath` 配置，格式检查改由 CI 强制执行（`64b3a7a`）
+- 全库格式化基线：black 重排全部 Python 文件、clang-format 重排 C++ 文件，建立 CI 格式检查基线（`20c6a06`）
+
+- tl_teleop：修复 /tcp_pose 单位误用（m 被当作 mm），遥操作 IK 目标点错误导致控制器报 9754「目标位置不可达」的问题（`2c5b2e4`）
+- tl_teleop：修复 6 轴模式 ServoJ 速度/加速度/加加速度数组仅分配 6 元素、与 7 元素透传契约不一致的问题（`07230b8`）
+- tl_teleop：PXREA 状态回调由逐帧 JSON 打印改为每 100 帧输出一次平均帧率，避免日志刷屏（`e60f924`）
+
+### 2026-09-03
+
+- `scripts/workspace_measure`：FK/IK 工作空间图由三视图改为四视图，新增 YZ 截面（切 `|X|<0.05`/`0.08`），布局调整为 2×2（3D + XZ/XY/YZ）
 
 ## [3.0.0] - 2026-09-02
 

@@ -99,21 +99,61 @@ from std_msgs.msg import Float64MultiArray
 from sensor_msgs.msg import JointState
 
 from tl_ros2_interface.msg import (
-    ArmStatus, CartesianPose, MoveCommand, ToolParam, ModbusMasterParam,
-    ModbusTCPParam, ModbusRTUParam, JobFileName, ServolMove,
+    ArmStatus,
+    CartesianPose,
+    MoveCommand,
+    ToolParam,
+    ModbusMasterParam,
+    ModbusTCPParam,
+    ModbusRTUParam,
+    JobFileName,
+    ServolMove,
 )
 from tl_ros2_interface.srv import (
-    CoordTransform, GetAllJobFileName, GetCoordNum, GetCurrentCoord,
-    GetCurrentLineJointSpeed, GetCurrentMode, GetCurrentMotorTorque, GetDHParam,
-    GetDigitalInputOutput, GetGlobalPos, GetJointSoftwareVersion,
-    GetJointTemperature, GetJointVoltage, GetMotorCurrent, GetPosReachable,
-    GetPosTransform, GetRobotJointParam, GetRobotState, GetSpeed,
-    JobInsertMove, JobRun, Jogging, LogDownload, ModbusRead, ModbusWrite,
-    OpenServoJ, QueueMotionMoveJ, QueueMotionSetStatus, RestoreDefaultDHParam,
-    SetAxisZeroPos, SetControllerIP, SetCoordNum, SetCurrentCoord,
-    SetCurrentMode, SetDHParam, SetDigitalOutput, SetDragMode, SetGlobalPos,
-    SetRobotJointParam, SetSpeed, SetToolParam, SetUserCoord,
-    TrackPlayback, TrackSave,
+    CoordTransform,
+    GetAllJobFileName,
+    GetCoordNum,
+    GetCurrentCoord,
+    GetCurrentLineJointSpeed,
+    GetCurrentMode,
+    GetCurrentMotorTorque,
+    GetDHParam,
+    GetDigitalInputOutput,
+    GetGlobalPos,
+    GetJointSoftwareVersion,
+    GetJointTemperature,
+    GetJointVoltage,
+    GetMotorCurrent,
+    GetPosReachable,
+    GetPosTransform,
+    GetRobotJointParam,
+    GetRobotState,
+    GetSpeed,
+    JobInsertMove,
+    JobRun,
+    Jogging,
+    LogDownload,
+    ModbusRead,
+    ModbusWrite,
+    OpenServoJ,
+    QueueMotionMoveJ,
+    QueueMotionSetStatus,
+    RestoreDefaultDHParam,
+    SetAxisZeroPos,
+    SetControllerIP,
+    SetCoordNum,
+    SetCurrentCoord,
+    SetCurrentMode,
+    SetDHParam,
+    SetDigitalOutput,
+    SetDragMode,
+    SetGlobalPos,
+    SetRobotJointParam,
+    SetSpeed,
+    SetToolParam,
+    SetUserCoord,
+    TrackPlayback,
+    TrackSave,
 )
 
 
@@ -301,7 +341,9 @@ class DriverQuickTest(Node):
         resp = self.call_srv(cli, req, "get_robot_joint_param(id=1)")
         if resp and resp.success:
             p = resp.param
-            self.logger.info(f"      减速比={p.reduction_ratio:.3f} 限位[{p.neg_sw_limit:.1f},{p.pos_sw_limit:.1f}] 额定速度={p.rated_vel:.1f}")
+            self.logger.info(
+                f"      减速比={p.reduction_ratio:.3f} 限位[{p.neg_sw_limit:.1f},{p.pos_sw_limit:.1f}] 额定速度={p.rated_vel:.1f}"
+            )
 
         cli = self.wait_service("/tl_driver/get_joint_temperature", GetJointTemperature)
         resp = self.call_srv(cli, GetJointTemperature.Request(), "get_joint_temperature")
@@ -357,7 +399,9 @@ class DriverQuickTest(Node):
             self.print_arr("      motor_torque_sync ", [float(v) for v in resp.motor_torque_sync])
 
         cli = self.wait_service("/tl_driver/get_current_line_joint_speed", GetCurrentLineJointSpeed)
-        resp = self.call_srv(cli, GetCurrentLineJointSpeed.Request(), "get_current_line_joint_speed")
+        resp = self.call_srv(
+            cli, GetCurrentLineJointSpeed.Request(), "get_current_line_joint_speed"
+        )
         if resp and resp.success:
             self.logger.info(f"      line_speed = {resp.line_speed:.2f} mm/s")
             self.print_arr("      joint_speed ", resp.joint_speed)
@@ -397,7 +441,10 @@ class DriverQuickTest(Node):
             self.call_srv(cli, req, label)
 
         # 危险：作业运行/删除
-        for srv_name, label in [("/tl_driver/job_run", "job_run"), ("/tl_driver/job_delete", "job_delete")]:
+        for srv_name, label in [
+            ("/tl_driver/job_run", "job_run"),
+            ("/tl_driver/job_delete", "job_delete"),
+        ]:
             cli = self.wait_service(srv_name, JobRun, timeout_s=1.0)
             if cli:
                 self.skip(label, "会运行/删除作业文件，仅做就绪检查")
@@ -504,23 +551,23 @@ class DriverQuickTest(Node):
 
         # ---- RTU 主站参数（请自行配置实际参数）----
         mp = ModbusMasterParam()
-        mp.type = "RTU"                # 主站类型：RTU
-        mp.start_addr = True          # false:起始地址为1；true:起始地址为0
-        mp.tcp = ModbusTCPParam()      # TCP 参数（本次用 RTU，无需配置）
+        mp.type = "RTU"  # 主站类型：RTU
+        mp.start_addr = True  # false:起始地址为1；true:起始地址为0
+        mp.tcp = ModbusTCPParam()  # TCP 参数（本次用 RTU，无需配置）
         mp.rtu = ModbusRTUParam()
-        mp.rtu.slave_id = 1            # 从站号（请自行修改）
-        mp.rtu.port = 2               # 端口（请自行修改）
-        mp.rtu.baudrate = 115200         # 波特率（请自行修改）
-        mp.rtu.data_bit = 8            # 数据位（请自行修改）
-        mp.rtu.stop_bit = 1            # 停止位（请自行修改）
-        mp.rtu.check_bit = "None"      # 校验位 None/Even/Odd（请自行修改）
+        mp.rtu.slave_id = 1  # 从站号（请自行修改）
+        mp.rtu.port = 2  # 端口（请自行修改）
+        mp.rtu.baudrate = 115200  # 波特率（请自行修改）
+        mp.rtu.data_bit = 8  # 数据位（请自行修改）
+        mp.rtu.stop_bit = 1  # 停止位（请自行修改）
+        mp.rtu.check_bit = "None"  # 校验位 None/Even/Odd（请自行修改）
 
-        master_id = 1                  # 配方 id（最多保存 9 个）
+        master_id = 1  # 配方 id（最多保存 9 个）
 
         # ---- 批量写：每个元素为 (起始地址, 寄存器值列表)，请自行填写 ----
         batch_writes = [
             # (addr, data)
-            (10, [1000]),            # 示例：从地址 0 开始连续写 3 个寄存器
+            (10, [1000]),  # 示例：从地址 0 开始连续写 3 个寄存器
             # (10, [0x1234]),          # 示例2：从地址 10 写 1 个寄存器
             # (20, [1, 0, 1, 0, 1]),   # 示例3：从地址 20 连续写 5 个寄存器
         ]
@@ -537,8 +584,8 @@ class DriverQuickTest(Node):
         cli = self.wait_service("/tl_driver/modbus_read", ModbusRead)
         req = ModbusRead.Request()
         req.master_id = master_id
-        req.addr = 10                   # 起始地址（请自行修改）
-        req.quantity = 5              # 读取数量（请自行修改）
+        req.addr = 10  # 起始地址（请自行修改）
+        req.quantity = 5  # 读取数量（请自行修改）
         req.master_param = mp
         resp = self.call_srv(cli, req, "modbus_read")
         if resp and resp.success:

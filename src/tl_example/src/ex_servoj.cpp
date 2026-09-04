@@ -78,8 +78,7 @@ static constexpr size_t kNJoints = 7;
 class ServoJDemo : public rclcpp::Node
 {
 public:
-  explicit ServoJDemo(const rclcpp::NodeOptions& options = rclcpp::NodeOptions())
-    : Node("ex_servoj", options)
+  explicit ServoJDemo(const rclcpp::NodeOptions& options = rclcpp::NodeOptions()) : Node("ex_servoj", options)
   {
     RCLCPP_INFO(this->get_logger(), "============================================================");
     RCLCPP_INFO(this->get_logger(), "  ServoJ 关节实时跟踪测试节点启动");
@@ -98,13 +97,13 @@ public:
     period_ms_ = this->get_parameter("period_ms").as_int();
 
     // ── 服务客户端 ──
-    connect_cli_      = this->create_client<Trigger>("/tl_driver/connect_arm");
-    disconnect_cli_   = this->create_client<Trigger>("/tl_driver/disconnect_arm");
-    clear_error_cli_  = this->create_client<Trigger>("/tl_driver/clear_error");
-    power_on_cli_     = this->create_client<Trigger>("/tl_driver/power_on");
-    power_off_cli_    = this->create_client<Trigger>("/tl_driver/power_off");
-    set_mode_cli_     = this->create_client<SetCurrentMode>("/tl_driver/set_current_mode");
-    open_servoj_cli_  = this->create_client<OpenServoJ>("/tl_driver/open_servoj");
+    connect_cli_ = this->create_client<Trigger>("/tl_driver/connect_arm");
+    disconnect_cli_ = this->create_client<Trigger>("/tl_driver/disconnect_arm");
+    clear_error_cli_ = this->create_client<Trigger>("/tl_driver/clear_error");
+    power_on_cli_ = this->create_client<Trigger>("/tl_driver/power_on");
+    power_off_cli_ = this->create_client<Trigger>("/tl_driver/power_off");
+    set_mode_cli_ = this->create_client<SetCurrentMode>("/tl_driver/set_current_mode");
+    open_servoj_cli_ = this->create_client<OpenServoJ>("/tl_driver/open_servoj");
     close_servoj_cli_ = this->create_client<Trigger>("/tl_driver/close_servoj");
 
     // ── 高频下发话题（100Hz 向 7000 端口发送目标关节角度，单位 °）──
@@ -116,8 +115,7 @@ public:
     joint_state_sub_ = this->create_subscription<JointState>(
         "/joint_states", 10, std::bind(&ServoJDemo::onJointState, this, std::placeholders::_1));
 
-    RCLCPP_INFO(this->get_logger(),
-                "  客户端/订阅创建完成 (ServoJ 向量维度 %zu: 前 6 轴 + 第 7 轴补 0, %dms @100Hz)",
+    RCLCPP_INFO(this->get_logger(), "  客户端/订阅创建完成 (ServoJ 向量维度 %zu: 前 6 轴 + 第 7 轴补 0, %dms @100Hz)",
                 kNJoints, period_ms_);
   }
 
@@ -152,15 +150,22 @@ private:
   int period_ms_ = 10;
 
   // ── 话题回调 ──
-  void onArmStatus(const ArmStatus::SharedPtr msg) { arm_run_state_ = msg->run_state; }
-  void onJointState(const JointState::SharedPtr msg) { last_joint_state_ = msg; }
+  void onArmStatus(const ArmStatus::SharedPtr msg)
+  {
+    arm_run_state_ = msg->run_state;
+  }
+  void onJointState(const JointState::SharedPtr msg)
+  {
+    last_joint_state_ = msg;
+  }
 
   // ── 辅助方法 ──
 
   /// 等待单个服务就绪
   bool waitService(const std::string& name, rclcpp::ClientBase::SharedPtr cli, double timeout_s = 3.0)
   {
-    if (!cli->wait_for_service(std::chrono::duration<double>(timeout_s))) {
+    if (!cli->wait_for_service(std::chrono::duration<double>(timeout_s)))
+    {
       RCLCPP_ERROR(this->get_logger(), "  服务 %s 未就绪（%.0fs 超时）", name.c_str(), timeout_s);
       return false;
     }
@@ -171,22 +176,28 @@ private:
   /// 调用 Trigger 服务
   bool callTrigger(rclcpp::Client<Trigger>::SharedPtr cli, const std::string& label)
   {
-    if (!cli->service_is_ready()) {
+    if (!cli->service_is_ready())
+    {
       RCLCPP_WARN(this->get_logger(), "  [%s] 服务未就绪，跳过", label.c_str());
       return false;
     }
     auto req = std::make_shared<Trigger::Request>();
     auto future = cli->async_send_request(req);
-    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future,
-                                           std::chrono::seconds(10)) != rclcpp::FutureReturnCode::SUCCESS) {
+    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future, std::chrono::seconds(10)) !=
+        rclcpp::FutureReturnCode::SUCCESS)
+    {
       RCLCPP_WARN(this->get_logger(), "  [%s] 调用超时/异常", label.c_str());
       return false;
     }
     const auto& resp = future.get();
-    if (resp->success) {
+    if (resp->success)
+    {
       RCLCPP_INFO(this->get_logger(), "  ✓ %s 成功", label.c_str());
-      if (!resp->message.empty()) RCLCPP_INFO(this->get_logger(), "      返回: %s", resp->message.c_str());
-    } else {
+      if (!resp->message.empty())
+        RCLCPP_INFO(this->get_logger(), "      返回: %s", resp->message.c_str());
+    }
+    else
+    {
       RCLCPP_WARN(this->get_logger(), "  ✗ %s 失败: %s", label.c_str(), resp->message.c_str());
     }
     return resp->success;
@@ -195,23 +206,27 @@ private:
   /// 泛型服务调用：同步等待并打印结果，返回响应供调用方打印额外字段
   template <typename Srv>
   typename Srv::Response::SharedPtr callService(const typename rclcpp::Client<Srv>::SharedPtr& cli,
-                                                typename Srv::Request::SharedPtr req,
-                                                const std::string& label)
+                                                typename Srv::Request::SharedPtr req, const std::string& label)
   {
-    if (!cli->service_is_ready()) {
+    if (!cli->service_is_ready())
+    {
       RCLCPP_WARN(this->get_logger(), "  [%s] 服务未就绪，跳过", label.c_str());
       return nullptr;
     }
     auto future = cli->async_send_request(req);
-    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future,
-                                           std::chrono::seconds(10)) != rclcpp::FutureReturnCode::SUCCESS) {
+    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future, std::chrono::seconds(10)) !=
+        rclcpp::FutureReturnCode::SUCCESS)
+    {
       RCLCPP_WARN(this->get_logger(), "  [%s] 调用超时/异常", label.c_str());
       return nullptr;
     }
     auto resp = future.get();
-    if (resp->success) {
+    if (resp->success)
+    {
       RCLCPP_INFO(this->get_logger(), "  ✓ %s 成功", label.c_str());
-    } else {
+    }
+    else
+    {
       RCLCPP_WARN(this->get_logger(), "  ✗ %s 失败: %s", label.c_str(), resp->message.c_str());
     }
     return resp;
@@ -220,13 +235,16 @@ private:
   /// 打印最近一次接收到的关节实际角度（rad → 度）
   void printJointStateDeg(const std::string& desc)
   {
-    if (!last_joint_state_) {
+    if (!last_joint_state_)
+    {
       RCLCPP_WARN(this->get_logger(), "      %s：尚未收到 /joint_states", desc.c_str());
       return;
     }
     std::string s;
-    for (size_t i = 0; i < last_joint_state_->position.size(); ++i) {
-      if (i) s += ", ";
+    for (size_t i = 0; i < last_joint_state_->position.size(); ++i)
+    {
+      if (i)
+        s += ", ";
       s += std::to_string(last_joint_state_->position[i] * 180.0 / M_PI) + "°";
     }
     RCLCPP_INFO(this->get_logger(), "      %s：实际关节角[%zu] = [%s]", desc.c_str(),
@@ -240,12 +258,14 @@ private:
   /// @param desc 动作描述
   void servoJTraj(std::vector<double> q, const std::vector<double>& step, int steps, const std::string& desc)
   {
-    RCLCPP_INFO(this->get_logger(), "  ▶ %s（%d 步 × %dms ≈ %.1fs）", desc.c_str(),
-                steps, period_ms_, steps * period_ms_ / 1000.0);
-    for (int i = 0; i < steps; ++i) {
-      for (size_t j = 0; j < q.size() && j < step.size(); ++j) q[j] += step[j];
+    RCLCPP_INFO(this->get_logger(), "  ▶ %s（%d 步 × %dms ≈ %.1fs）", desc.c_str(), steps, period_ms_,
+                steps * period_ms_ / 1000.0);
+    for (int i = 0; i < steps; ++i)
+    {
+      for (size_t j = 0; j < q.size() && j < step.size(); ++j)
+        q[j] += step[j];
       Float64Array msg;
-      msg.data = q;  // 7 元素，前 6 轴角度 + 第 7 轴补 0
+      msg.data = q; // 7 元素，前 6 轴角度 + 第 7 轴补 0
       servoj_pos_pub_->publish(msg);
       rclcpp::sleep_for(std::chrono::milliseconds(period_ms_));
       // 收集 /joint_states 反馈（同时避免回调饥饿）
@@ -268,14 +288,11 @@ void tl_example::ServoJDemo::run()
 {
   // ── 1. 检查核心服务就绪 ──
   RCLCPP_INFO(this->get_logger(), "\n========== 1. 检查核心服务就绪 ==========");
-  if (!waitService("connect_arm", connect_cli_) ||
-      !waitService("clear_error", clear_error_cli_) ||
-      !waitService("power_on", power_on_cli_) ||
-      !waitService("power_off", power_off_cli_) ||
-      !waitService("set_current_mode", set_mode_cli_) ||
-      !waitService("open_servoj", open_servoj_cli_) ||
-      !waitService("close_servoj", close_servoj_cli_) ||
-      !waitService("disconnect_arm", disconnect_cli_)) {
+  if (!waitService("connect_arm", connect_cli_) || !waitService("clear_error", clear_error_cli_) ||
+      !waitService("power_on", power_on_cli_) || !waitService("power_off", power_off_cli_) ||
+      !waitService("set_current_mode", set_mode_cli_) || !waitService("open_servoj", open_servoj_cli_) ||
+      !waitService("close_servoj", close_servoj_cli_) || !waitService("disconnect_arm", disconnect_cli_))
+  {
     RCLCPP_ERROR(this->get_logger(), "tl_driver 核心服务未就绪，请先启动 tl_driver 节点");
     rclcpp::shutdown();
     return;
@@ -283,7 +300,8 @@ void tl_example::ServoJDemo::run()
 
   // ── 2. 连接机械臂（驱动自动双端口连接 6001+7000）──
   RCLCPP_INFO(this->get_logger(), "\n========== 2. 连接机械臂（自动双端口 6001+7000）==========");
-  if (!callTrigger(connect_cli_, "connect_arm")) {
+  if (!callTrigger(connect_cli_, "connect_arm"))
+  {
     RCLCPP_ERROR(this->get_logger(), "连接失败，退出测试");
     rclcpp::shutdown();
     return;
@@ -300,12 +318,13 @@ void tl_example::ServoJDemo::run()
   RCLCPP_INFO(this->get_logger(), "\n========== 4. 示教模式 + 上电 ==========");
   {
     auto req = std::make_shared<SetCurrentMode::Request>();
-    req->mode = 0;  // 示教模式
+    req->mode = 0; // 示教模式
     callService<SetCurrentMode>(set_mode_cli_, req, "set_current_mode(0)");
     rclcpp::sleep_for(std::chrono::milliseconds(300));
   }
   // 说明：SDK 的 set_servo_state(1) 在 ROS2 中无独立服务，power_on 内部含此步
-  if (!callTrigger(power_on_cli_, "power_on（含 set_servo_state(1)）")) {
+  if (!callTrigger(power_on_cli_, "power_on（含 set_servo_state(1)）"))
+  {
     RCLCPP_ERROR(this->get_logger(), "上电失败，退出测试");
     callTrigger(disconnect_cli_, "disconnect_arm");
     rclcpp::shutdown();
@@ -317,7 +336,7 @@ void tl_example::ServoJDemo::run()
   RCLCPP_INFO(this->get_logger(), "\n========== 5. 切换运行模式 ==========");
   {
     auto req = std::make_shared<SetCurrentMode::Request>();
-    req->mode = 2;  // 运行模式（0=示教，1=远程，2=运行）
+    req->mode = 2; // 运行模式（0=示教，1=远程，2=运行）
     callService<SetCurrentMode>(set_mode_cli_, req, "set_current_mode(2)");
     rclcpp::sleep_for(std::chrono::seconds(2));
   }
@@ -330,7 +349,8 @@ void tl_example::ServoJDemo::run()
     req->amax.assign(kNJoints, amax_);
     req->jmax.assign(kNJoints, jmax_);
     auto resp = callService<OpenServoJ>(open_servoj_cli_, req, "open_servoj");
-    if (!resp || !resp->success) {
+    if (!resp || !resp->success)
+    {
       RCLCPP_ERROR(this->get_logger(), "open_servoj 失败，退出测试");
       callTrigger(power_off_cli_, "power_off");
       callTrigger(disconnect_cli_, "disconnect_arm");
@@ -344,19 +364,19 @@ void tl_example::ServoJDemo::run()
   RCLCPP_INFO(this->get_logger(), "\n========== 7. ServoJ 关节实时跟踪 ==========");
 
   // 动作 1: J1 从 0° 平滑转到 30°
-  servoJTraj({0,0,0,0,0,0,0}, {30.0/200, 0, 0, 0, 0, 0, 0}, 200, "动作1: J1 0°→ 30°");
+  servoJTraj({0, 0, 0, 0, 0, 0, 0}, {30.0 / 200, 0, 0, 0, 0, 0, 0}, 200, "动作1: J1 0°→ 30°");
   rclcpp::sleep_for(std::chrono::seconds(1));
 
   // 动作 2: J1 回到 0°，同时 J2 转到 20°
-  servoJTraj({30,0,0,0,0,0,0}, {-30.0/200, 20.0/200, 0, 0, 0, 0, 0}, 200, "动作2: J1 回 0° + J2 0°→ 20°");
+  servoJTraj({30, 0, 0, 0, 0, 0, 0}, {-30.0 / 200, 20.0 / 200, 0, 0, 0, 0, 0}, 200, "动作2: J1 回 0° + J2 0°→ 20°");
   rclcpp::sleep_for(std::chrono::seconds(1));
 
   // 动作 3: J2 回到 0°，同时 J3 转到 15°
-  servoJTraj({0,20,0,0,0,0,0}, {0, -20.0/200, 15.0/200, 0, 0, 0, 0}, 200, "动作3: J2 回 0° + J3 0°→ 15°");
+  servoJTraj({0, 20, 0, 0, 0, 0, 0}, {0, -20.0 / 200, 15.0 / 200, 0, 0, 0, 0}, 200, "动作3: J2 回 0° + J3 0°→ 15°");
   rclcpp::sleep_for(std::chrono::seconds(1));
 
   // 动作 4: J3 回到 0°，全轴回零
-  servoJTraj({0,0,15,0,0,0,0}, {0, 0, -15.0/150, 0, 0, 0, 0}, 150, "动作4: J3 回 0°，全轴回零");
+  servoJTraj({0, 0, 15, 0, 0, 0, 0}, {0, 0, -15.0 / 150, 0, 0, 0, 0}, 150, "动作4: J3 回 0°，全轴回零");
   rclcpp::sleep_for(std::chrono::seconds(1));
 
   // ── 8. 关闭 ServoJ 跟踪模式 ──
@@ -369,7 +389,7 @@ void tl_example::ServoJDemo::run()
   RCLCPP_INFO(this->get_logger(), "\n========== 9. 切回示教模式 ==========");
   {
     auto req = std::make_shared<SetCurrentMode::Request>();
-    req->mode = 0;  // 示教模式
+    req->mode = 0; // 示教模式
     callService<SetCurrentMode>(set_mode_cli_, req, "set_current_mode(0)");
     rclcpp::sleep_for(std::chrono::milliseconds(300));
   }
@@ -388,10 +408,10 @@ void tl_example::ServoJDemo::run()
 //  main
 // ====================================================================
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<tl_example::ServoJDemo>();
-  node->run();  // run() 内部已处理 rclcpp::shutdown()
+  node->run(); // run() 内部已处理 rclcpp::shutdown()
   return 0;
 }

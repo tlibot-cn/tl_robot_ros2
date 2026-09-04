@@ -88,7 +88,7 @@
 #include "tl_io.h"
 #include "tl_modbus.h"
 #include "tl_queue_operate.h"
-#include "tl_servo_ext.h"  // open_servoJ / close_servoJ / set_servoJ_pos
+#include "tl_servo_ext.h" // open_servoJ / close_servoJ / set_servoJ_pos
 
 enum MessageLists
 {
