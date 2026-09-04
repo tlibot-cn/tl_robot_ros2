@@ -168,9 +168,9 @@ TL_Teleop::TL_Teleop() : Node("tl_teleop_node")
   double servo_vmax_val = get_parameter("servo_vmax").as_double();
   double servo_amax_val = get_parameter("servo_amax").as_double();
   double servo_jmax_val = get_parameter("servo_jmax").as_double();
-  servo_vmax_.assign(arm_joints_, servo_vmax_val);
-  servo_amax_.assign(arm_joints_, servo_amax_val);
-  servo_jmax_.assign(arm_joints_, servo_jmax_val);
+  servo_vmax_.assign(7, servo_vmax_val);
+  servo_amax_.assign(7, servo_amax_val);
+  servo_jmax_.assign(7, servo_jmax_val);
 
   set_speed_client_ = create_client<tl_ros2_interface::srv::SetSpeed>("/tl_driver/set_speed");
   set_current_mode_client_ = create_client<tl_ros2_interface::srv::SetCurrentMode>("/tl_driver/set_current_mode");
