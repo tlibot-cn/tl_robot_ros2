@@ -242,7 +242,7 @@ tl_teleop 作为客户端节点，主要使用（消费）tl_driver 提供的话
 ```
 | 话题 | 类型 | 说明 |
 |------|------|------|
-| `/tcp_pose` | `tl_ros2_interface/msg/CartesianPose` | 获取机械臂当前末端位姿（position 单位 mm，rpy 单位 rad），用于基准点标定 |
+| `/tcp_pose` | `tl_ros2_interface/msg/CartesianPose` | 获取机械臂当前末端位姿（position 单位 m，rpy 单位 rad），用于基准点标定 |
 
 ### 调用的服务（客户端）
 ```

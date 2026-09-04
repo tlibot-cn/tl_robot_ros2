@@ -363,10 +363,11 @@ std::vector<double> TL_Teleop::get_arm_cartesian_pose()
   {
     return {};
   }
-  // tl_driver 发布的 /tcp_pose：position 单位 mm（直接从 SDK 透传），rpy 单位
-  // rad
-  return {latest_tcp_pose_.position.x, latest_tcp_pose_.position.y, latest_tcp_pose_.position.z,
-          latest_tcp_pose_.rpy.x,      latest_tcp_pose_.rpy.y,      latest_tcp_pose_.rpy.z};
+  // tl_driver 发布的 /tcp_pose：position 单位 m、rpy 单位 rad（publish_tcp_pose 已做 mm→m 转换）
+  // 逆解请求（CoordTransform BASE→JOINT）入参要求 mm，此处统一转为 mm，作为遥操作基准坐标系
+  constexpr double kMToMm = 1000.0;
+  return {latest_tcp_pose_.position.x * kMToMm, latest_tcp_pose_.position.y * kMToMm, latest_tcp_pose_.position.z * kMToMm,
+          latest_tcp_pose_.rpy.x,              latest_tcp_pose_.rpy.y,              latest_tcp_pose_.rpy.z};
 }
 
 std::vector<double> TL_Teleop::get_inverse_kinematics(double x, double y, double z, double rx, double ry, double rz)
