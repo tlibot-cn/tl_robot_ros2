@@ -11,6 +11,7 @@
 
   <depend>rclcpp</depend>
   <depend>tl_ros2_interface</depend>
+  <depend>tl_driver</depend>
   <depend>nlohmann_json</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>

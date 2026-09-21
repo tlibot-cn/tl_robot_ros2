@@ -111,7 +111,11 @@ tl_driver:
 │   └── tl_tcb710v_config.yaml
 ├── doc                            # 相关文档与图片
 │   ├── tl_driver1.png
-│   └── tl_driver2.png
+│   ├── tl_driver2.png
+│   ├── tl_driver3.png
+│   ├── tl_driver4.png
+│   ├── tl_driver服务与话题说明书.md      # 服务与话题接口说明书（对外契约）
+│   └── tl_driver架构评审与重构方案.md    # 架构评审结论、缺陷清单、重构路线图
 ├── include                        # 头文件
 │   └── tl_driver
 │       └── tl_driver.h
@@ -185,6 +189,7 @@ tl_driver:
 ├── README.md
 ├── 修改说明.md
 ├── src                        # 驱动代码源文件
+│   ├── control_demo.cpp           # 未纳入构建（见 doc/tl_driver架构评审与重构方案.md）
 │   └── tl_driver.cpp
 └── test                       # 测试脚本
     ├── test_job_insert_moveJ.sh
