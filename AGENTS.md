@@ -32,9 +32,9 @@ source install/setup.bash
 ```
 tl_ros2_interface  （基础：自定义 msg/srv，无依赖）
   └─► tl_driver       （C++ 节点，链接 libtl_host.so 专有库）
-  └─► tl_teleop       （VR 遥操作 C++ 节点，PXREA Robot SDK，依赖接口消息）
-  └─► tl_teleop_f710  （F710 手柄遥操作 C++ 节点，依赖接口消息）
-  └─► tl_hardware     （ros2_control 硬件接口插件，依赖接口消息）
+  └─► tl_teleop       （VR 遥操作 C++ 节点，PXREA Robot SDK；exec_depend: tl_driver）
+  └─► tl_teleop_f710  （F710 手柄遥操作 C++ 节点，KDL IK；exec_depend: tl_driver）
+  └─► tl_hardware     （ros2_control 硬件接口插件，桥接 MoveIt2 ↔ tl_driver；exec_depend: tl_driver）
   └─► tl_example      （示例程序，依赖接口消息）
 tl_description     （独立：URDF + 网格 + RViz）
   └─► tl_gazebo       （Gazebo 仿真，依赖 tl_description）

@@ -15,6 +15,7 @@
 ### 2026-09-22
 
 - tl_hardware：修复 MoveIt2 / ros2_control 启动瞬间机械臂先被拉向零位、轨迹控制器接管后才停下的问题：硬件接口 `on_activate()` 改用当前关节角播种命令接口，启动阶段不再下发零位指令（`46e8132`）
+- tl_hardware、tl_teleop、tl_teleop_f710 补齐对 `tl_driver` 的 `<exec_depend>` 声明：三个包运行期都经 `/tl_driver/*` 服务与话题通信，此前缺该声明时 `rosdep install` 不会拉取 `tl_driver`（）
 
 ### 2026-09-04
 
