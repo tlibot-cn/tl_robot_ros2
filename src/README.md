@@ -31,7 +31,7 @@
 
 ## 1 功能包概览
 
-`src/` 目录包含 **10 个功能包**，每个功能包（及子包）的作用如下：
+`src/` 目录包含 **10 个顶层目录**，共 **23 个功能包**（`package.xml`）——其中 `tl_moveit2_config/` 内含 14 个型号子包。各功能包（及子包）的作用如下：
 
 ```
 src/
@@ -52,7 +52,7 @@ src/
 ├── tl_example/              # 使用示例
 ├── tl_gazebo/               # Gazebo 仿真
 │   ├── config/
-│   └── launch/              # 14 套 Gazebo 仿真 launch
+│   └── launch/              # 16 套 Gazebo 仿真 launch（14 型号 + 2 套 F710 仿真）
 ├── tl_hardware/             # ros2_control 硬件接口插件
 │   ├── include/
 │   ├── src/                 # TLHardwareInterface 实现
