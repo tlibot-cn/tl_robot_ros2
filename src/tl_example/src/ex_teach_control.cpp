@@ -303,7 +303,7 @@ private:
     RCLCPP_INFO(this->get_logger(), "  %s 关节角度(度): [%s]", tag.c_str(), s.c_str());
   }
 
-  /// 打印当前末端位姿（话题位置为 mm、姿态为弧度，姿态转角度更直观）
+  /// 打印当前末端位姿（话题位置为 m、姿态为弧度，姿态转角度更直观）
   void printTcpPose(const std::string& tag)
   {
     if (!last_tcp_pose_)
@@ -312,7 +312,7 @@ private:
       return;
     }
     constexpr double kRad2Deg = 180.0 / 3.14159265358979323846;
-    RCLCPP_INFO(this->get_logger(), "  %s 末端位姿: pos(%.1f, %.1f, %.1f)mm  rpy(%.2f, %.2f, %.2f)°", tag.c_str(),
+    RCLCPP_INFO(this->get_logger(), "  %s 末端位姿: pos(%.3f, %.3f, %.3f)m  rpy(%.2f, %.2f, %.2f)°", tag.c_str(),
                 last_tcp_pose_->position.x, last_tcp_pose_->position.y, last_tcp_pose_->position.z,
                 last_tcp_pose_->rpy.x * kRad2Deg, last_tcp_pose_->rpy.y * kRad2Deg, last_tcp_pose_->rpy.z * kRad2Deg);
   }

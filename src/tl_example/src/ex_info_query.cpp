@@ -6,7 +6,7 @@
  *
  * §4 信息查询接口（按说明书编号 4.1~4.20，终端打印顺序与说明书一致）：
  *   [4.1]  /joint_states 话题           查询关节角度（rad）
- *   [4.2]  /tcp_pose 话题               查询末端位姿（mm/rad）
+ *   [4.2]  /tcp_pose 话题               查询末端位姿（m/rad）
  *   [4.3]  get_speed                    查询运行速度
  *   [4.4]  get_controller_id            查询控制器序列号
  *   [4.5]  get_robot_state              查询机械臂状态
@@ -357,7 +357,8 @@ void tl_example::InfoQueryDemo::testInfoQuery()
       2.0);
   if (last_tcp_pose_)
   {
-    RCLCPP_INFO(this->get_logger(), "      pos = [%.3f, %.3f, %.3f] mm", last_tcp_pose_->position.x,
+    // /tcp_pose 为 ROS 标准单位（位置 m、姿态 rad），见 publish_tcp_pose 的 mm→m 转换
+    RCLCPP_INFO(this->get_logger(), "      pos = [%.3f, %.3f, %.3f] m", last_tcp_pose_->position.x,
                 last_tcp_pose_->position.y, last_tcp_pose_->position.z);
     RCLCPP_INFO(this->get_logger(), "      rpy = [%.3f, %.3f, %.3f] rad", last_tcp_pose_->rpy.x, last_tcp_pose_->rpy.y,
                 last_tcp_pose_->rpy.z);
