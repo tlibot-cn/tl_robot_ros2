@@ -282,6 +282,12 @@ hardware_interface::CallbackReturn TLHardwareInterface::on_activate(const rclcpp
     joint_velocities_.assign(joint_names_.size(), 0.0);
     joint_efforts_ = received_efforts_;
 
+    // Seed the command interfaces with the measured positions as well: the controller manager
+    // activates hardware components at startup, before any controller claims the interfaces, so
+    // write() would otherwise stream the zero-initialized command vector and drive the arm
+    // towards its zero position until a controller takes over.
+    joint_position_commands_ = received_positions_;
+
     last_positions_ = received_positions_;
     last_read_time_ = node_->now();
   }

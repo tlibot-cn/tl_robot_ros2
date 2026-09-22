@@ -110,7 +110,7 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 - **构建类型**：ament_cmake
 - **用途**：ros2_control `SystemInterface` 硬件接口插件（插件名 `tl_hardware/TLHardwareInterface`，经 `tl_hardware_interface.xml` 导出），把 MoveIt2 的 `joint_trajectory_controller` 接到 `tl_driver`
 - **数据通路**：读 `/joint_states`（best-effort QoS，位置差分算速度）；写 `/tl_driver/set_servoj_pos`（`std_msgs/Float64MultiArray`，单位为**角度**，与 ros2_control 的弧度制需转换）；`on_activate()` 调 `/tl_driver/open_servoj`（传 vmax/amax/jmax），关闭用 `/tl_driver/close_servoj`
-- **生命周期**：`on_configure()` 创建内部节点 `tl_hardware` 与后台 `SingleThreadedExecutor` 线程；`on_activate()` 等待首帧关节状态，超时 5 s 返回 `CallbackReturn::ERROR`（**激活失败**，非仅告警）；激活后 `read()` 若超过 `state_timeout_sec` 未收到状态，则每 5 s 节流告警一次，不自动 shutdown（由上层控制器处理）
+- **生命周期**：`on_configure()` 创建内部节点 `tl_hardware` 与后台 `SingleThreadedExecutor` 线程；`on_activate()` 等待首帧关节状态，超时 5 s 返回 `CallbackReturn::ERROR`（**激活失败**，非仅告警），并用当前关节角播种命令接口（ros2_control 在控制器接管前就激活硬件，否则会先持续下发零位把机械臂拉向零点）；激活后 `read()` 若超过 `state_timeout_sec` 未收到状态，则每 5 s 节流告警一次，不自动 shutdown（由上层控制器处理）
 - **启用方式**：`tl_moveit2_config` 各子包的 `config/tl_<arm_type>.ros2_control.xacro` 通过 `use_real_hardware` 开关选用该插件，参数为话题/服务名与 servoj 运动参数
 
 ### tl_example
