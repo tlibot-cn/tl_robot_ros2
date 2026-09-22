@@ -15,6 +15,7 @@
 |V1.6 | 2026-6-23 | 新增[15.4 发送跟踪笛卡尔位姿](#154-发送跟踪笛卡尔位姿) |
 |V1.7 | 2026-9-22 | 修订（`/tcp_pose` 位置单位 m → mm、1.4 单位制约定表述、15.4 `step_size` 默认值 5.0 → 2.0）|
 |V1.8 | 2026-9-22 | 修订（8.2 `set_user_coord` 输入位姿位置单位 m → mm）|
+|V1.9 | 2026-9-22 | 修订（显式标注全部接口单位：笛卡尔位置 mm、姿态 rad、关节 度；修正 MoveCommand target_pos_value 布局描述）|
 
 </div>
 
@@ -133,9 +134,27 @@
 - 对于 `std_srvs::srv::Trigger` 类型的服务，`success` 字段直接承载上述含义
 
 ### 1.4 单位制约定
+
+> **本仓库 ROS2 接口的笛卡尔位置量为 `mm`，这是有意偏离 ROS 惯例（ROS 常规用 `m`）的设计**：驱动不做单位换算，直接透传 SDK 的 mm 原值（SDK 坐标编号 `coord=1` 的口径）。按 ROS 惯例把 `mm` 误读为 `m` 会直接导致 IK 失败（历史问题：位置 327.47 按 m 解释时 IK 报错 9754）。
+
+| 量 | 单位 | 适用接口 / 字段 |
+| :--- | :--- | :--- |
+| 笛卡尔位置 | **mm** | [`/tcp_pose`](#42-查询末端位姿)（`position.x/y/z`）；[`/tl_driver/moveL`](#72-movel运动控制)、[`job_insert_moveL`](#62-向作业文件插入一条movel直线运动)、[`job_insert_moveC`](#64-向作业文件插入一条movec圆弧运动)、[`job_insert_imove`](#63-向作业文件插入一条增量指令imove)、`queue_motion_movej` 的 `target_pos_value` 位置分量；[`/tl_driver/set_servol_pos`](#154-发送跟踪笛卡尔位姿)（`target_pose` 的 x/y/z、`step_size`）；[`/tl_driver/set_user_coord`](#82-设置用户坐标系)（`pos.position.x/y/z`）；[`/tl_driver/set_tool_param`](#81-设置工具手参数)（`param.x/y/z`、`param.payload_mass_center_x/y/z`）；[`/tl_driver/coord_transform`](#56-坐标转换)（`coord` 为 1/2/3 时的 `origin_pos`/`reference_pos`/`target_pos`）；[`/tl_driver/get_pos_reachable`](#417-查询目标位姿可达状态)（`pos[7..13]`）；[`/tl_driver/get_global_pos`](#111-查询全局位点)、[`/tl_driver/set_global_pos`](#112-设置全局位点)（`pos`/`pos_info[7..13]`）；[`get_dh_param`](#415-查询机械臂dh参数)/[`set_dh_param`](#57-设置机械臂dh参数) 的长度类字段（`l1~l20`、`pitch`、`sliding_lead_value`、`uplift_lead_value`、`spray_distance`、`sp`/`tl` 中的长度量） |
+| 姿态（欧拉角/位姿角分量） | rad | `CartesianPose.rpy.x/y/z`、`CartesianPose.arm_angle`；`target_pos_value` 的 RX/RY/RZ；`ServolMove.target_pose` 的 rx/ry/rz；`coord_transform`、`set_user_coord` 中的姿态分量 |
+| 关节量 | 度（°） | `target_pos_value` 在 `coord=0` 时整组为关节角；[`/tl_driver/moveJ`](#71-movej运动控制)、[`job_insert_moveJ`](#61-向作业文件插入一条movej关节运动)、`queue_motion_movej`、`job_insert_imove` 的关节维度；[`/tl_driver/set_servoj_pos`](#153-发送跟踪关节位置)；`RobotJointParam` 的限位与速度（°、°/s） |
+| 关节角速度/角加速度 | °/s、°/s²、°/s³ | [`OpenServoJ`](#151-打开关节跟踪模式) 的 `vmax/amax/jmax`；[`get_current_line_joint_speed`](#420-查询当前线速度和关节速度) 的 `joint_speed`/`joint_speed_sync` |
+| 运动/加速度百分比 | % | `MoveCommand.velocity`/`velocity_sync`/`acc`/`dec`（关节运动）；[`set_speed`](#51-设置运行速度)/[`get_speed`](#43-查询运行速度) |
+| 笛卡尔线速度 | mm/s | `MoveCommand.velocity` 在 MOVL（`coord=1`）时为 mm/s；[`get_current_line_joint_speed`](#420-查询当前线速度和关节速度) 的 `line_speed` |
+| 电机力矩 | % | [`get_current_motor_torque`](#419-查询当前电机力矩) 的 `motor_torque`/`motor_torque_sync`（SDK 注释：长度 7 / 长度 5，单位 %） |
+| 无量纲 | — | `couple_coe_*`、`*convertion_ratio*`、`amplification_ratio`、`upside_down`、四元数与旋转矩阵（[`GetPosTransform`](#161-四元数转欧拉角) 的 `input`/`output` 无长度量） |
+
 - `target_pos_type` 字段中携带单位制信息：`1` = 角度制（度），`2` = 弧度制（rad）
-- ROS2 接口的单位以各接口章节的逐项标注为准：`sensor_msgs/JointState` 的关节角为 rad；`CartesianPose` 的位置沿用 SDK 原始 mm 口径（**不是** ROS 惯例的 m），`rpy` 为 rad
+- `sensor_msgs/JointState` 是唯一做单位换算的接口：SDK 的度 → ROS 的 rad。其余接口以各章节逐项标注为准，`CartesianPose` 的位置沿用 SDK 原始 mm 口径（**不是** ROS 惯例的 m），`rpy` 为 rad
 - SDK底层API中 `get_current_position` 等接口：坐标编号 0（关节）下返回角度制（度），坐标编号 1（直角）下位置为 mm、姿态为 rad
+- **两套容易混淆的「14 维」布局必须区分**：
+  - `MoveCommand.target_pos_value`（MoveCmd 本体位姿）：`[0..6]` = 机器人本体 7 位，`[7..13]` = 外部轴 7 位，没有坐标系/单位制头部，见 [MoveCommand消息类型说明](#movecommand消息类型说明)
+  - 14 维**点位容器**（GP/GE 点位、可达性查询、全局位点）：`[0]`坐标系 `[1]`单位制 `[2]`形态 `[3]`工具序号 `[4]`用户序号 `[5][6]`备用 `[7..13]`点位信息，见 [4.17](#417-查询目标位姿可达状态)、[11.1](#111-查询全局位点)
+- 无实现证据的字段不做臆测标注（如 `ToolParam.a/b/c` 目前标为「待现场确认」）。
 
 ---
 ## 2 连接管理接口
@@ -260,9 +279,9 @@ ros2 service call /tl_driver/log_download tl_ros2_interface/srv/LogDownload "{co
 **输出/返回值**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| position | float64[] | rad | 各关节角度（ROS标准单位），数组长度 = 关节数 |
-| velocity | float64[] | rad/s | 各关节角速度 |
-| effort | float64[] | Nm | 各关节力矩 |
+| position | float64[] | rad | 各关节角度（rad，ROS 关节量惯例；**不含**长度量，笛卡尔位置见 [4.2](#42-查询末端位姿) 为 mm），数组长度 = 关节数 |
+| velocity | float64[] | — | **驱动未填充**（`publish_joint_pose` 只写 `name`/`position`，该字段恒为空数组）；ROS 约定单位 rad/s |
+| effort | float64[] | — | **驱动未填充**（恒为空数组）；ROS 约定单位 Nm |
 | name | string[] | — | 各关节名称 |
 #### 命令示例
 ```
@@ -590,7 +609,7 @@ ros2 service call /tl_driver/get_coord_num tl_ros2_interface/srv/GetCoordNum "{}
 |--------|------|------|------|
 | success | bool | — | `true` = 查询成功，`false` = 查询失败 |
 | message | string | — | 失败时包含错误描述 |
-| param | RobotDHParam | — | 机械臂DH参数结构体，主要字段：l1~l20（连杆长度，mm）、couple_coe_*（联动系数）、dynamic_limit_max/min（动态限制）等 |
+| param | RobotDHParam | — | 机械臂DH参数结构体。长度类字段单位 **mm**：`l1~l20`（连杆长度）、`pitch`（螺距）、`sliding_lead_value`/`uplift_lead_value`（电动缸导程）、`spray_distance`（喷料距离）、`sp`/`tl` 中的长度量；无量纲：`couple_coe_*`（联动系数）、`*convertion_ratio*`、`amplification_ratio`、`upside_down` 等 |
 #### 命令示例
 ```
 ros2 service call /tl_driver/get_dh_param tl_ros2_interface/srv/GetDHParam
@@ -625,7 +644,7 @@ ros2 service call /tl_driver/get_all_job_filename tl_ros2_interface/srv/GetAllJo
 **输入参数**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| pos | float64[] | ° 或 mm/rad | 14维位姿数组：[0]坐标系 [1]单位制 [2]形态 [3]工具序号 [4]用户序号 [5][6]备用 [7~13]点位信息 |
+| pos | float64[] | ° 或 mm / rad | 14维**点位容器**：[0]坐标系(0=关节,1=直角,2=工具,3=用户) [1]单位制(0=度,1=弧度) [2]形态 [3]工具序号 [4]用户序号 [5][6]备用 [7~13]点位信息（笛卡尔时位置 **mm**、姿态 rad；关节时为关节角，度/rad 由 [1] 决定）。注意与 [MoveCommand](#movecommand消息类型说明) 的 `target_pos_value` 布局不同 |
 | move_type | string | — | 运动方式，如 `"MOVJ"` 或 `"MOVL"` |
 
 **输出/返回值**
@@ -675,8 +694,8 @@ ros2 topic echo /arm_status
 |--------|------|------|------|
 | success | bool | — | `true` = 查询成功，`false` = 查询失败 |
 | message | string | — | 失败时包含错误描述 |
-| motor_torque | int32[] | Nm | 机械臂本体当前各电机力矩 |
-| motor_torque_sync | int32[] | Nm | 同步轴当前各电机力矩 |
+| motor_torque | int32[] | % | 机械臂本体当前各电机力矩（SDK 注释：长度 7，单位 %） |
+| motor_torque_sync | int32[] | % | 同步轴当前各电机力矩（SDK 注释：长度 5，单位 %） |
 #### 命令示例
 ```
 ros2 service call /tl_driver/get_current_motor_torque tl_ros2_interface/srv/GetCurrentMotorTorque "{}"
@@ -852,18 +871,18 @@ ros2 service call /tl_driver/set_default_cartesian_param std_srvs/srv/Trigger "{
 **输入参数**
 | 参数名 | 类型 | 范围 | 说明 |
 |--------|------|------|------|
-| origin_coord | int32 | 0～3 | 源坐标系编号 |
-| target_coord | int32 | 0～3 | 目标坐标系编号 |
+| origin_coord | int32 | 0～3 | 源坐标系编号：0=关节，1=直角，2=工具，3=用户 |
+| target_coord | int32 | 0～3 | 目标坐标系编号：0=关节，1=直角，2=工具，3=用户 |
 | form | int32 | — | 转换形态/模式 |
-| origin_pos | float64[] | — | 原始坐标系下的位姿数据 |
-| reference_pos | float64[] | — | 参考位姿数据 |
+| origin_pos | float64[] | — | 原始坐标系下的位姿数据：`origin_coord=0` 时为关节角（度）；`origin_coord=1/2/3` 时为位置 **mm** + 姿态 **rad** |
+| reference_pos | float64[] | — | 参考位姿数据（口径同 `origin_pos`） |
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
 | success | bool | `true` = 转换成功，`false` = 转换失败（如奇异点、不可达） |
 | message | string | 失败时包含错误描述 |
-| target_pos | float64[] | 目标坐标系下的转换结果 |
+| target_pos | float64[] | 目标坐标系下的转换结果：`target_coord=0` 时为关节角（度）；`target_coord=1/2/3` 时为位置 **mm** + 姿态 **rad** |
 #### 命令示例
 ```
 ros2 service call /tl_driver/coord_transform tl_ros2_interface/srv/CoordTransform \
@@ -885,7 +904,7 @@ ros2 service call /tl_driver/coord_transform tl_ros2_interface/srv/CoordTransfor
 **输入参数**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| param | RobotDHParam | — | 机械臂DH参数结构体，主要字段：l1~l20（连杆长度，mm）、couple_coe_*（联动系数）等 |
+| param | RobotDHParam | — | 机械臂DH参数结构体。长度类字段单位 **mm**：`l1~l20`（连杆长度）、`pitch`、`sliding_lead_value`/`uplift_lead_value`、`spray_distance`、`sp`/`tl` 中的长度量；`couple_coe_*` 等系数无量纲 |
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
@@ -912,15 +931,15 @@ ros2 service call /tl_driver/set_dh_param tl_ros2_interface/srv/SetDHParam \
 
 | 字段名 | 类型 | 单位 | 范围 | 说明 |
 |--------|------|------|------|------|
-| target_pos_value | float64[] | — | — | 14维位置数组：[0]坐标系 [1]单位制(0=度,1=弧度) [2]形态 [3]工具序号 [4]用户序号 [5][6]备用 [7~13]点位信息 |
+| target_pos_value | float64[] | mm / rad（`coord=1`）<br>°（`coord=0`） | — | **14 维 MoveCmd 本体位姿（不是点位容器）**：`[0..6]` = 机器人本体 7 位 `[X(mm), Y(mm), Z(mm), RX(rad), RY(rad), RZ(rad), 冗余臂角(rad)]`；`[7..13]` = 外部轴（单位随外部轴类型，本仓库按 SDK 原值透传、不做换算）。当 `coord = 0`（关节）时整组为关节角（**度**）。几轴就填前几位，其余置 0（外部轴从 `[7]` 开始）。该数组**不含**坐标系/单位制头部，与 [4.17](#417-查询目标位姿可达状态) 的 14 维点位容器布局不同 |
 | target_pos_name | string | — | — | 目标位姿变量名，如 `"P0001"`（target_pos_type=1时使用） |
-| target_pos_type | int32 | — | 1 或 2 | 位姿类型：`1` = 自定义数组，`2` = 变量模式（使用target_pos_name） |
+| target_pos_type | int32 | — | 0 或 1 | 位姿类型（`PosType`）：`0` = 自定义数组（使用 `target_pos_value`），`1` = 变量模式（使用 `target_pos_name`，如 `"P0001"`） |
 | coord | int32 | — | 0～3 | 坐标系：0=关节，1=直角，2=工具，3=用户 |
-| velocity | float64 | % | 1～100 | 运动速度百分比 |
-| velocity_sync | float64 | % | 1～100 | 同步轴速度百分比 |
+| velocity | float64 | % / mm/s | 1～100（%）<br>1～1000（mm/s） | 运动速度：关节运动（`coord=0`）为 **%**；MOVL 直线运动（`coord=1`）为 **mm/s** |
+| velocity_sync | float64 | % / mm/s | 同上 | 同步轴速度，单位口径同 `velocity` |
 | acc | float64 | % | 1～100 | 加速度百分比 |
 | dec | float64 | % | 1～100 | 减速度百分比 |
-| pl | int32 | — | ≥0 | 平滑度（过渡等级），0=精确到达 |
+| pl | int32 | — | ≥0 | 平滑度（过渡等级），0=精确到达（等级值，非百分比） |
 | time | int32 | — | — | 提前执行时间 |
 | tool_num | int32 | — | — | 工具坐标系编号 |
 | user_num | int32 | — | — | 用户坐标系编号 |
@@ -950,7 +969,8 @@ ros2 service call /tl_driver/set_dh_param tl_ros2_interface/srv/SetDHParam \
 
 > **注意**：target_pos_type=0时使用target_pos_value自定义数组；target_pos_type=1时需设置target_pos_name为 `"P0001"` 格式，target_pos_value仅填关节角度。
 #### 命令示例
-targetPosType=0为自定义数组，posInfo[14]：[0]坐标系 0=关节 1=直角 2=工具 3=用户，[1] 0=角度制 1=弧度制，[2]形态，[3]工具手坐标序号，[4]用户坐标序号，[5][6]备用，[7-13]点位信息
+targetPosType=0为自定义数组：`target_pos_value` 是 **MoveCmd 本体位姿 14 维**——`[0..6]` = 机器人本体 `[X(mm), Y(mm), Z(mm), RX(rad), RY(rad), RZ(rad), 冗余臂角(rad)]`，`[7..13]` = 外部轴（单位随外部轴类型，本仓库按 SDK 原值透传、不做换算），几轴填几位其余置 0；`coord=0` 时整组为关节角（度）。**注意该数组不含坐标系/单位制头部**，不要与 GP/GE 点位的 14 维点位容器（见 [4.17](#417-查询目标位姿可达状态)）混用，布局详见 [MoveCommand消息类型说明](#movecommand消息类型说明)。
+
 ```
 ros2 service call /tl_driver/job_insert_moveJ tl_ros2_interface/srv/JobInsertMove "{
   line: 1,
@@ -978,7 +998,7 @@ ros2 service call /tl_driver/job_insert_moveJ tl_ros2_interface/srv/JobInsertMov
 }"
 ```
 targetPosType=1,需要设置targetPosName为"P0001",默认中间三个0
-此时target_pos_value根据实际机械臂轴数来设定参数数量，输入关节角度
+此时target_pos_value根据实际机械臂轴数来设定参数数量，输入关节角度（`coord=0`，单位：**度**），其余位补 0
 ```
 ros2 service call /tl_driver/job_insert_moveJ tl_ros2_interface/srv/JobInsertMove "{
   line: 1,
@@ -1012,7 +1032,7 @@ ros2 service call /tl_driver/job_insert_moveJ tl_ros2_interface/srv/JobInsertMov
 | 服务名 | `/tl_driver/job_insert_moveL` |
 | 服务类型 | `tl_ros2_interface/srv/JobInsertMove` |
 
-**输入参数** 同 §6.1，区别：`cmd.coord=1`（直角坐标系），target_pos_value为[X(mm), Y, Z, RX(rad), RY, RZ]。
+**输入参数** 同 §6.1，区别：`cmd.coord=1`（直角坐标系），`cmd.velocity` 单位为 **mm/s**（关节运动才是 %）；`target_pos_value` = `[X(mm), Y(mm), Z(mm), RX(rad), RY(rad), RZ(rad), 冗余臂角(rad)]`，`[7..13]` 为外部轴 7 位。示例中的数值即按 mm / rad 解释（如 `230.0` = 230 mm）。
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
@@ -1053,7 +1073,7 @@ ros2 service call /tl_driver/job_insert_moveL tl_ros2_interface/srv/JobInsertMov
 | 服务名 | `/tl_driver/job_insert_imove` |
 | 服务类型 | `tl_ros2_interface/srv/JobInsertMove` |
 
-**输入参数** 同 §6.1，`cmd` 中的 `target_pos_value` 表示相对增量。
+**输入参数** 同 §6.1，`cmd` 中的 `target_pos_value` 表示相对增量（`coord=1` 时长度为 **mm**、姿态为 **rad**；`coord=0` 时为关节角增量，单位 **度**），布局同 [MoveCommand消息类型说明](#movecommand消息类型说明)。
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
@@ -1181,9 +1201,9 @@ ros2 service call /tl_driver/job_delete tl_ros2_interface/srv/JobRun "{job_name:
 **输入参数**
 | 参数名 | 类型 | 单位 | 范围 | 说明 |
 |--------|------|------|------|------|
-| target_pos_value | float64[] | — | — | 14维位置数组（coord=0关节坐标系时为各关节目标角度） |
-| target_pos_name | string | — | — | 目标位姿名称（通常留空） |
-| target_pos_type | int32 | — | 1 | 目标位姿类型（实时运动固定为1） |
+| target_pos_value | float64[] | ° | — | 14 维 MoveCmd 本体位姿（同 [MoveCommand](#movecommand消息类型说明)）：`coord=0`（本话题的关节坐标系用法）时整组为各关节目标角度，单位 **度**；`[0..6]` = 本体关节，`[7..13]` = 外部轴（单位随外部轴类型，本仓库按 SDK 原值透传、不做换算）。几轴填几位，其余置 0 |
+| target_pos_name | string | — | — | 目标位姿名称（通常留空；驱动忽略该字段） |
+| target_pos_type | int32 | — | — | 被驱动强制为 `0`（`PosType::data`），消息中的取值不生效 |
 | coord | int32 | — | 0 | 坐标系（固定为关节坐标系） |
 | velocity | float64 | % | 1～100 | 运动速度百分比 |
 | velocity_sync | float64 | % | 1～100 | 同步轴速度百分比 |
@@ -1234,8 +1254,9 @@ ros2 topic pub --once /tl_driver/moveJ tl_ros2_interface/msg/MoveCommand \
 **输入参数** 同 MoveJ，区别如下：
 | 参数名 | 类型 | 单位 | 值 | 说明 |
 |--------|------|------|------|------|
-| coord | int32 | — | 1 | 坐标系（固定为直角坐标系） |
-| target_pos_value | float64[] | mm, rad | — | [X(mm), Y(mm), Z(mm), RX(rad), RY(rad), RZ(rad), 0]（7维） |
+| coord | int32 | — | 1 | 坐标系（使用时应为直角坐标系；驱动透传该字段、不做校验） |
+| velocity | float64 | mm/s | 1～1000 | MOVL 直线运动速度为 **mm/s**（关节运动才是 %） |
+| target_pos_value | float64[] | mm / rad | — | 14 维 MoveCmd 本体位姿：`[X(mm), Y(mm), Z(mm), RX(rad), RY(rad), RZ(rad), 冗余臂角(rad)]`，`[7..13]` = 外部轴（单位随外部轴类型，本仓库按 SDK 原值透传、不做换算） |
 
 其余参数同 [MoveJ运动控制](#movej运动控制)。
 
@@ -1280,14 +1301,16 @@ ros2 topic pub --once /tl_driver/moveL tl_ros2_interface/msg/MoveCommand \
 | param.x | float64 | mm | 末端工具X轴向偏移量 |
 | param.y | float64 | mm | 末端工具Y轴向偏移量 |
 | param.z | float64 | mm | 末端工具Z轴向偏移量 |
-| param.a | float64 | ° | 绕X轴旋转角度 |
-| param.b | float64 | ° | 绕Y轴旋转角度 |
-| param.c | float64 | ° | 绕Z轴旋转角度 |
+| param.a | float64 | °（待现场确认） | 绕A轴旋转量（SDK 头仅写「绕A轴旋转量」，未标注单位） |
+| param.b | float64 | °（待现场确认） | 绕B轴旋转量（同上） |
+| param.c | float64 | °（待现场确认） | 绕C轴旋转量（同上） |
 | param.payload_mass | float64 | kg | 负载质量 |
 | param.payload_inertia | float64 | kg·m² | 负载惯性 |
 | param.payload_mass_center_x | float64 | mm | 负载质心X坐标 |
 | param.payload_mass_center_y | float64 | mm | 负载质心Y坐标 |
 | param.payload_mass_center_z | float64 | mm | 负载质心Z坐标 |
+
+> **注意**：SDK 头 `lib/include/cpp/interface/tl_interface.h` 未标注 `param.a/b/c` 的单位，当前按度制记录，现场核对后定稿（本节命令示例里 `a: 0.1` 的取值更像 rad）。`param.x/y/z` = **mm**、`param.payload_mass_center_*` = **mm**、`param.payload_mass` = kg、`param.payload_inertia` = kg·m² 为确定口径。
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
@@ -1597,7 +1620,7 @@ ros2 service call /tl_driver/set_axis_zero_pos tl_ros2_interface/srv/SetAxisZero
 |--------|------|------|
 | success | bool | `true` = 查询成功，`false` = 查询失败 |
 | message | string | 失败时包含错误描述 |
-| pos_info | float64[] | 14维位点数据：[0]坐标系 [1]单位制(0=度,1=弧度) [2]形态 [3]工具序号 [4]用户序号 [5][6]备用 [7~13]位点信息 |
+| pos_info | float64[] | 14 维**点位容器**：[0]坐标系(0=关节,1=直角,2=工具,3=用户) [1]单位制(0=度,1=弧度) [2]形态 [3]工具序号 [4]用户序号 [5][6]备用 [7~13]位点信息（笛卡尔时位置 **mm**、姿态 rad；关节时为关节角，度/rad 由 [1] 决定）。该布局与 [MoveCommand](#movecommand消息类型说明) 的 `target_pos_value` 不同 |
 #### 命令示例
 ```
 ros2 service call /tl_driver/get_global_pos tl_ros2_interface/srv/GetGlobalPos "{pos_name: 'GP0002'}"
@@ -1613,7 +1636,7 @@ ros2 service call /tl_driver/get_global_pos tl_ros2_interface/srv/GetGlobalPos "
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
 | pos_name | string | 全局路点名称，如 `"GP0002"` |
-| pos_info | float64[] | 14维位点数据（格式同 [查询全局位点](#查询全局位点) 的 `pos_info`） |
+| pos_info | float64[] | 14 维**点位容器**（格式同 [查询全局位点](#查询全局位点) 的 `pos_info`）：`[0]`坐标系 `[1]`单位制 `[2]`形态 `[3]`工具序号 `[4]`用户序号 `[5][6]`备用 `[7~13]`位点信息（笛卡尔时位置 **mm**、姿态 rad；关节时为关节角）。注意不是 [MoveCommand](#movecommand消息类型说明) 的 `target_pos_value` 布局 |
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
@@ -1843,7 +1866,7 @@ ros2 service call /tl_driver/queue_motion_set_status tl_ros2_interface/srv/Queue
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
 | is_continue | bool | `false` = 新队列运动，`true` = 从断点继续执行 |
-| cmd | MoveCommand | 运动指令（参见 [MoveCommand消息类型说明](#movecommand消息类型说明)） |
+| cmd | MoveCommand | 运动指令（参见 [MoveCommand消息类型说明](#movecommand消息类型说明)；本节为关节用法：`coord=0` 时 `target_pos_value` 单位 **度**，`velocity`/`acc`/`dec` 单位 **%**。驱动强制 `targetPosType=0`，`coord` 透传） |
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
