@@ -34,6 +34,8 @@ exclude = '''
   | _build
   | buck-out
   | build
+  | install
+  | log
   | dist
 )/
 '''
