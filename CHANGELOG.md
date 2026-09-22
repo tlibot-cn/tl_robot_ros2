@@ -11,7 +11,11 @@
 
 ## [Unreleased]
 
-（暂无）
+### 2026-09-22
+
+#### 移除
+
+- 移除 tl_driver 中未纳入构建的 `src/control_demo.cpp`，以及需真机手工运行、CI 不覆盖的测试脚本（`test_moveJ`、`test_moveL`、`test_job_insert_*`、`test_publisher`）（`c418f03`）
 
 ## [2.0.1] - 2026-09-22
 
