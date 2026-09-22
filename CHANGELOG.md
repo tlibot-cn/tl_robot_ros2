@@ -4,6 +4,7 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)：
 
+- 最新发布版本：`[2.0.1]`（2026-09-22，git tag `V2.0.1`）
 - 已发布的版本章节按变更类型整理（新增/修复/变更/移除/文档/工程），不再按日期分组
 - 未发布的变更记录在 `[Unreleased]` 下，按日期（新 → 旧）分组整理
 - 正式发布时，将 `[Unreleased]` 内容合并进版本号章节（`## [x.y.z] - YYYY-MM-DD`），并重置 `[Unreleased]`
@@ -11,11 +12,30 @@
 
 ## [Unreleased]
 
-### 2026-09-22
+（暂无）
 
-#### 修复
+## [2.0.1] - 2026-09-22
+
+### 修复
 
 - 修复 MoveIt2 / ros2_control 启动瞬间机械臂先被拉向零位、轨迹控制器接管后才停下的问题：硬件接口 `on_activate()` 改用当前关节角播种命令接口，启动阶段不再下发零位指令（`070b154`）
+
+### 变更
+
+- tl_teleop 包声明对 `tl_driver` 的依赖，保证构建/安装顺序与服务端可用性（`2b5a56f`）
+
+### 文档
+
+- tl_driver 服务与话题说明书修正：`/tcp_pose` 位置单位 m → mm（与实现及 1.1 约定一致）、`/tl_driver/set_servol_pos` 的 `step_size` 默认值 5.0 → 2.0（代码实际值）、1.4 单位制约定按实际口径限定范围（`d0fd361`）
+- tl_ros2_interface README 补齐 `ServolMove` 消息（目录、文件总览与字段说明），修正 `CartesianPose.position` 单位标注（`d0fd361`）
+- tl_gazebo README 补全 F710 手柄仿真 launch / xacro / 控制器配置条目，修正 `doc/` 图片文件名（`d0fd361`）
+- tl_driver README 文件树删除已移除的 修改说明.md（`2b5a56f`），不再引用未入库文档（`6fe945b`）
+- src/README 修正 msg 定义文件数量，AGENTS.md 同步 tl_teleop 依赖（`d0fd361`）
+- tl_teleop_f710 README 删除重复的 `home_joints` 参数行（`d0fd361`）
+
+### 工程
+
+- 全部 23 个 package.xml 版本统一为 2.0.1，维护者统一为 天链机器人 <tlibot@tlibot.com>，许可证统一为 Apache-2.0（`b682f00`）
 
 ## [2.0.0] - 2026-08-21
 
@@ -97,5 +117,5 @@
 **备注**：
 - `a9139ac`（保存工作）为临时保存，已被 `f0cb692`（Revert "保存工作"）回退，未计入本版本。
 - `829c416`（Merge PR #3 from tlibot-cn/dev）为合并提交，无独立用户可见变更。
-- 标签 `V2.0.0` 指向 `1ce6ad6`（2026-08-21），master 分支 tip；tag 之后的分支提交记入 `[3.0.0]`。
-- 当前发版分支为 `release`，历史经重放后部分提交哈希与旧 master 线不同，`[3.0.0]` 内哈希均以 `release` 分支实际提交为准。
+- 标签 `V2.0.0` 指向 `1ce6ad6`（2026-08-21）；`V2` 维护分支上 tag 之后的提交记入 `[2.0.1]`。
+- 另有一条独立发布线（`master`/`dev` 分支，标签 `V3.0.0`，2026-09-02），历史与本文件所在的 V2 维护线已分叉，其变更不计入本文件的 V2 系列章节。
