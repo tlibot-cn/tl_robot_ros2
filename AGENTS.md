@@ -12,8 +12,9 @@
 | `AGENTS.md` | 本文件 — 工作空间结构、命名规范与文档同步规则 |
 | `CHANGELOG.md` | 全部用户可见变更的账本（维护规则见「文档与变更日志同步规则」） |
 | `pyproject.toml`、`.clang-format` | Python（black/ruff/isort，100 列）与 C++（clang-format v14，Allman、2 空格、120 列）格式配置 |
-| `.github/workflows/` | CI：push/PR 格式检查（clang-format + black）；打版本标签触发 GitHub Release |
+| `.github/workflows/` | CI：push/PR 格式检查（clang-format + black）；打版本标签触发 GitHub Release（标题即标签名，正文取自 `CHANGELOG.md` 对应版本章节） |
 | `scripts/format-cpp.sh` | clang-format 包装脚本，自动跳过 `lib/include/` 下三方 SDK 头文件 |
+| `scripts/release-notes.sh` | Release 正文提取脚本：从 `CHANGELOG.md` 抽出指定标签的版本章节（`release.yml` 调用；本地预览 `./scripts/release-notes.sh V2.0.1`） |
 | `scripts/workspace_measure` | 工作空间测量工具（FK/IK 可达空间可视化） |
 
 ## 构建命令
@@ -181,7 +182,7 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 - **无单元测试**。测试面为两层：`ament_lint_auto` 代码风格检查（tl_bringup、tl_description、tl_gazebo、tl_teleop、tl_teleop_f710 的 `CMakeLists.txt` 中启用）与 `src/tl_driver/test/` 下的手工接口脚本（`test_moveJ.sh`、`test_moveL.sh`、`test_job_insert_*.sh`、`test_publisher.py`），后者需机械臂在线，手动运行。
 - **提交前必须跑**：`./scripts/format-cpp.sh`（C++）与 `black . && isort .`（Python）；CI（`.github/workflows/ci.yml`）会对 push/PR 强制检查，不通过即失败。
 - **开发环境通过 Docker 搭建**（Docker 配置不在本仓库中）。构建和运行均在容器内进行。
-- **发版**：在 `master`/`dev`/`V2` 分支上打 `V主.次.补`（可带 `-rc`/`-beta`）标签即触发 `.github/workflows/release.yml`——先跑格式检查，再创建 GitHub Release。`V2` 为独立版本线，其标签只发布 V2 系列版本。
+- **发版**：在 `master`/`dev`/`V2` 分支上打 `V主.次.补`（可带 `-rc`/`-beta`）标签即触发 `.github/workflows/release.yml`——先校验发布条件，再由 `scripts/release-notes.sh` 从 `CHANGELOG.md` 抽出该标签的版本章节作 Release 正文（`V2.0.1` → `## [2.0.1]`，`-rc`/`-beta` 标签回退到基础版本章节），随后跑格式检查并创建 GitHub Release（标题即标签名，正文 = 章节内容 + 完整变更日志链接，不用 GitHub 自动生成的提交/PR 列表）。**找不到对应章节或章节为空时发布失败、不创建 Release**——须先把 `[Unreleased]` 内容合并进版本号章节并推送分支，再把标签**重新指向含该章节的提交**（`git tag -f Vx.y.z <提交> && git push -f origin Vx.y.z`）；仅删除并重推同一标签仍指向旧提交，会再次失败。`V2` 为独立版本线，其标签只发布 V2 系列版本。
 - **发版顺序（必须）**：先把分支推上去并等 CI 绿，再打标签：`git push origin <分支>` → CI 通过 → `git tag Vx.y.z && git push origin Vx.y.z`。`release.yml` 的守卫用「标签提交是否为远端 `master`/`dev`/`V2` 的祖先」判定，**只推标签不推分支时远端分支引用还停在旧位置**，守卫会静默跳过发布（只有标签、没有 Release）。误推时补推分支后重推标签即可。首次在 V2 线发版前，本地曾启用过 `.githooks` 的克隆建议执行一次 `git config --unset core.hooksPath`。
 
 ## 文档与变更日志同步规则
@@ -209,7 +210,7 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 - 未发布变更写在 `## [Unreleased]` 下，按日期分组（`### YYYY-MM-DD`，新 → 旧）
 - 已发布版本章节写 `## [x.y.z] - YYYY-MM-DD`，只按类型分组，不再按日期分组
 - 每条约一行，只描述**用户可见**变更（行为、接口、启动方式、依赖），不写内部实现细节；行尾附提交短哈希（如 `` `1ce6ad6` ``）便于溯源
-- 发版时把 `[Unreleased]` 内容合并进版本号章节并按类型归类，然后重置 `[Unreleased]`；章节标题即为发版点（`## [x.y.z] - YYYY-MM-DD`），不另起「最新发布版本」说明行
+- 发版时把 `[Unreleased]` 内容合并进版本号章节并按类型归类，然后重置 `[Unreleased]`；章节标题即为发版点（`## [x.y.z] - YYYY-MM-DD`），不另起「最新发布版本」说明行；该章节正文即 Release 正文来源（`release.yml` 找不到章节或章节为空时发布失败）
 - 被回退的提交、合并提交等不产生用户可见变更的记录，写在文末「备注」中，不单列条目（例：`[2.0.0]` 备注中的 `a9139ac` 回退、`829c416` 合并提交）
 
 ### 文档对应关系速查

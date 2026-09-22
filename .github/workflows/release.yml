@@ -7,14 +7,19 @@
 #                   （alpha 等其它后缀、里程碑/内部标记不发布）
 #                b. 标签位于 master/dev/V2 分支（tag push 事件不携带
 #                   分支信息，用提交祖先关系判断；V2 为独立版本线）
-#   2. format  — 格式检查（与 ci.yml 相同逻辑）
-#   3. publish — 创建 GitHub Release（自动生成 notes，不附构建产物；
+#   2. notes   — 用 scripts/release-notes.sh 抽出 CHANGELOG.md 中该标签
+#                对应版本章节作为正文（找不到章节/章节为空 → 失败退出，
+#                不创建 Release）
+#   3. format  — 格式检查（与 ci.yml 相同逻辑）
+#   4. publish — 创建 GitHub Release（标题即标签名，正文取自 CHANGELOG
+#                章节 + 完整变更日志链接，不附构建产物；
 #                rc/beta 标记为 prerelease）
 #
 # 不做 CI 构建: 依赖环境过重（MoveIt/RViz/ros2_control 全量安装），
 # 发布前请在本地 Docker 环境完成编译验证。
 #
-# 触发: 任意 tag 推送；不满足发布条件时仅提示并跳过格式检查与发布。
+# 触发: 任意 tag 推送；不满足发布条件时仅提示并跳过 Release 说明生成、
+#       格式检查与发布。
 # 日常验证（push/PR）见 .github/workflows/ci.yml
 #
 # ⚠️ 发版顺序: 先把分支推上去、等 ci.yml 绿，再打标签推送。
@@ -33,7 +38,7 @@ permissions:
 
 jobs:
   release:
-    name: 发布 (guard + 格式检查 + GitHub Release)
+    name: 发布 (guard + Release 说明 + 格式检查 + GitHub Release)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +47,7 @@ jobs:
           fetch-depth: 0
 
       # ------------------------------------------------------
-      # 0. 发布条件校验 — 两个判据都满足才发布:
+      # 1. 发布条件校验 — 两个判据都满足才发布:
       #    1) 标签名符合版本命名规则（主判据，表达发布意图，V/v 前缀均可）:
       #       v主.次.补            → 正式发布
       #       v主.次.补-rc[N]      → 预发布 (prerelease)
@@ -75,6 +80,29 @@ jobs:
             fi
           fi
 
+      # ------------------------------------------------------
+      # 2. 生成 Release 说明 — 正文取自 CHANGELOG.md 中该标签的版本章节
+      #    （标签 V2.0.1 → 章节 ## [2.0.1]；rc/beta 标签回退到基础版本章节）。
+      #    找不到章节或章节为空 → 报错退出，不创建 Release：发版前必须先把
+      #    [Unreleased] 的内容合并进版本号章节并推送分支，再把标签重新指向
+      #    该提交（git tag -f + git push -f；仅删并重推同一标签仍指向旧提交）。
+      #    末尾追加完整变更日志链接，替代 GitHub 自动生成的提交/PR 列表
+      #    （后者会带上 chore/ci 等内部提交，与 CHANGELOG 口径不一致）。
+      # ------------------------------------------------------
+      - name: 生成 Release 说明（取自 CHANGELOG.md）
+        if: steps.guard.outputs.release == 'true'
+        run: |
+          ./scripts/release-notes.sh "$GITHUB_REF_NAME" > /tmp/release-notes.md
+          {
+            echo
+            echo "---"
+            echo
+            echo "完整变更日志：[CHANGELOG.md](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md)"
+          } >> /tmp/release-notes.md
+
+      # ------------------------------------------------------
+      # 3. 格式检查（与 ci.yml 相同逻辑）
+      # ------------------------------------------------------
       - name: 安装格式检查工具
         if: steps.guard.outputs.release == 'true'
         # clang-format / black 经 pip 固定版本，与 ci.yml 一致，避免版本漂移
@@ -98,8 +126,9 @@ jobs:
           fi
 
       # ------------------------------------------------------
-      # 2. 发布 — 创建 GitHub Release，notes 由 GitHub 自动生成
-      #    （不附构建产物；rc/beta 标签加 --prerelease，不占用 Latest）
+      # 4. 发布 — 创建 GitHub Release（不附构建产物）
+      #    标题即标签名（不加仓库名等前缀）；正文为 CHANGELOG 章节正文；
+      #    rc/beta 标签加 --prerelease，不占用 Latest
       # ------------------------------------------------------
       - name: 创建 GitHub Release
         if: steps.guard.outputs.release == 'true'
@@ -108,6 +137,6 @@ jobs:
           PRERELEASE_FLAG: ${{ steps.guard.outputs.prerelease == 'true' && '--prerelease' || '' }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            --title "tl_robot_ros2 ${GITHUB_REF_NAME}" \
-            $PRERELEASE_FLAG \
-            --generate-notes
+            --title "$GITHUB_REF_NAME" \
+            --notes-file /tmp/release-notes.md \
+            $PRERELEASE_FLAG
