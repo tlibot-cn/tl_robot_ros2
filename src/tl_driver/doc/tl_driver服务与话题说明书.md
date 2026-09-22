@@ -1974,7 +1974,7 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
 | target_pose | float64[] | mm / rad | 目标笛卡尔位姿 [x, y, z, rx, ry, rz]（6维） |
-| step_size | float64 | mm | 插值步长，相邻插值点之间的最大笛卡尔距离，默认为 5.0 |
+| step_size | float64 | mm | 插值步长，相邻插值点之间的最大笛卡尔距离；传入 ≤0 时按默认 2.0 mm 处理 |
 | coord | int32 | — | 坐标系：1-基座标系(Base) 2-工具坐标系(Tool) 3-用户坐标系(User) |
 
 > **注意**：该话题需在 [打开关节跟踪模式](#打开关节跟踪模式) 后使用。内部使用四元数 Slerp 进行姿态插值，250Hz 频率发送关节角。收到话题消息后节点自动执行插值运动，执行过程中节点日志会显示插值点数。
