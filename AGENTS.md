@@ -4,6 +4,19 @@
 
 天链（TianLian）机械臂 ROS2 工作空间。`src/` 下包含 10 个功能包及 `scripts/` 工具脚本，使用标准 `colcon build` 构建流程。无 `package.json`、无 Node.js — 纯 ROS2（ament_cmake + ament_python）。
 
+仓库根目录文件：
+
+| 文件 / 目录 | 作用 |
+|---|---|
+| `README.md` | 环境搭建、编译、代码格式与运行入口 |
+| `AGENTS.md` | 本文件 — 工作空间结构、命名规范与文档同步规则 |
+| `CHANGELOG.md` | 全部用户可见变更的账本（维护规则见「文档同步规则」） |
+| `pyproject.toml`、`.clang-format` | Python（black/ruff/isort，100 列）与 C++（clang-format v14，Allman、2 空格、120 列）格式配置 |
+| `.github/workflows/` | CI：push/PR 格式检查（clang-format + black）；打版本标签触发 GitHub Release（标题即标签名，正文取自 `CHANGELOG.md` 对应版本章节） |
+| `scripts/format-cpp.sh` | clang-format 包装脚本，自动跳过 `lib/include/` 下三方 SDK 头文件 |
+| `scripts/release-notes.sh` | Release 正文提取脚本：从 `CHANGELOG.md` 抽出指定标签的版本章节（`release.yml` 调用；本地预览 `./scripts/release-notes.sh V3.0.0`） |
+| `scripts/workspace_measure` | 工作空间测量工具（FK/IK 可达空间可视化） |
+
 ## 构建命令
 
 （colcon 自动解析拓扑顺序）：
@@ -131,7 +144,7 @@ scripts/           （工作空间测量等工具脚本，不参与 colcon 构�
 |文件|触发|内容|
 |---|---|---|
 |`.github/workflows/ci.yml`|push master/dev、pull_request（`**.md`、`docs/**`、`.github/**` 变更不触发）|格式检查：clang-format（C++，经 `scripts/format-cpp.sh`）+ black（Python，版本锁定 26.5.1）|
-|`.github/workflows/release.yml`|任意标签推送|guard 校验（标签名 `v主.次.补[-rc/beta]` + 位于 master/dev）→ 格式检查 → 创建 GitHub Release（自动 notes，rc/beta 为 prerelease）|
+|`.github/workflows/release.yml`|任意标签推送|guard 校验（标签名 `v主.次.补[-rc/beta]` + 位于 master/dev）→ 由 `scripts/release-notes.sh` 抽 `CHANGELOG.md` 对应版本章节作正文（缺失即失败）→ 格式检查 → 创建 GitHub Release（标题即标签名，rc/beta 为 prerelease）|
 
 - **CI 不做构建**：依赖环境过重（MoveIt/RViz/ros2_control 全量安装），编译验证在本地 Docker 开发环境完成
 - 格式检查容器为 `ubuntu:22.04`（clang-format 14），与本地工具链版本一致，避免新版 clang-format 格式化结果漂移
@@ -144,6 +157,8 @@ scripts/           （工作空间测量等工具脚本，不参与 colcon 构�
 - **机械臂位置单位**：NRC API 返回 mm；ROS2 层使用时需注意单位转换。欧拉角约定为 XYZ 内旋（scipy 中使用大写 `'XYZ'`）。
 - **无自动化测试**，仅有 ament 代码风格检查脚手架。`test/` 目录只包含 `ament_copyright`、`ament_flake8`、`ament_pep257`。
 - **开发环境通过 Docker 搭建**（Docker 配置不在本仓库中）。构建和运行均在容器内进行。
+- **发版**：在 `master`/`dev` 分支上打 `V主.次.补`（可带 `-rc`/`-beta`）标签即触发 `.github/workflows/release.yml`——先校验发布条件，再由 `scripts/release-notes.sh` 从 `CHANGELOG.md` 抽出该标签的版本章节作 Release 正文（`V3.0.0` → `## [3.0.0]`，`-rc`/`-beta` 标签回退到基础版本章节），随后跑格式检查并创建 GitHub Release（标题即标签名，正文 = 章节内容 + 完整变更日志链接，不用 GitHub 自动生成的提交/PR 列表）。**找不到对应章节或章节为空时发布失败、不创建 Release**——须先把 `[Unreleased]` 内容合并进版本号章节并推送分支，再把标签**重新指向含该章节的提交**（`git tag -f Vx.y.z <提交> && git push -f origin Vx.y.z`）；仅删除并重推同一标签仍指向旧提交，会再次失败。
+- **发版顺序（必须）**：先把分支推上去并等 CI 绿，再打标签：`git push origin <分支>` → CI 通过 → `git tag Vx.y.z && git push origin Vx.y.z`。`release.yml` 的守卫用「标签提交是否为远端 `master`/`dev` 的祖先」判定，**只推标签不推分支时远端分支引用还停在旧位置**，守卫会静默跳过发布（只有标签、没有 Release）。误推时补推分支后重推标签即可。
 
 ## 文档同步规则
 
@@ -170,7 +185,7 @@ scripts/           （工作空间测量等工具脚本，不参与 colcon 构�
 - 未发布的变更记录在 `## [Unreleased]` 下，按日期分组（`### YYYY-MM-DD`，新 → 旧）
 - 已发布的版本章节（`## [x.y.z] - YYYY-MM-DD`）按变更类型整理（新增/修复/变更/移除/文档/工程），不再按日期分组
 - 条目描述用户可见变更，不写内部实现细节；每条约一行，末尾附提交短哈希（如 `（`dda23c0`）`）便于溯源
-- 正式发布时，将 `[Unreleased]` 内容合并进版本号章节，并按类型归类；然后重置 `[Unreleased]`
+- 正式发布时，将 `[Unreleased]` 内容合并进版本号章节，并按类型归类；然后重置 `[Unreleased]`；该版本章节正文即 Release 正文来源（`release.yml` 找不到章节或章节为空时发布失败）
 
 ### 文档对应关系速查
 
