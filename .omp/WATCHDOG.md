@@ -1,99 +1,105 @@
 # Watchdog — tl_robot_ros2（dev 线）
 
-控制器协议与单位约定。这些不变量横跨 `tl_driver` / `tl_teleop` / `tl_teleop_f710` / `tl_hardware`，
-改动相关代码前先对照本节。本节只记录**代码里已实现、但容易被改错或改回去**的约定；
-工作空间结构、命名规范、构建命令见 `AGENTS.md`，接口逐条说明见 `src/tl_driver/doc/tl_driver服务与话题说明书.md`。
-本节与代码冲突时**以代码为准**，并同步修正文档。
+给审查侧（advisor）的**检查清单**，不是实现文档。写法约定：只引用**文件与符号名**（行号会腐烂，一律不写）。
+每条按「看到什么信号 → 去读哪里 → 确认什么」用。与代码冲突时以代码为准。
 
-> 本文件按 **dev 线（3.x）** 代码校准。`V2` 维护线的口径**不同**（该线 `/tcp_pose.position` 与 servol 输入一律保留 SDK 原生 mm，
-> 且 SDK 头目录是 `lib/include/cpp/...`）—— 跨分支合并时以目标分支的消费方代码为准，勿照搬本文件。
+## 报与不报
 
-## 双端口连接
+| 级别 | 判据 | 例 |
+|---|---|---|
+| **blocker** | 真机会动错 / 进程崩 / 明确违反仓库硬规则 | 单位错导致千倍位移；长度契约破坏；动 `lib/` 下第三方产物 |
+| **concern** | 契约单边修改、消费方或文档未同步、并发与生命周期缺陷 | 改了 `/tcp_pose` 单位没改 `tl_teleop`；launch 参数改了没改 README |
+| **nit** | 其余可维护性问题 | 注释与代码不符 |
+
+**不要报**：格式与 lint（CI 已管）、命名口味、行号/短哈希是否精确、纯风格重构意见、本次改动没碰到的既有问题、"建议补测试"（本仓库无自动化测试脚手架，只有 ament lint）。
+
+**纪律**：提之前先 `read`/`grep` 落到具体文件与符号，拿不到证据就不说；同一问题别换措辞重提。
+
+## 一、通用准则（任何改动先过这 6 条）
+
+| 准则 | 问法 | 典型错误 |
+|---|---|---|
+| 对称性 | 改了这个字段，**另一端**改了吗？ | 只改发布方单位，消费方照旧 |
+| 契约 | 长度、单位、坐标系、下标语义定义清楚了吗？ | 7 元素容器塞 6 个值 |
+| 生命周期 | 连/断、开/关、上电/下电、注册/注销成对吗？ | 漏 `close_servoJ`；连接失败仍继续跑 |
+| 并发 | 跑在哪个线程/回调组？会阻塞吗？共享状态有保护吗？ | 回调里做阻塞调用；控制循环里 future 析构 |
+| 默认值 | 新参数有默认值吗？YAML/launch 同步了吗？ | 声明了参数但配置文件里没有 |
+| 文档 | `AGENTS.md`「提交前必做」的文档同步逐条过了吗？ | 接口改了 `CHANGELOG.md` 没动 |
+
+## 二、单位与量纲（本仓库第一号坑）
+
+口径：**ROS 侧 m / rad；控制器与服务接口 mm / 度 / %**。换算发生在驱动内或各消费方，改任何一端都要同时看另一端。
+
+| 通道 | 单位 | 位置 |
+|---|---|---|
+| `/joint_states.position` | rad（SDK 返回度，驱动内批量转） | `publish_joint_pose` |
+| `/tcp_pose.position` | m（`kMmToM`）；`rpy` rad | `publish_tcp_pose` |
+| `/tl_driver/set_servoj_pos` | **度**（原值透传 aux） | `handle_set_servoj_pos_topic` |
+| `/tl_driver/set_servol_pos.target_pose` | 位置 mm + 姿态 rad；`step_size` mm | `handle_set_servol_pos_topic` |
+| `MoveCommand.target_pos_value` | 原值透传：`coord=0` 度；`1/2/3` 为 `[X,Y,Z mm, RX,RY,RZ rad]` | `handle_movej_topic` / `handle_movel_topic` |
+| `ToolParam` 的 `x/y/z`、`a/b/c`、`payload_mass` | mm / 度 / kg（单位注释在 SDK `tl_types.h`） | `handle_set_tool_param_service` |
+| `SetUserCoord.pos.position` | mm + 姿态 rad（原值透传） | `handle_set_user_coord_service` |
+
+消费方换算（改单位必须同步这一组）：
+
+- `tl_teleop`：`/tcp_pose`(m) ×`kMToMm` → coord_transform `origin_pos`(mm)；VR 位移 ×1000
+- `tl_teleop_f710_node`：KDL FK(m) ×1000 → `ServolMove.target_pose`(mm)；`/joint_states`(rad) ×180/π → `set_servoj_pos`(度)
+- `tl_teleop_f710_sim_bridge`：servol(mm) ÷1000 → KDL(m)
+- `tl_hardware_interface`：ros2_control(rad) ×180/π → `set_servoj_pos`(度)
+
+**信号**：出现硬编码 `1000.0` / `180.0 / M_PI`、变量名带 `mm` 却参与 m 运算、新增跨层字段没有单位注释 → 逐一核对该通道两端。
+
+**先例**：`/tcp_pose` 的 m↔mm 误用曾让遥操作 IK 目标点错 1000 倍，控制器报 **9754「目标位置不可达」**（`2c5b2e4`）。该链路出现"运动到离谱位置/报 9754"时，先怀疑单位。
+
+## 三、长度与下标契约
+
+- 关节向量的 6 与 7：`ndof_`（默认 6）、`arm_joints_`；6 轴时第 7 元素**补 0，不是丢掉**。
+- `MoveCmd::targetPosValue` 14 位：前 7 本体 + 后 7 外部轴，几轴填几位、其余置 0。
+- `get_current_position`（Coord 重载）返回 7 元素；6/7 轴分支分散在 `publish_joint_pose`、`publish_tcp_pose`。
+- 点位容器 14 位：`[0]`坐标系 `[1]`单位 `[2]`形态 `[3]`工具 `[4]`用户 `[5][6]`备用 `[7..13]`点位（`set_global_position`、`get_pos_reachable`）。
+- **信号**：`resize(7, 0.0)`、`end() - 1` 截断、`size() < 6` 早退 → 核对调用方实际长度。
+
+## 四、线程与回调组
+
+- `tl_driver` 三组均为 `MutuallyExclusive`：`service_group_`（全部 65 个服务）、`topic_group_`（4 个订阅）、`timer_group_`（状态发布定时器）；`MultiThreadedExecutor` 线程数 `max(4, hardware_concurrency)`。`timer_group_` 曾用 `Reentrant` 导致状态发布回调并发，`4757255` 改为互斥，**别改回**。
+- 回调里不做阻塞：SDK 同步调用、`sleep`、等 future 都占住 executor 线程。
+- 控制循环（f710 250Hz、`tl_teleop` 100Hz）：循环体不得超周期；**控制循环内 `std::async` 的 future 析构会阻塞到任务完成**，反复给同一 future 赋值 = 隐性停顿；跨线程标志用 `std::atomic`。
+- 跨线程共享的 `std::vector`/`std::string`（如 `target_pose_`、`latest_joy_`）需锁或原子快照，禁止裸读写。
+
+## 五、真机安全（最高优先级，宁误报不漏报）
+
+任何让机械臂动起来的改动都要问：
+
+- 速度/加速度上限是否被绕过（J 百分比、L mm/s）？增量是否在发指令前 clamp？
+- 奇异点、关节跳变检测、IK 失败分支是否仍生效（`tl_teleop` 的 jump 检测、f710 的 IK 失败处理）？
+- 失败路径：IK 失败 / SDK 非成功 / 超时 → **停止保持**，还是继续用旧值或零值发运动指令？后者 = blocker。
+- 上电与示教时序：`is_powered_`、示教模式切换失败必须退进程（`init()` 的两处 `rclcpp::shutdown()`），不带病运行。
+- 单位错在真机等价于千倍位移 —— 单位问题一律按 blocker 报。
+
+## 六、错误处理
+
+- SDK 返回码（`Result::SUCCESS` 一类）是否检查？`false`/负值是否被当成成功？
+- try/catch 后是否只打日志就继续跑（吞错）？
+- `rclcpp::shutdown()` 或节点析构之后，是否还有代码用 `this->`、继续发消息或调 SDK？
+- 连接/断开、`open_servoJ`/`close_servoJ`、线程 `join` 是否成对？
+
+## 七、双端口与连接生命周期
 
 | 端口 | 参数 | 职责 |
 |---|---|---|
-| 6001 | `arm_port` | 主端口：请求/响应式 SDK 调用（运动、IO、Modbus、作业、参数查询、外部轴运动、拖拽示教） |
-| 7000 | `arm_port_aux` | 辅助端口：servoJ 全系列、伺服点位运动、**机器人状态的异步推送**、错误/告警回调 |
+| 6001 | `arm_port` | 请求/响应式 SDK 调用（运动、IO、Modbus、作业、参数查询、外部轴、拖拽示教） |
+| 7000 | `arm_port_aux` | servoJ 全系列、伺服点位、**机器人状态异步推送**、错误/告警回调 |
 
-- 两个端口都必须连上：`socket_fd_ = connect_robot(arm_ip_, arm_port_)`（`tl_driver.cpp:590`）、
-  `socket_fd_aux_ = connect_robot(arm_ip_, arm_port_aux_)`（`:591`）；`is_connected()` 另要求两个 fd 均 > 0（`:502-505`）。
-- 端口参数声明与读取：`arm_port_aux` 默认 `"7000"`（`tl_driver.cpp:75`、`:82`）。
-- servoJ 一律走 aux：`open_servoJ`（`:2229`）、`close_servoJ`（`:2245`）、`set_servoJ_pos`（`:2488`）。
-- **状态推送回调只在 aux 注册**：新 SDK 用 `robot_state_callback(socket_fd_aux_, robot_state_callback_handler)`
-  （`:615-616`），旧的 `recv_message` 机制已废弃，别照旧版本写法加回主端口。
-- **错误/告警回调两个端口都注册**（`:611` 主端口 + `:613` aux）。该接口本身不属 7000 段，
-  别因为「状态是 7000 端口的事」而删掉主端口那次注册。
-- ⚠️ **仍与 SDK 文档不一致（未修正，改动前需真机验证）**：SDK 标注「需要连接 7000 端口」的
-  `set_drag_mode`（`tl_driver.cpp:1366`）与 `get_drag_thread_is_end`（`:1383`）传的是**主端口**。
-  同类问题中的 `get_robot_state` 已改走 aux（`:1048-1049`），可作参照；改成 aux 属行为变更，先验证再动。
-- SDK 侧端口约定：`tl_interface.h:233-236`（7000 端口查询状态）、`:416-419`（7000 端口状态回调）、
-  `tl_servo_ext.h:22-28`（servo 扩展需先连 7000，与 close 成对调用）。
+- **两个 fd 都必须连上**：`connect()` 两次 `connect_robot`，任一侧 `<= 0` 即失败；`is_connected()` 另要求两个 fd 均 > 0。
+- 状态推送只在 aux 注册：`robot_state_callback(socket_fd_aux_, robot_state_callback_handler)`；旧 `recv_message` 机制已废弃，别加回主端口。
+- 错误/告警回调**两个端口都注册**（`set_receive_error_or_warnning_message_callback` 各一次）——别以「状态是 7000 的事」为由删掉主端口那次。
+- ⚠️ 已知未修正项：`set_darg_mode`、`get_drag_thread_is_end` 传的是**主端口**（SDK 文档要求 7000）。**不要顺手「统一到 aux」**，属行为变更，需真机验证。
 
-## 点位数组长度
+## 八、文档与仓库卫生（清单在 `AGENTS.md`，这里只留该盯的动作）
 
-- `MoveCmd::targetPosValue` 默认 **14 位**：前 7 位机器人本体，后 7 位外部轴
-  （`tl_types.h:183` 字段注释、`:199` 默认构造 `MoveCmd() : targetPosValue(14)`）。
-- 填充规则（SDK 注释原文）：**几轴就填前几位，其余置 0**（`tl_interface.h:429` robot_movej、`:442` robot_movel）。
-- `get_current_position`（Coord 重载）返回 **7 元素**：`Coord::JOINT` 为关节角（度）；
-  `Coord::BASE/TOOL/USER` 为 `[X,Y,Z,RX,RY,RZ]`（mm, rad）（`tl_interface.h:518-522`）。
-  驱动依赖这一点：`publish_joint_pose` 6 轴时截断 `end() - 1`（`tl_driver.cpp:2712-2728`），
-  servol 插值位姿固定构造 7 元素（`:2626`）。
-- GP 点位与可达性查询的容器同样是 **14 位**：`[0]`坐标系 `[1]`0=度/1=弧度 `[2]`形态 `[3]`工具
-  `[4]`用户 `[5][6]`备用 `[7..13]`点位信息（`tl_interface.h:568-574` set_global_position、`:959-971` get_pos_reachable）。
+主会话上下文里已有 `AGENTS.md`（含「提交前必做」清单与硬约束），别复述其内容，只盯这几类漏做：
 
-## 运动参数范围与单位
-
-| 参数 | 范围 / 单位 | 依据 |
-|---|---|---|
-| J 运动 `velocity` | (0, 100]，% | `tl_interface.h:430` |
-| L 运动 `velocity` | (0, 1000]，mm/s | `tl_interface.h:443` |
-| `acc` / `dec` | (0, 100] | `tl_interface.h:432-433`、`:445-446` |
-| `coord` | 0 关节 / 1 直角 / 2 工具 / 3 用户 | 各服务入参校验，如 `tl_driver.cpp:1782-1794` |
-| `open_servoJ` 的 `vmax`/`amax`/`jmax` | 7 元素向量，度/秒、度/秒²、度/秒³；6 轴第 7 元素补 0 | `tl_servo_ext.h:133-143` |
-| `set_servoJ_pos` 的 `q` | 7 元素向量，度；与上同长度契约 | `tl_servo_ext.h:154-161` |
-
-## 单位约定（跨层，最易踩坑）
-
-dev 线的口径：**ROS 侧用 ROS 惯例（m / rad），SDK 与服务接口用控制器原生（mm / 度 / %）**，
-换算发生在驱动内或各消费方。改任何一个接口前先看下表，别只改一端。
-
-| 通道 | 单位 | 依据 |
-|---|---|---|
-| `/joint_states.position` | **rad**（SDK 返回度，驱动内批量转换） | `tl_driver.cpp:2695-2701` |
-| `/tcp_pose.position` | **m**（驱动 mm→m，`kMmToM`） | `tl_driver.cpp:2732-2741` |
-| `/tcp_pose.rpy`、`arm_angle` | rad | `tl_driver.cpp:2743-2750` |
-| `/tl_driver/set_servoj_pos` | **度**（订阅回调原值透传 aux） | `tl_driver.cpp:2479-2490` |
-| `/tl_driver/set_servol_pos` 的 `target_pose` | 位置 **mm** + 姿态 rad；`step_size` **mm**（传入 ≤0 取默认 2.0） | `tl_driver.cpp:2600-2617` |
-| `MoveCommand.target_pos_value` | **原值透传**：`coord=0` 关节角（度）；`coord=1/2/3` 为 `[X mm, Y mm, Z mm, RX/RY/RZ rad]` | `tl_driver.cpp:2438-2440`、`:2469-2471` |
-| `ToolParam.x/y/z`、`payload_mass_center_*` | **mm**；`a/b/c` **度**；`payload_mass` kg | `tl_types.h:202-216` |
-| `SetUserCoord.pos.position` | **mm** + 姿态 rad（原值透传） | `tl_driver.cpp:1468-1473` |
-| `CoordTransform.origin_pos`/`reference_pos`/`target_pos` | 按 coord 语义：0 关节度；1/2/3 位置 **mm** + 姿态 rad | `tl_driver.cpp:1800-1802` |
-| `RobotDHParam` | `alpha`/`theta` **deg**、`a`/`d` **mm**、`mountingAngle` **deg** | `tl_types.h:225-233` |
-| `GetCurrentLineJointSpeed.line_speed` / `joint_speed` | **mm/s** / **度/s** | `tl_interface.h:1281-1284` |
-| `GetCurrentMotorTorque.motor_torque` | **%**（本体 7 元素 + 外部轴 5 元素） | `tl_interface.h:1255-1257` |
-| `GetQuat2Rpy` 的 `rpy` | **rad**（本地实现为 XYZ 外旋） | `tl_interface.h:668-671`、`:710-714` |
-| `GetPosReachable.pos`、`Set/GetGlobalPos.pos_info` | 14 位点位容器（见上节） | `tl_interface.h:959-971`、`:568-574` |
-
-消费方换算（改单位时必须同步这一组）：
-
-- `tl_teleop`：`/tcp_pose`(m) → 逆解请求(mm)，×1000（`tl_teleop.cpp:379-384`）
-- `tl_teleop_f710`：FK 结果(m) ×1000 → servol `target_pose`(mm)（`tl_teleop_f710_node.cpp:331-333`、`:528-530`）；
-  `/joint_states`(rad) → `set_servoJ_pos`(度)（`:453-457`）
-- `tl_teleop_f710_sim_bridge`：servol(mm) → KDL(m)，÷1000（`tl_teleop_f710_sim_bridge.cpp:185-188`）
-
-> 本线 `.msg/.srv` 字段**尚未标注单位**（现状），逐字段口径以本节为准；改接口时顺手补注释。
-
-## ROS2 节点结构不变量
-
-- `tl_driver` 用 `MultiThreadedExecutor` 驱动 **3 个回调组**：`service_group_`（全部服务）、`topic_group_`（4 个订阅）、
-  `timer_group_`（状态发布定时器），三组**均须为 `MutuallyExclusive`**（`tl_driver.cpp:88`、`:90`、`:94`）。
-  历史遗留：`timer_group_` 曾用 `Reentrant` 导致定时器回调并发，勿改回。
-- 发布：`/joint_states`（`:425`）、`/tcp_pose`（`:427`）、`/arm_status`（`:429`）；
-  订阅：moveJ（`:432`）、moveL（`:435`）、set_servoj_pos（`:438`）、set_servol_pos（`:442`）。
-- 发布频率 `publish_rate_` 默认 100.0（`tl_driver.h:351`），定时器周期计算 `tl_driver.cpp:446-449`。
-- moveJ / moveL 话题回调**不等待到位**：只透传 SDK 结果并记日志（`tl_driver.cpp:2440-2442`、`:2471-2473`）。
-  需要到位判定的一方自行轮询 `/arm_status`。
-- `init()` 有两处「失败即退进程」：连接失败（`tl_driver.cpp:497`）与切入示教模式失败（`:476`），
-  均 `rclcpp::shutdown()` + exit，不带病运行。
-- 轴数 `ndof_` 默认 6、关节名 `arm_joints_` 由配置注入（`tl_driver.h:350-352`）；
-  6/7 轴分支集中在 `publish_joint_pose`（`tl_driver.cpp:2712`）与 `publish_tcp_pose`（`:2730`）。
+- 改了接口/launch/YAML/行为，却**只有代码没有文档**（`CHANGELOG.md`、包 `README.md`、说明书）→ concern。
+- 动了 `src/*/lib/` 下的专有库或 SDK 头 → blocker（只读产物）。
+- 改了 msg/srv 没重建、或没跑 `./scripts/format-cpp.sh` / `black .` → concern（CI 只查格式、不编译）。
+- `CHANGELOG.md` 写成内部日志（构建配置、CI、`.omp/**`、目录重命名）→ nit；条目标准见 `.omp/rules/changelog-user-visible.md`。
