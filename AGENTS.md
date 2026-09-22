@@ -17,7 +17,7 @@
 | 包 | 作用 | 关键入口 |
 | --- | --- | --- |
 | `tl_ros2_interface` | 全部自定义接口（12 个 `.msg`、45 个 `.srv`，字段带单位注释） | `msg/`、`srv/`；**必须最先构建** |
-| `tl_driver` | 机械臂驱动，TCP 连控制器（65 服务 / 4 订阅 / 3 发布） | `src/tl_driver.cpp`（约 2900 行单文件）、`include/tl_driver/tl_driver.h` |
+| `tl_driver` | 机械臂驱动，TCP 连控制器（65 服务 / 4 订阅 / 3 发布） | `src/tl_driver.cpp`（约 2850 行单文件）、`include/tl_driver/tl_driver.h` |
 | `tl_teleop` | VR 遥操作（PXREA Robot SDK，100 Hz 控制循环） | `src/tl_teleop.cpp` |
 | `tl_teleop_f710` | F710 手柄遥操作（250 Hz）+ Gazebo 仿真桥接 | `src/tl_teleop_f710_node.cpp`、`src/tl_teleop_f710_sim_bridge.cpp` |
 | `tl_hardware` | ros2_control 硬件插件，接 `joint_trajectory_controller` ↔ `tl_driver` | `src/tl_hardware_interface.cpp`（`tl_hardware::TLHardwareInterface`） |

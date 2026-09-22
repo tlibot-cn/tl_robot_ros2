@@ -47,7 +47,7 @@ src/
 ├── tl_driver/               # 硬件驱动（C++ 节点）
 │   ├── config/              # 14 套通信参数配置
 │   ├── launch/              # 驱动节点 launch
-│   ├── lib/                 # NexMotion SWIG 封装
+│   ├── lib/                 # 预编译 SDK（_tl_host.so + Python 封装 + 头文件）
 │   └── src/                 # 驱动节点源码
 ├── tl_example/              # 使用示例
 ├── tl_gazebo/               # Gazebo 仿真
@@ -115,7 +115,7 @@ src/
 - **轨迹录制与回放**：支持录制机械臂运动轨迹并回放。
 - **队列运动**：支持将运动指令加入队列依次执行。
 
-驱动基于 NexMotion SDK 的 Python 封装（SWIG），通过 TCP 连接控制器（默认 IP：`192.168.1.13`，端口：`6001`）。
+驱动通过 NexMotion SDK 的预编译库通信：C++ 侧链接 `_tl_host.so`（`lib/include/cpp`、`lib/include/c` 为对应头文件），另随包提供 Python 封装 `lib/*/tl_interface.py`（x86 版由 SWIG 生成、ARM 版由 ctypes 生成，均为自动生成、勿手改）。通过 TCP 连接控制器（默认 IP：`192.168.1.13`，端口：`6001`）。
 
 详细说明请参考 [tl_driver/README.md](tl_driver/README.md)。
 
