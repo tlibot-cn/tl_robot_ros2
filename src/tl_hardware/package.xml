@@ -17,6 +17,7 @@
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
   <depend>tl_ros2_interface</depend>
+  <depend>tl_driver</depend>
   <depend>trajectory_msgs</depend>
 
   <export>

@@ -14,6 +14,7 @@
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
   <depend>tl_ros2_interface</depend>
+  <depend>tl_driver</depend>
   <depend>kdl_parser</depend>
   <depend>orocos_kdl_vendor</depend>
   <depend>ament_index_cpp</depend>
