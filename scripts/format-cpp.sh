@@ -14,7 +14,7 @@ set -euo pipefail
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || dirname "$(dirname "$0")")
 CLANG_FORMAT_FILE="${PROJECT_ROOT}/.clang-format"
 
-# ── 忽略路径（与 .githooks/pre-commit 保持一致） ──
+# ── 忽略路径（与 CI 格式检查 .github/workflows/ci.yml 保持一致） ──
 IGNORE_PATTERNS=(
     '^src/tl_driver/lib/include/'
     '^src/tl_teleop/lib/include/'

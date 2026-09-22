@@ -12,7 +12,7 @@
 | `AGENTS.md` | 本文件 — 工作空间结构、命名规范与文档同步规则 |
 | `CHANGELOG.md` | 全部用户可见变更的账本（维护规则见「文档与变更日志同步规则」） |
 | `pyproject.toml`、`.clang-format` | Python（black/ruff/isort，100 列）与 C++（clang-format v14，Allman、2 空格、120 列）格式配置 |
-| `.githooks/pre-commit` | 提交前自动格式化 C++/Python 并重新暂存；需一次性执行 `git config core.hooksPath .githooks` 启用（详见 README「代码规范」） |
+| `.github/workflows/` | CI：push/PR 格式检查（clang-format + black）；打版本标签触发 GitHub Release |
 | `scripts/format-cpp.sh` | clang-format 包装脚本，自动跳过 `lib/include/` 下三方 SDK 头文件 |
 | `scripts/workspace_measure` | 工作空间测量工具（FK/IK 可达空间可视化） |
 
@@ -178,8 +178,9 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 - **选择性构建时必须先构建 tl_ros2_interface**。不带 `--packages-select` 的 `colcon build` 会自动处理。
 - **机械臂位置单位**：NRC API 返回 mm；ROS2 层使用时需注意单位转换。欧拉角约定为 XYZ 内旋（scipy 中使用大写 `'XYZ'`）。
 - **无单元测试**。测试面为两层：`ament_lint_auto` 代码风格检查（tl_bringup、tl_description、tl_gazebo、tl_teleop、tl_teleop_f710 的 `CMakeLists.txt` 中启用）与 `src/tl_driver/test/` 下的手工接口脚本（`test_moveJ.sh`、`test_moveL.sh`、`test_job_insert_*.sh`、`test_publisher.py`），后者需机械臂在线，手动运行。
-- **提交前必须跑**：`./scripts/format-cpp.sh`（C++）与 `black src/ && isort src/`（Python）；已启用 `.githooks/pre-commit` 时提交会自动格式化并重新暂存暂存区文件（`--no-verify` 可跳过，不建议）。
+- **提交前必须跑**：`./scripts/format-cpp.sh`（C++）与 `black . && isort .`（Python）；CI（`.github/workflows/ci.yml`）会对 push/PR 强制检查，不通过即失败。
 - **开发环境通过 Docker 搭建**（Docker 配置不在本仓库中）。构建和运行均在容器内进行。
+- **发版**：在 `master`/`dev`/`V2` 分支上打 `V主.次.补`（可带 `-rc`/`-beta`）标签即触发 `.github/workflows/release.yml`——先跑格式检查，再创建 GitHub Release。`V2` 为独立版本线，其标签只发布 V2 系列版本。
 
 ## 文档与变更日志同步规则
 
@@ -195,7 +196,7 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 6. 是否改变行为（通信协议、单位、上电时序、默认参数、回调组架构、公共接口签名）？→ 更新 `CHANGELOG.md` + 相关文档
 7. 是否动到被文档引用的路径/名称/命令？→ 修正所有引用处
 
-仅当**全部为否**（纯内部重构：格式化、注释、命名统一）才可跳过文档同步。此类纯内部变更——构建与工具配置（`.gitignore`、`.clang-format`、`pyproject.toml`、pre-commit hook）、agent/harness 配置（`.omp/**`、`.agents/**`）、目录重命名、文档润色——**不进 `CHANGELOG.md`**：该文件只记录使用者能感知的变化，内部调整写进去就是噪音。
+仅当**全部为否**（纯内部重构：格式化、注释、命名统一）才可跳过文档同步。此类纯内部变更——构建与工具配置（`.gitignore`、`.clang-format`、`pyproject.toml`、格式化脚本）、agent/harness 配置（`.omp/**`、`.agents/**`）、目录重命名、文档润色——**不进 `CHANGELOG.md`**：该文件只记录使用者能感知的变化，内部调整写进去就是噪音。
 
 **不得以任何理由跳过检查**。判为"无需文档"的变更必须能说出明确理由；说不出理由 = 漏了文档。
 
