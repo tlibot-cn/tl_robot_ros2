@@ -46,7 +46,7 @@
 | `/tcp_pose.rpy`、`arm_angle` | rad | 同上 |
 | `/tl_driver/set_servoj_pos` | **度**（订阅方 tl_hardware 自行做弧度↔角度换算） | `tl_driver.cpp:2537-2547` |
 | `ServolMove.target_pose` | 位置 **mm** + 姿态 rad；`step_size` **mm**（驱动内默认 2.0，传入 ≤0 取默认） | `tl_driver.cpp:2630-2677` |
-| `MoveCommand.target_pos_value` | 14 维：前 7 位本体位姿 [X **mm**, Y **mm**, Z **mm**, RX rad, RY rad, RZ rad, 冗余臂角 rad]，后 7 位为外部轴点位（单位随外部轴类型，本仓库不做换算、按 SDK 原值透传）；`coord=0` 时整组为关节角（度） | 实现 `tl_driver.cpp:2496`、`2527` 等 MoveCmd 组包点；布局依据 `lib/include/cpp/parameter/tl_define.h:64`、`test/test_moveL.sh` |
+| `MoveCommand.target_pos_value` | 14 维：前 7 位本体位姿 [X **mm**, Y **mm**, Z **mm**, RX rad, RY rad, RZ rad, 冗余臂角 rad]，后 7 位为外部轴点位（单位随外部轴类型，本仓库不做换算、按 SDK 原值透传）；`coord=0` 时整组为关节角（度） | 实现 `tl_driver.cpp:2496`、`2527` 等 MoveCmd 组包点；布局依据 `lib/include/cpp/parameter/tl_define.h:39`（注释）、`:54`（默认构造 `targetPosValue(14)`）、`test/test_moveL.sh` |
 | `ToolParam.x/y/z`、`payload_mass_center_x/y/z` | **mm**；`a/b/c` 现文档标 度（SDK 头未标注，待现场核对）；`payload_mass` kg；`payload_inertia` kg·m² | `tl_driver.cpp:1424-1447` |
 | `SetUserCoord.pos.position` | **mm** + 姿态 rad | `tl_driver.cpp:1454-1465` |
 | `CoordTransform.origin_pos`/`reference_pos`/`target_pos` | 对应 `coord = 0` 为关节度；`coord = 1/2/3` 为位置 **mm** + 姿态 rad | `tl_driver.cpp:1749-1782`、SDK 头 `tl_interface.h:497-507` |
@@ -54,7 +54,7 @@
 | `GetCurrentLineJointSpeed.line_speed` | **mm/s**（`joint_speed` 为度/s） | `tl_driver.cpp:2440-2463`、SDK 头 `tl_interface.h:648-653` |
 | `MoveCommand.velocity`、`acc`/`dec`、`SetSpeed` | 关节运动为 %，直角（MOVL）运动速度为 **mm/s**，`acc`/`dec` 为 % | SDK 头 `tl_interface.h:731-746` |
 | `RobotDHParam`（`l1..l20`、`pitch`、导程、喷料距离、`sp`/`tl`） | **mm**（控制器机构常数） | `tl_driver.cpp:1819-1970`、说明书 DH 章节 |
-| `OpenServoJ.vmax/amax/jmax` | 度/s、度/s²、度/s³ | SDK 头 `tl_interface.h:920-925` |
+| `OpenServoJ.vmax/amax/jmax` | 度/s、度/s²、度/s³ | SDK 头 `tl_interface.h:926-930` |
 | `GetPosTransform.input/output`、`GetCurrentMotorTorque`、`RobotJointParam` | 旋转量 rad / 无量纲；力矩 %；关节量度、度/s | `tl_driver.cpp:773-926`、`2410-2431`、`1086-1170` |
 
 > 单位口径是**有意选择**：笛卡尔位置保留 SDK 原生的 **mm**（与示教器/现场手册一致），不随 ROS 惯例改为 m。因此集成方**不得**把某个字段按 m 解释；`msg/srv` 字段注释、`tl_ros2_interface/README.md` 与 `tl_driver服务与话题说明书.md` §1.4 现已逐字段标注。若要改为 m，属破坏性变更：须同时改 `tl_driver` 全部接口边界、三个消费方（tl_teleop / tl_teleop_f710 / tl_example）、文档与现场脚本，并单独发一个破坏性版本。

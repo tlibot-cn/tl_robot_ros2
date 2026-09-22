@@ -170,6 +170,7 @@ source install/setup.bash
 - `std_srvs` — Trigger 服务
 - `tl_ros2_interface` — OpenServoJ 服务定义
 - `trajectory_msgs` — 轨迹消息
+- `tl_driver` — 运行期依赖（`package.xml` 中为 `<exec_depend>`）：经 `/tl_driver/*` 服务与话题通信，不链接其库
 
 ## 注意事项
 

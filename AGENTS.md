@@ -31,9 +31,9 @@ source install/setup.bash
 ```
 tl_ros2_interface  （基础：自定义 msg/srv，无依赖）
   └─► tl_driver        （C++ 节点，链接 _tl_host.so 专有库）
-  └─► tl_teleop        （VR 遥操作 C++ 节点，PXREA Robot SDK；package.xml 声明 tl_driver 依赖）
-  └─► tl_teleop_f710   （F710 手柄遥操作 C++ 节点，KDL IK）
-  └─► tl_hardware      （ros2_control 硬件接口插件，桥接 MoveIt2 ↔ tl_driver）
+  └─► tl_teleop        （VR 遥操作 C++ 节点，PXREA Robot SDK；exec_depend: tl_driver）
+  └─► tl_teleop_f710   （F710 手柄遥操作 C++ 节点，KDL IK；exec_depend: tl_driver）
+  └─► tl_hardware      （ros2_control 硬件接口插件，桥接 MoveIt2 ↔ tl_driver；exec_depend: tl_driver）
   └─► tl_example       （示例节点：医疗检验科队列 MoveL）
 tl_description     （独立：URDF + 网格 + RViz）
   └─► tl_gazebo       （Gazebo 仿真，依赖 tl_description）
@@ -76,7 +76,7 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 - **用途**：遥操作节点 — 通过 PXREA Robot SDK（预编译 `.so`）与遥操作设备通信，同时在 ROS2 层面通过 `tl_ros2_interface` 的消息与服务与 `tl_driver` 交互
 - **专有库**：`lib/arm/`（ARM 架构）和 `lib/x86/`（x86 架构）下的预编译 `libPXREARobotSDK.so`，不可修改
 - **SDK 头文件**：`lib/include/PXREARobotSDK.h` — C 风格 API，使用 `uint64_t`（需 `#include <stdint.h>`）
-- **依赖**：`rclcpp` + `tl_ros2_interface`，并在 `package.xml` 中以 `<depend>` 声明 `tl_driver`（参与构建顺序，运行期经 `/tl_driver/*` 服务与话题通信）— 不链接 `tl_driver` 的库
+- **依赖**：`rclcpp` + `tl_ros2_interface`，并以 `<exec_depend>` 声明 `tl_driver`（运行期经 `/tl_driver/*` 服务与话题通信）— 不链接 `tl_driver` 的库
 - **实现状态**：已实现（双线程架构：ROS2 事件循环 + 100 Hz 控制循环；支持 6/7 轴自适应、握紧触发、摇杆死区、奇异点保护、关节跳变检测、控制循环分段计时）
 - **文件组织**：
   ```
@@ -96,7 +96,7 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 ### tl_teleop_f710
 - **构建类型**：ament_cmake（C++17）
 - **用途**：Logitech F710 手柄遥操作 — `joy_node → /joy`，节点内自行做笛卡尔→关节 IK，以 250 Hz（4 ms）稳定输出关节角到 `/tl_driver/set_servoj_pos`，指令流不中断；真机 / Gazebo 仿真双模式
-- **依赖**：`tl_ros2_interface`、`kdl_parser`/`orocos_kdl_vendor`（仿真模式 IK）、`ament_index_cpp` — 不直接链接 `tl_driver`，运行时通过话题/服务通信
+- **依赖**：`tl_ros2_interface`、`kdl_parser`/`orocos_kdl_vendor`（仿真模式 IK）、`ament_index_cpp`，并以 `<exec_depend>` 声明 `tl_driver`（运行期经 `/tl_driver/*` 服务与话题通信）— 不链接 `tl_driver` 的库
 - **真机模式**：启动时自动执行 `connect_arm → power_on → set_current_mode(2) → set_speed → open_servoj`；退出时 `close_servoj → 切回示教模式 → power_off`；以首帧 `/joint_states` 作为初始指令，启动不移动到零位
 - **仿真模式**：节点发布 `ServolMove` 到 `/tl_driver/set_servol_pos`，同包 `tl_teleop_f710_sim_bridge` 用 KDL `ChainIkSolverPos_LMA` 做 IK 并驱动 Gazebo position controller（仿真模式不依赖 tl_driver）
 - **启动**：
@@ -109,6 +109,7 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 ### tl_hardware
 - **构建类型**：ament_cmake
 - **用途**：ros2_control `SystemInterface` 硬件接口插件（插件名 `tl_hardware/TLHardwareInterface`，经 `tl_hardware_interface.xml` 导出），把 MoveIt2 的 `joint_trajectory_controller` 接到 `tl_driver`
+- **依赖**：ros2_control 的 `hardware_interface`、`pluginlib`、`trajectory_msgs` 等，并以 `<exec_depend>` 声明 `tl_driver`（运行期经 `/tl_driver/*` 服务与话题通信）— 不链接 `tl_driver` 的库
 - **数据通路**：读 `/joint_states`（best-effort QoS，位置差分算速度）；写 `/tl_driver/set_servoj_pos`（`std_msgs/Float64MultiArray`，单位为**角度**，与 ros2_control 的弧度制需转换）；`on_activate()` 调 `/tl_driver/open_servoj`（传 vmax/amax/jmax），关闭用 `/tl_driver/close_servoj`
 - **生命周期**：`on_configure()` 创建内部节点 `tl_hardware` 与后台 `SingleThreadedExecutor` 线程；`on_activate()` 等待首帧关节状态，超时 5 s 返回 `CallbackReturn::ERROR`（**激活失败**，非仅告警），并用当前关节角播种命令接口（ros2_control 在控制器接管前就激活硬件，否则会先持续下发零位把机械臂拉向零点）；激活后 `read()` 若超过 `state_timeout_sec` 未收到状态，则每 5 s 节流告警一次，不自动 shutdown（由上层控制器处理）
 - **启用方式**：`tl_moveit2_config` 各子包的 `config/tl_<arm_type>.ros2_control.xacro` 通过 `use_real_hardware` 开关选用该插件，参数为话题/服务名与 servoj 运动参数
@@ -181,6 +182,7 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 - **提交前必须跑**：`./scripts/format-cpp.sh`（C++）与 `black . && isort .`（Python）；CI（`.github/workflows/ci.yml`）会对 push/PR 强制检查，不通过即失败。
 - **开发环境通过 Docker 搭建**（Docker 配置不在本仓库中）。构建和运行均在容器内进行。
 - **发版**：在 `master`/`dev`/`V2` 分支上打 `V主.次.补`（可带 `-rc`/`-beta`）标签即触发 `.github/workflows/release.yml`——先跑格式检查，再创建 GitHub Release。`V2` 为独立版本线，其标签只发布 V2 系列版本。
+- **发版顺序（必须）**：先把分支推上去并等 CI 绿，再打标签：`git push origin <分支>` → CI 通过 → `git tag Vx.y.z && git push origin Vx.y.z`。`release.yml` 的守卫用「标签提交是否为远端 `master`/`dev`/`V2` 的祖先」判定，**只推标签不推分支时远端分支引用还停在旧位置**，守卫会静默跳过发布（只有标签、没有 Release）。误推时补推分支后重推标签即可。首次在 V2 线发版前，本地曾启用过 `.githooks` 的克隆建议执行一次 `git config --unset core.hooksPath`。
 
 ## 文档与变更日志同步规则
 
