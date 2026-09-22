@@ -29,11 +29,8 @@ private:
   void initKDL();
 
   // ========== IK 求解 ==========
-  bool solveIK(
-    double x, double y, double z,
-    double rx, double ry, double rz,
-    const KDL::JntArray & q_guess,
-    KDL::JntArray & q_out);
+  bool solveIK(double x, double y, double z, double rx, double ry, double rz, const KDL::JntArray& q_guess,
+               KDL::JntArray& q_out);
 
   // ========== 回调 ==========
   void jointStateCallback(const sensor_msgs::msg::JointState::SharedPtr msg);
@@ -66,4 +63,4 @@ private:
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pos_pub_;
 };
 
-#endif  // TL_TELEOP_F710__TL_TELEOP_F710_SIM_BRIDGE_H_
+#endif // TL_TELEOP_F710__TL_TELEOP_F710_SIM_BRIDGE_H_

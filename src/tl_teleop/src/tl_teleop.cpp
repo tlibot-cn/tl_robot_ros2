@@ -441,7 +441,8 @@ bool TL_Teleop::joints_safe(const std::vector<double>& new_joints)
   {
     if (std::abs(new_joints[i] - last_joints_[i]) > joint_jump_threshold_)
     {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Joint %zu jump too large: %.1f deg", i, std::abs(new_joints[i] - last_joints_[i]));
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Joint %zu jump too large: %.1f deg", i,
+                           std::abs(new_joints[i] - last_joints_[i]));
       return false;
     }
   }
@@ -718,8 +719,7 @@ void TL_Teleop::control_loop()
       double sleep_us = sleep_time * 1e6;
       if (sleep_us > SPIN_SAFE_US)
       {
-        std::this_thread::sleep_for(
-            std::chrono::microseconds(static_cast<int64_t>(sleep_us - SPIN_SAFE_US)));
+        std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int64_t>(sleep_us - SPIN_SAFE_US)));
       }
       // 自旋等待剩余时间，避免 sleep_for 精度不足
       while (std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() < CONTROL_PERIOD_S)
