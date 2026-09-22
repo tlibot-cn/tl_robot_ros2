@@ -5,6 +5,7 @@
 | 版本号 | 时间 | 备注 |
 | :---: | :---: | :---: |
 | V1.0 | 2026-5-22 | 拟制 |
+| V1.1 | 2026-9-22 | 修订（补全 F710 手柄仿真 launch/xacro/控制器配置条目，修正 `doc/` 图片文件名）|
 
 ## 目录
 * 1.[tl_gazebo功能包说明](#tl_gazebo功能包说明)
@@ -32,6 +33,8 @@ tl_gazebo支持天链机器人全系列臂型，共14种：
 `tcb605`、`tcb605f`、`tcb605l`、`tcb605lv`、`tcb605v`、`tcb610`、`tcb610v`、`tcb705`、`tcb705f`、`tcb705l`、`tcb705lv`、`tcb705v`、`tcb710`、`tcb710v`
 
 每种臂型均有对应的Gazebo模型描述文件（`.urdf.xacro`）和启动文件（`.launch.py`）。
+
+此外本包提供 F710 手柄遥操作仿真环境：`gazebo_6axis_f710_sim.launch.py` / `gazebo_7axis_f710_sim.launch.py`，只负责 Gazebo 与控制器（配置在 `config/ros2_controllers_f710_sim_*axis.yaml`），不含遥操作节点，由 `tl_teleop_f710` 的 `_gazebo` launch 包含。
 
 ## tl_gazebo功能包运行
 
@@ -98,10 +101,14 @@ tl_gazebo/
 │   ├── gazebo_tcb705lv_description.urdf.xacro  # TCB705LV Gazebo模型描述文件
 │   ├── gazebo_tcb705v_description.urdf.xacro   # TCB705V Gazebo模型描述文件
 │   ├── gazebo_tcb710_description.urdf.xacro    # TCB710 Gazebo模型描述文件
-│   └── gazebo_tcb710v_description.urdf.xacro   # TCB710V Gazebo模型描述文件
+│   ├── gazebo_tcb710v_description.urdf.xacro   # TCB710V Gazebo模型描述文件
+│   ├── gazebo_6axis_f710_sim.urdf.xacro        # F710 手柄仿真 6 轴模型描述文件
+│   ├── gazebo_7axis_f710_sim.urdf.xacro        # F710 手柄仿真 7 轴模型描述文件
+│   ├── ros2_controllers_f710_sim_6axis.yaml    # F710 手柄仿真 6 轴控制器配置
+│   └── ros2_controllers_f710_sim_7axis.yaml    # F710 手柄仿真 7 轴控制器配置
 ├── doc
-│   ├── tl_gazebo1.png                      # Gazebo仿真界面截图
-│   └── tl_gazebo2.png                      # RViz2+MoveIt2控制界面截图
+│   ├── image1.png                          # Gazebo仿真界面截图
+│   └── image2.png                          # RViz2+MoveIt2控制界面截图
 ├── launch
 │   ├── gazebo_tcb605_demo.launch.py        # TCB605 Gazebo启动文件
 │   ├── gazebo_tcb605f_demo.launch.py       # TCB605F Gazebo启动文件
@@ -116,7 +123,9 @@ tl_gazebo/
 │   ├── gazebo_tcb705lv_demo.launch.py      # TCB705LV Gazebo启动文件
 │   ├── gazebo_tcb705v_demo.launch.py       # TCB705V Gazebo启动文件
 │   ├── gazebo_tcb710_demo.launch.py        # TCB710 Gazebo启动文件
-│   └── gazebo_tcb710v_demo.launch.py       # TCB710V Gazebo启动文件
+│   ├── gazebo_tcb710v_demo.launch.py       # TCB710V Gazebo启动文件
+│   ├── gazebo_6axis_f710_sim.launch.py     # F710 手柄仿真 6 轴启动文件
+│   └── gazebo_7axis_f710_sim.launch.py     # F710 手柄仿真 7 轴启动文件
 ├── package.xml                             # 依赖说明文件
 └── README.md                               # 说明文档
 ```

@@ -13,6 +13,7 @@
 |V1.4 | 2026-5-29 | 修订（新增 [查询当前电机力矩](#查询当前电机力矩)、[查询当前线速度和关节速度](#查询当前线速度和关节速度) 服务）|
 |V1.5 | 2026-6-8  | 修订（详细化全部接口的输入输出参数说明，补全单位、范围、注意事项；优化参数表格式；修复锚点链接）|
 |V1.6 | 2026-6-23 | 新增[15.4 发送跟踪笛卡尔位姿](#154-发送跟踪笛卡尔位姿) |
+|V1.7 | 2026-9-22 | 修订（`/tcp_pose` 位置单位 m → mm、1.4 单位制约定表述、15.4 `step_size` 默认值 5.0 → 2.0）|
 
 </div>
 
@@ -132,8 +133,8 @@
 
 ### 1.4 单位制约定
 - `target_pos_type` 字段中携带单位制信息：`1` = 角度制（度），`2` = 弧度制（rad）
-- ROS标准消息（如 `sensor_msgs/JointState`、`CartesianPose`）中的角度/位置遵循ROS标准单位制
-- SDK底层API中 `get_current_position` 等接口返回的角度单位为度（°）
+- ROS2 接口的单位以各接口章节的逐项标注为准：`sensor_msgs/JointState` 的关节角为 rad；`CartesianPose` 的位置沿用 SDK 原始 mm 口径（**不是** ROS 惯例的 m），`rpy` 为 rad
+- SDK底层API中 `get_current_position` 等接口：坐标编号 0（关节）下返回角度制（度），坐标编号 1（直角）下位置为 mm、姿态为 rad
 
 ---
 ## 2 连接管理接口
@@ -279,13 +280,15 @@ ros2 topic echo /joint_states
 **输出/返回值**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| position.x | float64 | m | 末端位置X坐标（ROS标准单位） |
-| position.y | float64 | m | 末端位置Y坐标 |
-| position.z | float64 | m | 末端位置Z坐标 |
+| position.x | float64 | mm | 末端位置X坐标 |
+| position.y | float64 | mm | 末端位置Y坐标 |
+| position.z | float64 | mm | 末端位置Z坐标 |
 | rpy.x | float64 | rad | 末端姿态欧拉角 Roll |
 | rpy.y | float64 | rad | 末端姿态欧拉角 Pitch |
 | rpy.z | float64 | rad | 末端姿态欧拉角 Yaw |
 | arm_angle | float64 | rad | 臂角（冗余自由度参数） |
+
+> **注意**：位置单位为 **mm**（沿用 SDK 原始口径，非 ROS 惯例的 m），与 [1.1 坐标系编号](#11-坐标系编号)、[1.4 单位制约定](#14-单位制约定) 一致；`rpy` 为 rad。驱动不做单位换算，仅 `/joint_states` 做度→弧度换算。
 #### 命令示例
 ```
 ros2 topic echo /tcp_pose
@@ -1969,7 +1972,7 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
 | target_pose | float64[] | mm / rad | 目标笛卡尔位姿 [x, y, z, rx, ry, rz]（6维） |
-| step_size | float64 | mm | 插值步长，相邻插值点之间的最大笛卡尔距离，默认为 5.0 |
+| step_size | float64 | mm | 插值步长，相邻插值点之间的最大笛卡尔距离，默认 2.0（传入 ≤ 0 时按 2.0 处理） |
 | coord | int32 | — | 坐标系：1-基座标系(Base) 2-工具坐标系(Tool) 3-用户坐标系(User) |
 
 > **注意**：该话题需在 [打开关节跟踪模式](#打开关节跟踪模式) 后使用。内部使用四元数 Slerp 进行姿态插值，250Hz 频率发送关节角。收到话题消息后节点自动执行插值运动，执行过程中节点日志会显示插值点数。

@@ -31,7 +31,7 @@ source install/setup.bash
 ```
 tl_ros2_interface  （基础：自定义 msg/srv，无依赖）
   └─► tl_driver        （C++ 节点，链接 _tl_host.so 专有库）
-  └─► tl_teleop        （VR 遥操作 C++ 节点，PXREA Robot SDK）
+  └─► tl_teleop        （VR 遥操作 C++ 节点，PXREA Robot SDK；声明 tl_driver 运行时依赖）
   └─► tl_teleop_f710   （F710 手柄遥操作 C++ 节点，KDL IK）
   └─► tl_hardware      （ros2_control 硬件接口插件，桥接 MoveIt2 ↔ tl_driver）
   └─► tl_example       （示例节点：医疗检验科队列 MoveL）
@@ -76,7 +76,7 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 - **用途**：遥操作节点 — 通过 PXREA Robot SDK（预编译 `.so`）与遥操作设备通信，同时在 ROS2 层面通过 `tl_ros2_interface` 的消息与服务与 `tl_driver` 交互
 - **专有库**：`lib/arm/`（ARM 架构）和 `lib/x86/`（x86 架构）下的预编译 `libPXREARobotSDK.so`，不可修改
 - **SDK 头文件**：`lib/include/PXREARobotSDK.h` — C 风格 API，使用 `uint64_t`（需 `#include <stdint.h>`）
-- **依赖**：`rclcpp` + `tl_ros2_interface` — 不直接链接 `tl_driver`，运行时通过话题/服务通信
+- **依赖**：`rclcpp` + `tl_ros2_interface`，并在 `package.xml` 中声明 `tl_driver`（运行时经 `/tl_driver/*` 服务与话题通信）— 不链接 `tl_driver` 的库
 - **实现状态**：已实现（双线程架构：ROS2 事件循环 + 100 Hz 控制循环；支持 6/7 轴自适应、握紧触发、摇杆死区、奇异点保护、关节跳变检测、控制循环分段计时）
 - **文件组织**：
   ```

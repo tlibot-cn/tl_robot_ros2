@@ -187,7 +187,6 @@ tl_driver:
 │       └── tl_interface.py
 ├── package.xml
 ├── README.md
-├── 修改说明.md
 ├── src                        # 驱动代码源文件
 │   ├── control_demo.cpp           # 未纳入构建（见 doc/tl_driver架构评审与重构方案.md）
 │   └── tl_driver.cpp

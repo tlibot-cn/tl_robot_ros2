@@ -159,7 +159,6 @@ ros2 launch tl_teleop_f710 tl_teleop_f710_6axis_gazebo.launch.py arm_type:=tcb60
 | `servo_vmax` | 180.0 | — | 关节最大速度 (°/s)，上限 180 |
 | `deadzone` | 0.15 | 0.15 | 摇杆死区 |
 | `home_joints` | 6/7 零值 | 同 | 回零关节角（度）|
-| `home_joints` | 6/7 零值 | 同 | 回零关节角（度）|
 
 速度公式：`末端速度 ≈ 摇杆值 × sensitivity × (speed_value / 100)`
 
