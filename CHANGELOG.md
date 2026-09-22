@@ -4,7 +4,6 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)：
 
-- 最新发布版本：`[2.0.1]`（2026-09-22，git tag `V2.0.1`）
 - 已发布的版本章节按变更类型整理（新增/修复/变更/移除/文档/工程），不再按日期分组
 - 未发布的变更记录在 `[Unreleased]` 下，按日期（新 → 旧）分组整理
 - 正式发布时，将 `[Unreleased]` 内容合并进版本号章节（`## [x.y.z] - YYYY-MM-DD`），并重置 `[Unreleased]`
