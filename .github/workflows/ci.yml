@@ -6,7 +6,8 @@
 # 触发规则:
 #   - push 到 master/dev → 格式检查
 #   - 所有 pull_request  → 格式检查
-#   - 仅改动文档（**.md、docs/**）或 CI 配置（.github/**）时不触发
+#   - 仅改动文档（**.md、docs/**）时不触发（注意：paths-ignore 未含
+#     .github/**，改 workflow 本身仍会触发一次）
 #
 # 不做 CI 构建: 依赖环境过重（MoveIt/RViz/ros2_control 全量安装），
 # 编译验证由本地 Docker 开发环境完成。
