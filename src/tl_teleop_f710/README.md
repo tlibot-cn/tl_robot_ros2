@@ -55,8 +55,8 @@ tl_teleop_f710 运行时依赖 **tl_driver** 功能包提供以下服务与话�
 
 | 轴数 | 支持型号 | 通用配置文件 | 通用启动文件 |
 |------|---------|-------------|-------------|
-| **6 轴** | TCB605、TCB605F、TCB605L、TCB605LV、TCB605V、TCB610 | `tl_teleop_f710_6axis.yaml` / `_sim.yaml` | `tl_teleop_f710_6axis.launch.py` / `_gazebo.launch.py` |
-| **7 轴** | TCB610V、TCB705、TCB705F、TCB705L、TCB705LV、TCB705V、TCB710、TCB710V | `tl_teleop_f710_7axis.yaml` / `_sim.yaml` | `tl_teleop_f710_7axis.launch.py` / `_gazebo.launch.py` |
+| **6 轴** | TCB605、TCB605F、TCB605L、TCB605LV、TCB605V、TCB610、TCB610V | `tl_teleop_f710_6axis.yaml` / `_sim.yaml` | `tl_teleop_f710_6axis.launch.py` / `_gazebo.launch.py` |
+| **7 轴** | TCB705、TCB705F、TCB705L、TCB705LV、TCB705V、TCB710、TCB710V | `tl_teleop_f710_7axis.yaml` / `_sim.yaml` | `tl_teleop_f710_7axis.launch.py` / `_gazebo.launch.py` |
 
 ## 2 tl_teleop_f710 功能包使用
 
@@ -109,8 +109,8 @@ ros2 launch tl_teleop_f710 tl_teleop_f710_6axis.launch.py
 ros2 launch tl_teleop_f710 tl_teleop_f710_6axis_gazebo.launch.py arm_type:=tcb605
 ```
 
-`arm_type` 可选值：6 轴 `tcb605`、`tcb605f`、`tcb605l`、`tcb605lv`、`tcb605v`、`tcb610`；
-7 轴 `tcb610v`、`tcb705`、`tcb705f`、`tcb705l`、`tcb705lv`、`tcb705v`、`tcb710`、`tcb710v`。
+`arm_type` 可选值：6 轴 `tcb605`、`tcb605f`、`tcb605l`、`tcb605lv`、`tcb605v`、`tcb610`、`tcb610v`；
+7 轴 `tcb705`、`tcb705f`、`tcb705l`、`tcb705lv`、`tcb705v`、`tcb710`、`tcb710v`。
 
 ### 2.5 操作说明
 
