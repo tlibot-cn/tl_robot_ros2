@@ -23,13 +23,13 @@ repeatMode: once
 **不要写（纯内部）：**
 
 - 构建系统内部逻辑（`CMakeLists.txt` 的写法调整、目标/依赖重构）
-- 工具与配置（`.gitignore`、`.clang-format`、`pyproject.toml`、pre-commit hook）
-- **agent/harness 配置与规则**（`.omp/**`、`.agents/**`、`AGENTS.md` 自身）
+- 工具与配置（`.gitignore`、`.clang-format`、`pyproject.toml`、pre-commit hook、**CI 工作流 `.github/workflows/**` 的接入/迁移/守卫调整**）
+- agent/harness 配置与规则（`.omp/**`、`.agents/**`、`AGENTS.md` 自身）
 - 目录重命名、文件移动、代码搬家
 - 内部文档与稿件（架构评审稿、说明文档勘误中的纯笔误、草稿）
 - 测试内部（lint 配置调整、手工脚本改动、测试代码重构）
 - 代码风格（变量重命名、include 补齐、注释润色、格式化）
-- 发布流程内部动作（合并提交、回退某次提交——这类只写进文末「备注」）
+- 发布流程内部动作（合并提交、回退某次提交——这类只写进文末「备注」；`package.xml` 的版本号/维护者等元数据整理也不写，**许可证变更除外**，它影响用户能否再分发）
 
 **基线：相对最后一次发布版本（tag）的净变更，不是相对上一个提交。**
 

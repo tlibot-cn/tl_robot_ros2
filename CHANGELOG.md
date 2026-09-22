@@ -23,6 +23,7 @@
 
 - tl_teleop 包声明对 `tl_driver` 的依赖（`<exec_depend>`），保证服务端可用性（`2b5a56f`、`3265269`）
 - tl_hardware、tl_teleop_f710 同样调用 `/tl_driver/*` 服务，补齐对 `tl_driver` 的 `<exec_depend>` 声明（`248e82f`、`3265269`）
+- 功能包许可证统一为 Apache-2.0：`tl_teleop_f710` 由 `Proprietary`、`tl_gazebo` 与 14 个 MoveIt2 型号配置包由 `BSD` 改为 Apache-2.0，与仓库根 `LICENSE` 一致（`b682f00`）
 
 ### 文档
 
@@ -32,13 +33,7 @@
 - tl_driver 服务与话题说明书：`/tcp_pose` 与 `/tl_driver/set_user_coord` 的位置单位由 m 修正为 mm（与实现、1.1 约定及同章工具参数口径一致），`/tl_driver/set_servol_pos` 的 `step_size` 默认值 5.0 → 2.0（代码实际值），1.4 单位制约定按节点/直角坐标各自的实际口径限定（`d0fd361`、`29b7841`）
 - tl_ros2_interface README 补齐 `ServolMove` 消息说明（目录、文件总览与字段），修正 `CartesianPose.position` 单位标注（`d0fd361`）
 - tl_teleop_f710 README 修正适用型号轴数：TCB610V 归入 6 轴，避免按 7 轴配置启动导致 FK/IK 初始化失败（`299482c`）
-- tl_gazebo README 补全 F710 手柄仿真 launch / xacro / 控制器配置条目，修正 `doc/` 图片文件名（`d0fd361`）
-- AGENTS.md 与 `.omp/WATCHDOG.md`：位置单位条款改为逐接口列举的 mm 契约，跨层单位不变量表扩到全量接口（`90c48d2`）
-
-### 工程
-
-- 接入 GitHub Actions：push 到 `master`/`dev`/`V2` 与 PR 强制格式检查（clang-format + black），打版本标签自动创建 GitHub Release——**发版顺序为先推分支、等 CI 绿、再打标签**（只推标签时守卫会跳过发布）；移除 `.githooks` pre-commit 钩子（曾执行过 `git config core.hooksPath .githooks` 的本地克隆需 `git config --unset core.hooksPath`）（`cd8aaa9`、`5399224`）
-- 全部 23 个 package.xml 版本统一为 2.0.1，维护者统一为 天链机器人 <tlibot@tlibot.com>，许可证统一为 Apache-2.0（`b682f00`）
+- tl_gazebo README 补全 F710 手柄仿真 launch / xacro / 控制器配置条目（`d0fd361`）
 
 ## [2.0.0] - 2026-08-21
 
