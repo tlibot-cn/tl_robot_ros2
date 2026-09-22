@@ -171,8 +171,7 @@ tl_driver:
 ├── package.xml
 ├── README.md
 ├── src                        # 驱动代码源文件
-│   ├── control_demo.cpp         # 早期 Demo，未纳入构建
-│   └── tl_driver.cpp
+│   └── tl_driver.cpp
 └── test                       # 接口测试
     ├── test_all_interfaces.py   # 全接口测试脚本
     └── tl_driver_接口测试.md    # 接口测试说明文档
