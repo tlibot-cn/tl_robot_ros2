@@ -17,8 +17,9 @@
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
   <depend>tl_ros2_interface</depend>
-  <depend>tl_driver</depend>
   <depend>trajectory_msgs</depend>
+
+  <exec_depend>tl_driver</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
