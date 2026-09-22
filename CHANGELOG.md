@@ -26,12 +26,10 @@
 
 ### 文档
 
-- tl_driver 服务与话题说明书修正：`/tcp_pose` 位置单位 m → mm（与实现及 1.1 约定一致）、`/tl_driver/set_servol_pos` 的 `step_size` 默认值 5.0 → 2.0（代码实际值）、1.4 单位制约定按实际口径限定范围（`d0fd361`）
-- tl_ros2_interface README 补齐 `ServolMove` 消息（目录、文件总览与字段说明），修正 `CartesianPose.position` 单位标注（`d0fd361`）
+- tl_driver 服务与话题说明书：`/tcp_pose` 与 `/tl_driver/set_user_coord` 的位置单位由 m 修正为 mm（与实现、1.1 约定及同章工具参数口径一致），`/tl_driver/set_servol_pos` 的 `step_size` 默认值 5.0 → 2.0（代码实际值），1.4 单位制约定按节点/直角坐标各自的实际口径限定（`d0fd361`、`29b7841`）
+- tl_ros2_interface README 补齐 `ServolMove` 消息说明（目录、文件总览与字段），修正 `CartesianPose.position` 单位标注（`d0fd361`）
+- tl_teleop_f710 README 修正适用型号轴数：TCB610V 归入 6 轴，避免按 7 轴配置启动导致 FK/IK 初始化失败（`299482c`）
 - tl_gazebo README 补全 F710 手柄仿真 launch / xacro / 控制器配置条目，修正 `doc/` 图片文件名（`d0fd361`）
-- tl_driver README 文件树删除已移除的 修改说明.md（`2b5a56f`），不再引用未入库文档（`6fe945b`）
-- src/README 修正 msg 定义文件数量，AGENTS.md 同步 tl_teleop 依赖（`d0fd361`）
-- tl_teleop_f710 README 删除重复的 `home_joints` 参数行（`d0fd361`）
 
 ### 工程
 
