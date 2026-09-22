@@ -11,7 +11,7 @@
 
 - `src/` 下 10 个顶层目录、共 **23 个功能包**（`package.xml`，其中 `tl_moveit2_config/` 含 14 个型号子包）+ `scripts/` 工具脚本；ROS2 Humble，C++17 / Python，colcon（ament_cmake + ament_python），无前端/Node.js。
 - 构建：`colcon build --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` → `source install/setup.bash`（产物 `build/`、`install/`、`log/` 已 gitignore）。选择性构建必须先建 `tl_ros2_interface`（生成 msg/srv 头文件）。
-- **无单元测试**。验证面两层：`ament_lint_auto` 代码风格检查（`tl_bringup`/`tl_description`/`tl_gazebo`/`tl_teleop`/`tl_teleop_f710` 的 `CMakeLists.txt` 中启用），以及 `src/tl_driver/test/` 下需真机在线的手工脚本（`test_moveJ.sh`、`test_moveL.sh`、`test_job_insert_*.sh`、`test_publisher.py`）。不要以"补测试"充当验证，验证靠编译 + 实机/仿真运行。
+- **无测试**：仓库里唯一的自动化检查是 `ament_lint_auto` 代码风格检查（`tl_bringup`/`tl_description`/`tl_gazebo`/`tl_teleop`/`tl_teleop_f710` 的 `CMakeLists.txt` 中启用）。不要以"补测试"充当验证，验证靠编译 + 实机/仿真运行。
 - 开发环境在 Docker 内（配置不在本仓库）。
 
 | 包 | 作用 | 关键入口 |

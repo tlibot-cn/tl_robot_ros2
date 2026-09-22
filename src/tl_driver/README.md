@@ -186,15 +186,8 @@ tl_driver:
 │       └── tl_interface.py
 ├── package.xml
 ├── README.md
-├── src                        # 驱动代码源文件
-│   ├── control_demo.cpp           # 未纳入构建（未在 CMakeLists.txt 中注册）
-│   └── tl_driver.cpp
-└── test                       # 测试脚本
-    ├── test_job_insert_moveJ.sh
-    ├── test_job_insert_moveL.sh
-    ├── test_moveJ.sh
-    ├── test_moveL.sh
-    └── test_publisher.py
+└── src                        # 驱动代码源文件
+    └── tl_driver.cpp
 ```
 ## tl_driver功能包话题与服务说明
 tl_driver功能包的服务和话题较多，可以通过如下指令了解其话题信息。
