@@ -1,330 +1,120 @@
 # AGENTS.md — 天链机器人 ROS2 工作空间
 
-## 工作空间概述
+**本文件在会话启动时注入 agent 上下文，只写两类内容：不知道就会做错的硬约束、找东西的地图。**
+使用方式（启动命令、参数配置）看 `README.md`；逐包结构与用途看 `src/README.md` 和各包 `README.md`；
+接口逐条说明看 `src/tl_driver/doc/tl_driver服务与话题说明书.md`。文档与代码冲突时以代码为准，并同步修正文档。
 
-天链（TianLian）机械臂 ROS2 工作空间。`src/` 下包含 10 个功能包及 `scripts/` 工具脚本，使用标准 `colcon build` 构建流程。无 `package.json`、无 Node.js — 纯 ROS2（ament_cmake + ament_python）。
+## 项目速览
 
-仓库根目录文件：
+- `src/` 下 10 个功能包 + `scripts/` 工具脚本；ROS2 Humble，C++17 / Python，colcon（ament_cmake + ament_python），无前端/Node.js。
+- 构建：`colcon build --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` → `source install/setup.bash`（产物 `build/`、`install/`、`log/` 已 gitignore）。选择性构建必须先建 `tl_ros2_interface`（生成 msg/srv 头文件）。
+- **无自动化测试**：`test/` 只有 ament lint 脚手架（`ament_copyright`/`flake8`/`pep257`）。不要假设有测试可跑，也不要以"补测试"充当验证 —— 验证靠编译 + 实机/仿真运行。
+- 开发环境在 Docker 内（配置不在本仓库）。
 
-| 文件 / 目录 | 作用 |
-|---|---|
-| `README.md` | 环境搭建、编译、代码格式与运行入口 |
-| `AGENTS.md` | 本文件 — 工作空间结构、命名规范与文档同步规则 |
-| `CHANGELOG.md` | 全部用户可见变更的账本（维护规则见「文档同步规则」） |
-| `pyproject.toml`、`.clang-format` | Python（black/ruff/isort，100 列）与 C++（clang-format v14，Allman、2 空格、120 列）格式配置 |
-| `.github/workflows/` | CI：push/PR 格式检查（clang-format + black）；打版本标签触发 GitHub Release（标题即标签名，正文取自 `CHANGELOG.md` 对应版本章节） |
-| `scripts/format-cpp.sh` | clang-format 包装脚本，自动跳过 `lib/include/` 下三方 SDK 头文件 |
-| `scripts/release-notes.sh` | Release 正文提取脚本：从 `CHANGELOG.md` 抽出指定标签的版本章节（`release.yml` 调用；本地预览 `./scripts/release-notes.sh V3.0.0`） |
-| `scripts/workspace_measure` | 工作空间测量工具（FK/IK 可达空间可视化） |
+| 包 | 作用 | 关键入口 |
+| --- | --- | --- |
+| `tl_ros2_interface` | 全部自定义接口（12 个 `.msg`、45 个 `.srv`） | `msg/`、`srv/`；**必须最先构建** |
+| `tl_driver` | 机械臂驱动，TCP 连控制器（65 服务 / 4 订阅 / 3 发布） | `src/tl_driver.cpp`（约 2800 行单文件）、`include/tl_driver/tl_driver.h` |
+| `tl_teleop` | VR 遥操作（PXREA Robot SDK，100 Hz 控制线程） | `src/tl_teleop.cpp`；SDK 头 `lib/include/PXREARobotSDK.h`（C 风格 API，用 `uint64_t` 需 `<stdint.h>`） |
+| `tl_teleop_f710` | F710 手柄遥操作 + 仿真桥接（250 Hz ServoJ） | `src/tl_teleop_f710_node.cpp`、`src/tl_teleop_f710_sim_bridge.cpp` |
+| `tl_hardware` | ros2_control 硬件插件，桥接 MoveIt2 ↔ `tl_driver` | `src/tl_hardware_interface.cpp`（`tl_hardware::TLHardwareInterface`） |
+| `tl_description` | URDF + STL 网格 + RViz（纯数据包，无编译代码） | `urdf/`、`meshes/`、`rviz/` |
+| `tl_bringup` | 启动聚合（`tl_driver` + `tl_description`） | `launch/`（14 种臂型各一个） |
+| `tl_gazebo` | Gazebo 仿真 | `launch/`、`config/` |
+| `tl_moveit2_config` | MoveIt2 配置集合（14 个子包） | `tl_<arm_type>_config/` |
+| `tl_example` | 示例程序（医疗 demo、接口示例） | `src/` |
 
-## 构建命令
+依赖：`tl_driver` / `tl_teleop` / `tl_teleop_f710` / `tl_hardware` / `tl_example` 依赖 `tl_ros2_interface`（须先构建）；`tl_teleop` / `tl_teleop_f710` / `tl_hardware` 另声明 `exec_depend: tl_driver`（运行时走话题/服务，不链接）；`tl_gazebo` 与各 `tl_<arm>_config` 声明 `tl_description`（后者另含 `tl_hardware`）；`tl_bringup` 只组合 launch，不声明包依赖。
 
-（colcon 自动解析拓扑顺序）：
-```bash
-colcon build --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-source install/setup.bash
-```
+## 硬约束（改代码前先读）
 
-构建产物在 `build/`、`install/`、`log/` — 均已 gitignore。
+**① 专有库只读。** `src/tl_driver/lib/`（`libtl_host.so` + `include/*.h` 14 个头，V3.0.2）与 `src/tl_teleop/lib/`（`libPXREARobotSDK.so`）是预编译第三方产物 —— 不改、不格式化（`scripts/format-cpp.sh` 已跳过 `lib/include/`）。
 
-## 功能包依赖关系
+**② 单位口径。** ROS 侧 m / rad；控制器与服务接口 mm / 度 / %。换算发生在驱动内或各消费方，**改任一端必须同时改另一端**：
 
-```
-tl_ros2_interface  （基础：自定义 msg/srv，无依赖）
-  └─► tl_driver       （C++ 节点，链接 libtl_host.so 专有库）
-  └─► tl_teleop       （VR 遥操作 C++ 节点，PXREA Robot SDK；exec_depend: tl_driver）
-  └─► tl_teleop_f710  （F710 手柄遥操作 C++ 节点，KDL IK；exec_depend: tl_driver）
-  └─► tl_hardware     （ros2_control 硬件接口插件，桥接 MoveIt2 ↔ tl_driver；exec_depend: tl_driver）
-  └─► tl_example      （示例程序，依赖接口消息）
-tl_description     （独立：URDF + 网格 + RViz）
-  └─► tl_gazebo       （Gazebo 仿真，依赖 tl_description）
-  └─► tl_moveit2_config（MoveIt2 配置集合，依赖 tl_description）
-tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
-scripts/           （工作空间测量等工具脚本，不参与 colcon 构建）
-```
+| 通道 | 单位 |
+| --- | --- |
+| `/joint_states.position` | rad（驱动内度→弧度） |
+| `/tcp_pose.position` / `.rpy` | m / rad（驱动内 mm→m） |
+| `/tl_driver/set_servoj_pos` | 度（原值透传 aux；7 元素，末位补 0） |
+| `/tl_driver/set_servol_pos.target_pose` | mm + 姿态 rad；`step_size` mm（≤0 → 2.0） |
+| `MoveCommand.target_pos_value` | 原值透传：`coord=0` 为度；`1/2/3` 为 mm + 姿态 rad |
+| `ToolParam` / `SetUserCoord` | mm + 姿态 rad（`ToolParam` 的 `a/b/c` 为度、`payload_mass` 为 kg） |
 
-## 功能包说明
+消费方换算共四处：`tl_teleop`（`/tcp_pose` m→mm ×1000）、`tl_teleop_f710_node`（KDL FK m→mm ×1000、rad→度 ×180/π）、`tl_teleop_f710_sim_bridge`（mm→m ÷1000）、`tl_hardware_interface`（rad→度 ×180/π）。
+欧拉角约定为 **XYZ 内旋**（scipy 中用大写 `'XYZ'`）。
+先例：`/tcp_pose` 的 m↔mm 误用曾让遥操作 IK 目标点错 1000 倍，控制器报 **9754「目标位置不可达」**（`2c5b2e4`）。
 
-### tl_ros2_interface
-- **构建类型**：ament_cmake
-- **用途**：定义所有自定义 ROS2 接口（12 个 `.msg`，45 个 `.srv`）
-- **关键消息**：`ObjectInfo`、`ArmStatus`、`CartesianPose`、`MoveCommand`
-- **关键服务**：`GetCurrentCoord`、`SetSpeed`、`Jogging`、`ModbusRead/Write`、`JobRun`
-- **必须最先构建** — 其他包依赖其生成的头文件（colcon 会自动处理构建顺序）
+**③ 长度契约。** 关节/位姿向量第 7 位对 6 轴**补 0**，不是截断；`MoveCmd::targetPosValue` 与全局点位容器均为 **14 位**（前 7 本体 + 后 7 外部轴，几轴填几位、其余置 0）。
 
-### tl_driver
-- **构建类型**：ament_cmake（C++17）
-- **用途**：机械臂驱动 — 通过 TCP 与实体机械臂通信
-- **入口**：`src/tl_driver.cpp` → 单一 `tl_driver` 可执行文件；`main()` 使用 `MultiThreadedExecutor`（线程数 `max(4, hardware_concurrency)`）匹配回调组架构
-- **专有库**：`lib/arm/`（ARM 架构）与 `lib/x86/`（x86 架构）下各一份预编译 `libtl_host.so`（V3.0.2），不可修改；`lib/include/` 为 C/C++ API 头文件（扁平结构，14 个 `.h`）
-- **配置**：`config/` 下按臂型命名的 YAML（如 `tl_tcb605_config.yaml`）。关键参数：`arm_ip`、`arm_port`（TCP 主端口）、`arm_port_aux`（TCP 辅助端口）、`arm_type`、`arm_joints`
-- **启动**：
-  - 通用：`ros2 launch tl_driver tl_driver.launch.py arm_type:=<arm_type>`
-  - 快捷：`ros2 launch tl_driver tl_tcb710_driver.launch.py`（每种臂型一个专用文件，如 `tl_tcbXXX_driver.launch.py`）
-- **默认机械臂 IP**：`192.168.1.13`，端口 `6001` — 如需修改，改对应配置 YAML
-- **回调组架构**（`TL_Arm` 构造函数中创建 3 组）：
-  - `service_group_`（`MutuallyExclusive`）— 全部 65 个服务，保证服务回调串行执行
-  - `topic_group_`（`MutuallyExclusive`）— 4 个话题订阅，保证话题回调串行执行
-  - `timer_group_`（`Reentrant`）— 状态发布定时器（100 Hz），允许定时器回调并发
-- **话题**：发布 `joint_states`、`tcp_pose`、`arm_status`；订阅 `moveJ`、`moveL`、`set_servoj_pos`、`set_servol_pos`（详见下方关键话题表）
-- **安全行为**：`init()` 中若 `connect()` 失败，节点会调用 `rclcpp::shutdown()` 并 exit
+**④ 双端口。** 6001 `arm_port`：请求/响应式 SDK 调用；7000 `arm_port_aux`：servoJ 全系列 + **机器人状态异步推送**。两个 fd 都必须连上（`is_connected()` 要求均 > 0）；状态回调只在 aux 注册，错误/告警回调**两个端口都注册**。
 
-### tl_teleop
-- **构建类型**：ament_cmake（C++17）
-- **用途**：遥操作节点 — 通过 PXREA Robot SDK（预编译 `.so`）与遥操作设备通信，同时在 ROS2 层面通过 `tl_ros2_interface` 的消息与服务与 `tl_driver` 交互
-- **专有库**：`lib/arm/`（ARM 架构）和 `lib/x86/`（x86 架构）下的预编译 `libPXREARobotSDK.so`，不可修改
-- **SDK 头文件**：`lib/include/PXREARobotSDK.h` — C 风格 API，使用 `uint64_t`（需 `#include <stdint.h>`）
-- **依赖**：`rclcpp` + `tl_ros2_interface` — 不直接链接 `tl_driver`，运行时通过话题/服务通信
-- **实现状态**：已实现（`tl_teleop.cpp` 双线程架构：ROS2 事件循环 + 100Hz 控制线程；支持 6/7 轴、握紧触发、死区滤波、奇异点保护、关节跳变检测）
-- **文件组织**：
-  ```
-  tl_teleop/
-  ├── src/tl_teleop.cpp           # 遥操作节点实现
-  ├── include/tl_teleop/tl_teleop.h
-  ├── config/                     # tl_teleop_6axis/7axis_config.yaml
-  ├── launch/                     # tl_teleop_6axis/7axis.launch.py
-  ├── lib/
-  │   ├── include/PXREARobotSDK.h # PXREA SDK C API 头文件
-  │   ├── arm/libPXREARobotSDK.so # ARM 架构预编译库
-  │   └── x86/libPXREARobotSDK.so # x86 架构预编译库
-  ├── CMakeLists.txt
-  └── package.xml
-  ```
+**⑤ 线程模型。** `tl_driver` 三组回调组 `service_group_` / `topic_group_` / `timer_group_` **均为 `MutuallyExclusive`**（同组串行），由 `MultiThreadedExecutor` 驱动（线程数 `max(4, hardware_concurrency)`）。`timer_group_` 曾用 `Reentrant` 导致状态发布回调并发，`4757255` 改为互斥，**勿改回**。
 
-### tl_description
-- **构建类型**：ament_cmake
-- **用途**：URDF 模型 + 网格文件 + robot_state_publisher + RViz 配置
-- **无编译代码** — 纯数据包（URDF、STL 网格、.rviz 配置）
-- **启动**：`ros2 launch tl_description tl_description.launch.py arm_type:=<arm_type> use_sim:=<true|false>`
-- **use_sim=true**：启动 `joint_state_publisher_gui`，通过滑动条手动控制关节
-- **use_sim=false**：订阅 `/joint_states`（需要 tl_driver 运行中）
+**⑥ 失败即退。** `TL_Arm::init()` 中连接失败、切入示教模式失败均 `rclcpp::shutdown()` + exit —— 不带病运行。
 
-### tl_bringup
-- **构建类型**：ament_cmake
-- **用途**：启动聚合器 — 同时启动 tl_driver + tl_description
-- **无编译代码** — 仅启动文件
-- **启动**：`ros2 launch tl_bringup tl_<arm_type>_bringup.launch.py`
-- **每种臂型一个启动文件**（共 14 个，如 `tl_tcb605_bringup.launch.py`）
-
-### tl_gazebo
-- **构建类型**：ament_cmake
-- **用途**：在 Gazebo 仿真环境中加载机械臂模型，通过 ros2_control 控制虚拟机械臂
-- **启动**：`ros2 launch tl_gazebo gazebo_<arm_type>_demo.launch.py`
-- **配合 MoveIt2**：`ros2 launch tl_<arm_type>_config gazebo_moveit_demo_<arm_type>.launch.py`
-
-### tl_moveit2_config
-- **构建类型**：ament_cmake（14 个子功能包集合，每个型号一套）
-- **用途**：MoveIt2 运动规划配置，包含 SRDF、关节限位、运动学求解器（KDL）、控制器配置
-- **启动**：
-  - 虚拟控制：`ros2 launch tl_<arm_type>_config demo.launch.py`
-- **配置**：每个子包包含 `config/`（initial_positions、joint_limits、kinematics、srdf 等）和 `launch/`（demo、move_group、rviz 等）
-
-## 支持的臂型
-
-启动参数中全部小写：`tcb605`、`tcb605f`、`tcb605l`、`tcb605lv`、`tcb605v`、`tcb610`、`tcb610v`、`tcb705`、`tcb705f`、`tcb705l`、`tcb705lv`、`tcb705v`、`tcb710`、`tcb710v`
-
-配置 YAML 中 `arm_type` 字段用大写：如 `TCB605`
+**⑦ 硬编码边界。** IP / 端口 / 关节名只出现在 `config/*.yaml`（默认 `192.168.1.13:6001`），不写进代码。`arm_type` 在配置 YAML 中大写（`TCB605`），启动参数小写（`tcb605`），全部 14 种。
 
 ## 关键话题
 
-| 话题 | 发布者 | 订阅者 | 类型 |
-|------|--------|--------|------|
-| `/joint_states` | tl_driver（真实）/ joint_state_publisher_gui（仿真） | tl_description | `sensor_msgs/JointState` |
-| `/tcp_pose` | tl_driver | — | `tl_ros2_interface/CartesianPose` |
-| `/arm_status` | tl_driver | — | `tl_ros2_interface/ArmStatus` |
-| `/tl_driver/moveJ` | — | tl_driver | `tl_ros2_interface/MoveCommand` |
-| `/tl_driver/moveL` | — | tl_driver | `tl_ros2_interface/MoveCommand` |
-| `/tl_driver/set_servoj_pos` | — | tl_driver | `std_msgs/Float64MultiArray` |
-| `/tl_driver/set_servol_pos` | tl_teleop_f710（仿真模式） | tl_driver | `tl_ros2_interface/ServolMove` |
+| 话题 | 方向与单位 |
+| --- | --- |
+| `/joint_states` | `tl_driver` 发（rad）；`tl_description`、`tl_hardware` 收 |
+| `/tcp_pose` | `tl_driver` 发（m / rad） |
+| `/arm_status` | `tl_driver` 发（运行状态） |
+| `/tl_driver/moveJ`、`/tl_driver/moveL` | `tl_driver` 收（`MoveCommand`；**不等到位**，需到位判定的一方自行轮询 `/arm_status`） |
+| `/tl_driver/set_servoj_pos` | `tl_driver` 收（度，走 aux） |
+| `/tl_driver/set_servol_pos` | `tl_driver` 收（mm + rad）；`tl_teleop_f710` 仿真模式发 |
 
-| `/tf`、`/tf_static` | tl_description（robot_state_publisher） | — | `tf2_msgs/TFMessage` |
+其余话题与服务见 `src/tl_driver/doc/tl_driver服务与话题说明书.md`。
 
-## CI（GitHub Actions）
+## 命名规范（只列非默认项）
 
-|文件|触发|内容|
-|---|---|---|
-|`.github/workflows/ci.yml`|push master/dev、pull_request（`**.md`、`docs/**`、`.github/**` 变更不触发）|格式检查：clang-format（C++，经 `scripts/format-cpp.sh`）+ black（Python，版本锁定 26.5.1）|
-|`.github/workflows/release.yml`|任意标签推送|guard 校验（标签名 `v主.次.补[-rc/beta]` + 位于 master/dev）→ 由 `scripts/release-notes.sh` 抽 `CHANGELOG.md` 对应版本章节作正文（缺失即失败）→ 格式检查 → 创建 GitHub Release（标题即标签名，rc/beta 为 prerelease）|
+- **C++**：文件 snake_case；类/枚举 PascalCase；枚举值与宏 UPPER_SNAKE；成员变量 `snake_case_`（下划线后缀）；成员函数 camelCase；服务回调 `handle_{name}_service`、话题回调 `handle_{topic}_topic`；句柄变量 `{name}_service_` / `_sub_` / `_pub_`；头文件保护 `包名__文件名_H_`；回调绑定用 `std::bind(&Class::method, this, ...)`。
+- **Python**：文件/函数/变量 snake_case；类 PascalCase（ROS 节点类继承 `Node`）；私有方法 `_snake_case`；服务客户端 `_cli` 后缀、订阅者 `_sub` 后缀；入口函数与 `console_scripts` 同名。
+- **话题/服务名**：snake_case，驱动侧统一 `/tl_driver/` 前缀。
+- **已知例外（历史遗留，勿"顺手修正"）**：`connect_service_` → `/tl_driver/connect_arm`；`poweron_service_` / `poweroff_service_` → `/tl_driver/power_on` / `power_off`；`running_status_pub_` → `/arm_status`。
 
-- **CI 不做构建**：依赖环境过重（MoveIt/RViz/ros2_control 全量安装），编译验证在本地 Docker 开发环境完成
-- 格式检查容器为 `ubuntu:22.04`（clang-format 14），与本地工具链版本一致，避免新版 clang-format 格式化结果漂移
+## 提交前必做
 
-## 注意事项
+1. **格式**：`./scripts/format-cpp.sh` + `black .`（CI 与发版都会重跑这套检查，见下节）。`isort` 不进 CI，需要时自行跑。
+2. **文档同步**：代码/配置变更必须**在同一提交内**带上文档。逐项核对：
 
-- **`_tl_host.so`** 是预编译专有库，禁止尝试重新编译或修改。构建时链接，安装到 `lib/tl_driver/`。
-- **tl_driver 使用 `MultiThreadedExecutor`** 驱动 3 个回调组（`service_group_`、`topic_group_`、`timer_group_`），保证服务/话题串行、定时器并发。这是回调组架构正常工作的必要条件。
-- **选择性构建时必须先构建 tl_ros2_interface**。不带 `--packages-select` 的 `colcon build` 会自动处理。
-- **机械臂位置单位**：NRC API 返回 mm；ROS2 层使用时需注意单位转换。欧拉角约定为 XYZ 内旋（scipy 中使用大写 `'XYZ'`）。
-- **无自动化测试**，仅有 ament 代码风格检查脚手架。`test/` 目录只包含 `ament_copyright`、`ament_flake8`、`ament_pep257`。
-- **提交前必须跑**：`./scripts/format-cpp.sh`（C++）与 `black .`（Python）；CI（`.github/workflows/ci.yml`）会对 push/PR 强制检查，不通过即失败。`isort`（import 排序）不纳入 CI——仓库历史 import 顺序存在漂移，需要时自行运行 `isort .`。
-- **开发环境通过 Docker 搭建**（Docker 配置不在本仓库中）。构建和运行均在容器内进行。
-- **发版**：在 `master`/`dev` 分支上打 `V主.次.补`（可带 `-rc`/`-beta`）标签即触发 `.github/workflows/release.yml`——先校验发布条件，再由 `scripts/release-notes.sh` 从 `CHANGELOG.md` 抽出该标签的版本章节作 Release 正文（`V3.0.0` → `## [3.0.0]`，`-rc`/`-beta` 标签回退到基础版本章节），随后跑格式检查并创建 GitHub Release（标题即标签名，正文 = 章节内容 + 完整变更日志链接，不用 GitHub 自动生成的提交/PR 列表）。**找不到对应章节或章节为空时发布失败、不创建 Release**——须先把 `[Unreleased]` 内容合并进版本号章节并推送分支，再把标签**重新指向含该章节的提交**（`git tag -f Vx.y.z <提交> && git push -f origin Vx.y.z`）；仅删除并重推同一标签仍指向旧提交，会再次失败。
-- **发版顺序（必须）**：先把分支推上去并等 CI 绿，再打标签：`git push origin <分支>` → CI 通过 → `git tag Vx.y.z && git push origin Vx.y.z`。`release.yml` 的守卫用「标签提交是否为远端 `master`/`dev` 的祖先」判定，**只推标签不推分支时远端分支引用还停在旧位置**，守卫会静默跳过发布（只有标签、没有 Release）。误推时补推分支后重推标签即可。
+   | 变更 | 同步的文档 |
+   | --- | --- |
+   | msg / srv / 话题 / 服务增删改 | `CHANGELOG.md` + 对应包说明书（如 `src/tl_driver/doc/`） |
+   | launch 文件、启动参数、YAML 参数 | 对应包 `README.md` |
+   | 增删功能包、依赖变化 | `CHANGELOG.md` + 本文件包表 + 该包 `README.md` |
+   | 构建命令、命名规范、关键话题表、臂型表 | 本文件 |
+   | 用户可见 Bug 修复、SDK 升级、新增臂型 | `CHANGELOG.md` |
+   | 行为变更（协议、单位、上电时序、默认参数、回调组、公共 API 签名） | `CHANGELOG.md` + 相关文档 |
+   | 动到被文档引用的路径/名称/命令 | 修正所有引用处 |
 
-## 文档同步规则
+   全部为否（格式化、注释、命名、`.omp/**` 等纯内部调整）才可跳过，且**不进 `CHANGELOG.md`**。条目标准与发布基线判定见 `.omp/rules/changelog-user-visible.md`。
+3. **自检**：`git diff --stat` 中代码与文档成对出现；文档引用的路径、launch 命令、话题/服务名与代码一致。
 
-**核心规则**：任何代码/配置变更，文档必须在**同一提交（或同一 PR）内**同步。禁止"代码先合、文档后续再说"。
+## CI 与发版（`.github/workflows/`）
 
-### 提交前强制检查（起草 commit 前逐项核对）
+两个 workflow 都跑在 `ubuntu-24.04`，工具经 pip 固定版本（`clang-format==14.0.6`、`black==26.5.1`），与本地工具链一致，避免版本漂移误报。**两者都不编译**（MoveIt/RViz/ros2_control 依赖过重）—— 改了 C++ 必须本地 Docker 里 `colcon build` 过一遍。
 
-对本次变更依次回答：
+**`ci.yml`（日常验证）**：push 到 `master`/`dev` 与所有 PR 触发；`paths-ignore: **.md`、`docs/**`，即纯文档提交**完全不触发**（也就没有 CI 绿灯可等，发版前需自行确认）。只做格式检查：
 
-1. 是否新增/删除/修改 ROS2 接口（msg/srv/话题/服务）？→ 更新 `CHANGELOG.md` + 对应包的服务与话题说明书
-2. 是否改变启动方式（launch 文件新增/改名/参数）或配置 YAML 参数？→ 更新对应包 `README.md` 的启动/配置章节
-3. 是否新增/删除功能包或改变包依赖关系？→ 更新 `CHANGELOG.md` + AGENTS.md 依赖关系图 + 创建/删除该包 `README.md`
-4. 是否改变构建命令、命名规范、关键话题表、支持的臂型表？→ 更新 AGENTS.md（含本规则自身）
-5. 是否修复用户可见 Bug、升级 SDK、新增臂型支持？→ 更新 `CHANGELOG.md`
-6. 是否改变行为（协议、单位、上电时序、默认参数、回调组架构、公共 API 签名）？→ 更新 `CHANGELOG.md` + 相关文档
-7. 是否动到被文档引用的路径/名称/命令？→ 修正所有引用处
+- C++：`scripts/format-cpp.sh` 原地格式化后 `git diff --exit-code` 判断是否产生改动（自动跳过 `src/*/lib/include/` 下 SDK 头）
+- Python：`black --check .`
+- 同分支新推送会取消仍在跑的旧 CI（`concurrency`）
 
-仅当**全部为否**（纯内部重构：格式化、注释、命名统一）才可跳过文档同步。此类纯内部变更——构建与工具配置（`.gitignore`、`.clang-format`、`pyproject.toml`、格式化脚本、`.github/workflows/**`）、agent/harness 配置（`.omp/**`、`.agents/**`）、目录重命名、文档润色——**不进 `CHANGELOG.md`**：该文件只记录使用者能感知的变化，内部调整写进去就是噪音。
+**`release.yml`（打标签触发，任意 tag 推送）**，四步：
 
-**不得以任何理由跳过检查**。判定为"无需文档"的变更，必须能说出明确理由；说不出理由 = 漏了文档。
+1. **guard**：标签名须匹配 `[vV]?主.次.补[-(rc|beta)N]` **且**标签提交是远端 `master`/`dev` 的祖先，两条都满足才发布；否则只留 notice、**静默跳过**（其余后缀如 alpha、里程碑标记一律不发布）。带 `-rc`/`-beta` 的标为 prerelease。
+2. **notes**：`scripts/release-notes.sh <tag>` 从 `CHANGELOG.md` 抽对应版本章节作正文（`V3.0.0` → `## [3.0.0]`，rc/beta 回退基础版本章节），末尾附完整变更日志链接，不用 GitHub 自动生成的提交/PR 列表。**找不到章节或章节为空 → 失败退出、不创建 Release**。
+3. **format**：与 `ci.yml` 相同的格式检查。
+4. **publish**：`gh release create`，标题即标签名，不附构建产物。
 
-### CHANGELOG.md 条目标准
+**发版顺序（必须）**：先把分支推上去并等 CI 绿 → `git tag Vx.y.z` → `git push origin Vx.y.z`。
+tag 推送事件不携带分支信息，守卫靠提交祖先关系判断，**只推标签不推分支时远端分支引用仍在旧位置，守卫会静默跳过**（只剩标签、没有 Release）；误推时补推分支再重推标签即可。
+章节缺失时：先把 `[Unreleased]` 并入版本章节并推分支，再把标签重新指向含该章节的提交：`git tag -f Vx.y.z <提交> && git push -f origin Vx.y.z`（仅删并重推同一标签仍指向旧提交，会再次失败）。
 
-- 分类枚举固定为：新增 / 修复 / 变更 / 移除 / 文档 / 工程
-- 「工程」类只写**用户可感知**的工程变更（依赖升级、构建链变化、SDK / ROS2 版本要求变化）；构建与工具配置、CI 工作流（`.github/workflows/**`）接入/迁移、格式化、agent/harness 配置、`package.xml` 元数据整理、目录重命名等内部调整一律不写（许可证变更除外——它影响用户能否再分发，写入「变更」）
-- 未发布的变更记录在 `## [Unreleased]` 下，按日期分组（`### YYYY-MM-DD`，新 → 旧）
-- 已发布的版本章节（`## [x.y.z] - YYYY-MM-DD`）按变更类型整理（新增/修复/变更/移除/文档/工程），不再按日期分组
-- 写条目前对照发布 tag 验证基线（`git grep <符号> <发布tag> -- src/`）；标签中已存在的接口不写「新增」，「改了又改回去」净变化为零的不写
-- 条目描述用户可见变更，不写内部实现细节；每条约一行，末尾附提交短哈希（如 `（`dda23c0`）`）便于溯源，短哈希必须真实存在于本分支历史，禁止编造
-- 正式发布时，将 `[Unreleased]` 内容合并进版本号章节，并按类型归类；然后重置 `[Unreleased]`；该版本章节正文即 Release 正文来源（`release.yml` 找不到章节或章节为空时发布失败）
-- 被回退的提交、合并提交等不产生用户可见变更的记录，写在文末「备注」中，不单列条目
+## 协作约定
 
-### 文档对应关系速查
-
-| 变更对象 | 必须同步的文档 |
-|------|------|
-| ROS2 接口（msg/srv/话题/服务） | `CHANGELOG.md` + 对应包服务与话题说明书（如 `src/tl_driver/doc/`） |
-| launch 文件 / 启动方式 / 配置参数 | 对应包 `README.md` |
-| 功能包增减 / 依赖变化 | `CHANGELOG.md` + AGENTS.md + 该包 `README.md` |
-| 构建命令 / 命名规范 / 臂型表 / 关键话题表 | AGENTS.md |
-| 用户可见 Bug 修复 / SDK 升级 / 行为变更 | `CHANGELOG.md` |
-| 手眼标定、MoveIt2 等专项功能 | 对应专项文档 + `CHANGELOG.md` |
-
-### 验收标准（提交前用 `git diff --stat` 自检）
-
-- 文档文件与代码文件必须**成对出现在同一提交**；只有代码没有文档 = 变更未完成，禁止提交。
-- 文档中引用的路径、launch 命令、话题/服务名必须与代码一致，不一致视为缺陷。
-
-## 命名规范
-
-### C++ 命名规范
-
-| 元素 | 规范 | 示例 |
-|------|------|------|
-| **文件名** | snake_case | `tl_driver.cpp`、`tl_driver.h` |
-| **类名** | PascalCase | `TL_Arm`、`MessageLists` |
-| **枚举名** | PascalCase | `MessageLists` |
-| **枚举值** | UPPER_SNAKE_CASE | `ROBOT_STATE`、`SUCCESS`、`RECEIVE_FAILED` |
-| **成员变量** | snake_case + 下划线后缀 | `arm_ip_`、`socket_fd_`、`is_connected_`、`joint_state_pub_` |
-| **普通变量** | snake_case | `arm_ip`、`socket_fd`、`state` |
-| **成员函数** | camelCase | `handle_connect_service`、`power_on`、`publish_arm_state` |
-| **ROS 服务回调** | `handle_` + `{service}` + `_service` | `handle_connect_service`、`handle_set_speed_service` |
-| **ROS 话题回调** | `handle_` + `{topic}` + `_topic` | `handle_movej_topic`、`handle_movel_topic` |
-| **命名空间** | ROS 标准（`::` 分隔） | `tl_ros2_interface::srv::SetSpeed` |
-| **头文件宏保护** | `包名__文件名_H_` | `#ifndef TL_DRIVER__TL_DRIVER_H_` |
-| **静态内联变量** | snake_case（下划线前缀可选） | `msg_id`、`msg`、`msg_received` |
-| **ROS msg/srv 类型** | snake_case（自动生成） | `MoveCommand`、`CartesianPose`、`ArmStatus` |
-| **参数默认值** | 小写字符串（ROS约定） | `"arm_ip"`、`"6001"`、`"TCB605"` |
-| **回调函数指针** | lambda + bind 模式 | `std::bind(&TL_Arm::handle_..., this, ...)` |
-
-**注意**：
-- 服务句柄变量命名：`{service_name}_service_`（如 `connect_service_`、`set_speed_service_`）
-- 话题订阅变量命名：`{topic_name}_sub_`（如 `movej_sub_`、`movel_sub_`）
-- 话题发布变量命名：`{topic_name}_pub_`（如 `joint_state_pub_`、`tcp_pose_pub_`）
-- 以下为已知例外（历史遗留，服务/话题名与变量名不完全对应）：
-  - `connect_service_` 对应 `/tl_driver/connect_arm`（非 `connect_arm_service_`）
-  - `poweron_service_` / `poweroff_service_` 对应 `/tl_driver/power_on` / `power_off`
-  - `running_status_pub_` 发布到 `/arm_status`（非 `arm_status_pub_`）
-
-### Python 命名规范
-
-| 元素 | 规范 | 示例 |
-|------|------|------|
-| **文件名** | snake_case | `control_node.py`、`calib_node.py` |
-| **类名** | PascalCase | `HandEyeCalibrationNode`、`TLDemoNode` |
-| **ROS 节点类** | PascalCase，继承 `Node` | `class TLDemoNode(Node)` |
-| **实例变量** | snake_case | `robot_ip`、`camera_object_topic`、`base_frame_id` |
-| **私有方法** | 下划线前缀 + snake_case | `_tcp_pose_callback`、`_wait_for_services` |
-| **公开方法** | snake_case | `safe_log_info`、`get_robot_pose`、`pose_to_tool_rt` |
-| **ROS 参数键** | snake_case | `'arm_ip'`、`'camera_width'`、`'handeye_matrix'` |
-| **ROS 话题名** | snake_case（小写） | `/joint_states`、`/tcp_pose` |
-| **ROS 服务名** | snake_case（小写） | `/tl_driver/connect_arm`、`/tl_driver/power_on` |
-| **入口点函数** | snake_case | `demo_node`、`control_node` |
-| **console_scripts** | snake_case（与文件名对应） | `demo_node = tl_driver.demo_node:main` |
-| **标准库导入** | 常用别名 | `import numpy as np`、`import cv2` |
-| **ROS 客户端** | 下划线前缀 + `_cli` 后缀 | `self._connect_cli`、`self._power_on_cli` |
-| **订阅者** | 下划线前缀 + `_sub` 后缀 | `self._tcp_pose_sub` |
-
-### ROS 话题/服务命名规范
-
-- 所有话题和服务名使用 **snake_case（小写+下划线）**
-- 包名前缀：`/tl_driver/`
-- 示例话题： `/joint_states`、`/tcp_pose`、`/arm_status`
-- 示例服务： `/tl_driver/connect_arm`、`/tl_driver/set_speed`
-
-### 文件组织规范
-
-```
-tl_driver/
-├── src/tl_driver.cpp              # 主节点实现（camelCase 方法）
-├── include/tl_driver/tl_driver.h  # 头文件（类定义）
-├── launch/tl_driver.launch.py     # 通用启动文件
-├── launch/tl_tcbXXX_driver.launch.py  # 各臂型快捷启动
-└── config/*.yaml                  # 配置文件
-```
-
-## Sisyphus 后台任务超时规避
-
-后台 explore/librarian 任务有 **30 分钟无活动超时限制**。超大代码库搜索时容易触发。规避方法：
-
-- **每个 explore agent 只查 1-2 个具体模式**，不要塞 5+ 个搜索需求到一个 prompt
-- **已知文件位置**（如已确定路径的文件）直接用 `grep`/`read`/`glob` 直接工具，不 delegation
-- **大范围搜索拆成多个并行小任务**，每个小任务限定搜索范围（`path`、`include`、`globs` 参数）
-- 如果需要跨包/跨语言搜索（如同时查 C++ 和 Python），必须拆成多个并行 agent
-
-<!-- gitnexus:start -->
-# GitNexus — Code Intelligence
-
-This project is indexed by GitNexus as **tl_robot_ros2_cpp** (5344 symbols, 6830 relationships, 0 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
-
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
-
-## Always Do
-
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
-
-## Never Do
-
-- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
-- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
-
-## Resources
-
-| Resource | Use for |
-|----------|---------|
-| `gitnexus://repo/tl_robot_ros2_cpp/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/tl_robot_ros2_cpp/clusters` | All functional areas |
-| `gitnexus://repo/tl_robot_ros2_cpp/processes` | All execution flows |
-| `gitnexus://repo/tl_robot_ros2_cpp/process/{name}` | Step-by-step execution trace |
-
-## CLI
-
-| Task | Read this skill file |
-|------|---------------------|
-| Understand architecture / "How does X work?" | `.opencode/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.opencode/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.opencode/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.opencode/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.opencode/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.opencode/skills/gitnexus/gitnexus-cli/SKILL.md` |
-
-<!-- gitnexus:end -->
+- 本文件每轮注入，**不要把使用说明、教程、历史写进来** —— 长文放 `README.md` / `src/README.md` / 各包 `README.md` / 说明书。
+- 派子代理时任务要小且自包含：一个探索类子代理只查 1–2 个模式；已知路径直接用 `grep`/`read`，不委派；跨包或跨语言搜索拆成多个并行子代理。
