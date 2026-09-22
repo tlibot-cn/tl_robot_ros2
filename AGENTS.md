@@ -156,6 +156,7 @@ scripts/           （工作空间测量等工具脚本，不参与 colcon 构�
 - **选择性构建时必须先构建 tl_ros2_interface**。不带 `--packages-select` 的 `colcon build` 会自动处理。
 - **机械臂位置单位**：NRC API 返回 mm；ROS2 层使用时需注意单位转换。欧拉角约定为 XYZ 内旋（scipy 中使用大写 `'XYZ'`）。
 - **无自动化测试**，仅有 ament 代码风格检查脚手架。`test/` 目录只包含 `ament_copyright`、`ament_flake8`、`ament_pep257`。
+- **提交前必须跑**：`./scripts/format-cpp.sh`（C++）与 `black .`（Python）；CI（`.github/workflows/ci.yml`）会对 push/PR 强制检查，不通过即失败。`isort`（import 排序）不纳入 CI——仓库历史 import 顺序存在漂移，需要时自行运行 `isort .`。
 - **开发环境通过 Docker 搭建**（Docker 配置不在本仓库中）。构建和运行均在容器内进行。
 - **发版**：在 `master`/`dev` 分支上打 `V主.次.补`（可带 `-rc`/`-beta`）标签即触发 `.github/workflows/release.yml`——先校验发布条件，再由 `scripts/release-notes.sh` 从 `CHANGELOG.md` 抽出该标签的版本章节作 Release 正文（`V3.0.0` → `## [3.0.0]`，`-rc`/`-beta` 标签回退到基础版本章节），随后跑格式检查并创建 GitHub Release（标题即标签名，正文 = 章节内容 + 完整变更日志链接，不用 GitHub 自动生成的提交/PR 列表）。**找不到对应章节或章节为空时发布失败、不创建 Release**——须先把 `[Unreleased]` 内容合并进版本号章节并推送分支，再把标签**重新指向含该章节的提交**（`git tag -f Vx.y.z <提交> && git push -f origin Vx.y.z`）；仅删除并重推同一标签仍指向旧提交，会再次失败。
 - **发版顺序（必须）**：先把分支推上去并等 CI 绿，再打标签：`git push origin <分支>` → CI 通过 → `git tag Vx.y.z && git push origin Vx.y.z`。`release.yml` 的守卫用「标签提交是否为远端 `master`/`dev` 的祖先」判定，**只推标签不推分支时远端分支引用还停在旧位置**，守卫会静默跳过发布（只有标签、没有 Release）。误推时补推分支后重推标签即可。

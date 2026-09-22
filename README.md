@@ -51,7 +51,14 @@ pip install black isort ruff
 
 仓库已接入 GitHub Actions（`.github/workflows/ci.yml`）：push 到 master/dev、
 提交 PR 时自动执行格式检查（纯文档变更不触发），格式不合格会阻断合并。
-发布流程见 `.github/workflows/release.yml`（打版本标签触发）。
+发布流程见 `.github/workflows/release.yml`（打版本标签触发）。提交前本地先跑一遍格式化：
+
+```bash
+./scripts/format-cpp.sh
+black .
+```
+
+> `isort .`（import 排序）不纳入 CI 强制检查——仓库历史 import 顺序存在漂移，需排序时自行运行即可。
 
 ### C++ 格式
 
@@ -75,7 +82,9 @@ pip install black isort ruff
 ```bash
 ruff format src/
 # 或
-black src/ && isort src/
+black src/
+# 需要时再排序 import（非 CI 强制）
+isort src/
 ```
 
 ## 运行
