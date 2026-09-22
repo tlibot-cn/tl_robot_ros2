@@ -21,8 +21,8 @@
 
 ### 变更
 
-- tl_teleop 包声明对 `tl_driver` 的依赖，保证构建/安装顺序与服务端可用性（`2b5a56f`）
-- tl_hardware、tl_teleop_f710 同样调用 `/tl_driver/*` 服务，补齐对 `tl_driver` 的依赖声明（`248e82f`）
+- tl_teleop 包声明对 `tl_driver` 的依赖（`<exec_depend>`），保证服务端可用性（`2b5a56f`、`3265269`）
+- tl_hardware、tl_teleop_f710 同样调用 `/tl_driver/*` 服务，补齐对 `tl_driver` 的 `<exec_depend>` 声明（`248e82f`、`3265269`）
 
 ### 文档
 
@@ -37,7 +37,7 @@
 
 ### 工程
 
-- 接入 GitHub Actions：push 到 `master`/`dev`/`V2` 与 PR 强制格式检查（clang-format + black），打版本标签自动创建 GitHub Release；移除 `.githooks` pre-commit 钩子（`cd8aaa9`）
+- 接入 GitHub Actions：push 到 `master`/`dev`/`V2` 与 PR 强制格式检查（clang-format + black），打版本标签自动创建 GitHub Release——**发版顺序为先推分支、等 CI 绿、再打标签**（只推标签时守卫会跳过发布）；移除 `.githooks` pre-commit 钩子（曾执行过 `git config core.hooksPath .githooks` 的本地克隆需 `git config --unset core.hooksPath`）（`cd8aaa9`、`5399224`）
 - 全部 23 个 package.xml 版本统一为 2.0.1，维护者统一为 天链机器人 <tlibot@tlibot.com>，许可证统一为 Apache-2.0（`b682f00`）
 
 ## [2.0.0] - 2026-08-21
