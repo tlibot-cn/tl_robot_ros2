@@ -115,7 +115,7 @@ src/
 - **轨迹录制与回放**：支持录制机械臂运动轨迹并回放。
 - **队列运动**：支持将运动指令加入队列依次执行。
 
-驱动基于 NexMotion SDK 的 Python 封装（SWIG），通过 TCP 连接控制器（默认 IP：`192.168.1.13`，端口：`6001`）。
+驱动基于 NexMotion SDK 的预编译 C/C++ 库（`libtl_host.so` + `lib/include/*.h`），通过 TCP 连接控制器（默认 IP：`192.168.1.13`，端口：`6001`）。
 
 详细说明请参考 [tl_driver/README.md](tl_driver/README.md)。
 
