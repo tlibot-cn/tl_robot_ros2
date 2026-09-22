@@ -22,16 +22,22 @@
 ### 变更
 
 - tl_teleop 包声明对 `tl_driver` 的依赖，保证构建/安装顺序与服务端可用性（`2b5a56f`）
+- tl_hardware、tl_teleop_f710 同样调用 `/tl_driver/*` 服务，补齐对 `tl_driver` 的依赖声明（`248e82f`）
 
 ### 文档
 
+- tl_driver 服务与话题说明书：显式标注全部接口单位（笛卡尔位置 mm、姿态 rad、关节 度、速度 mm/s 或 %），明确本仓库笛卡尔位置有意采用 mm（非 ROS 惯例 m）（`c1c4f23`）
+- 修正 `MoveCommand.target_pos_value` 的布局描述：实为 14 维 MoveCmd 本体位姿（`[0..6]` 本体 / `[7..13]` 外部轴），此前误按 GP 点位容器布局描述，与实现及 SDK 头注释矛盾（`c1c4f23`）
+- 26 个 msg/srv 增加字段单位与布局注释，集成方无需再依赖外部文档判断单位（`fecff32`）
 - tl_driver 服务与话题说明书：`/tcp_pose` 与 `/tl_driver/set_user_coord` 的位置单位由 m 修正为 mm（与实现、1.1 约定及同章工具参数口径一致），`/tl_driver/set_servol_pos` 的 `step_size` 默认值 5.0 → 2.0（代码实际值），1.4 单位制约定按节点/直角坐标各自的实际口径限定（`d0fd361`、`29b7841`）
 - tl_ros2_interface README 补齐 `ServolMove` 消息说明（目录、文件总览与字段），修正 `CartesianPose.position` 单位标注（`d0fd361`）
 - tl_teleop_f710 README 修正适用型号轴数：TCB610V 归入 6 轴，避免按 7 轴配置启动导致 FK/IK 初始化失败（`299482c`）
 - tl_gazebo README 补全 F710 手柄仿真 launch / xacro / 控制器配置条目，修正 `doc/` 图片文件名（`d0fd361`）
+- AGENTS.md 与 `.omp/WATCHDOG.md`：位置单位条款改为逐接口列举的 mm 契约，跨层单位不变量表扩到全量接口（`90c48d2`）
 
 ### 工程
 
+- 接入 GitHub Actions：push 到 `master`/`dev`/`V2` 与 PR 强制格式检查（clang-format + black），打版本标签自动创建 GitHub Release；移除 `.githooks` pre-commit 钩子（`cd8aaa9`）
 - 全部 23 个 package.xml 版本统一为 2.0.1，维护者统一为 天链机器人 <tlibot@tlibot.com>，许可证统一为 Apache-2.0（`b682f00`）
 
 ## [2.0.0] - 2026-08-21
