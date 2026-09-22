@@ -16,6 +16,11 @@
 #
 # 触发: 任意 tag 推送；不满足发布条件时仅提示并跳过格式检查与发布。
 # 日常验证（push/PR）见 .github/workflows/ci.yml
+#
+# ⚠️ 发版顺序: 先把分支推上去、等 ci.yml 绿，再打标签推送。
+#    判据 b 用的是远端分支引用的祖先关系，只推标签不推分支时
+#    origin/<分支> 仍停在旧位置，守卫会静默跳过（结果：有标签、无 Release）。
+#    误推补救: 补推分支后删除并重推标签（或手动 gh release create）。
 # ============================================================
 name: Release
 
@@ -54,7 +59,7 @@ jobs:
              && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/dev \
              && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/V2; then
             echo "release=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::标签 ${TAG} 不在 master/dev/V2 分支上，跳过发布"
+            echo "::notice::标签 ${TAG} 不在 master/dev/V2 分支上，跳过发布（若刚打完标签，请先推送对应分支，再删除并重推该标签）"
           elif ! [[ "$TAG" =~ ^[vV]?[0-9]+\.[0-9]+\.[0-9]+(-(rc|beta)[0-9.]*)?$ ]]; then
             echo "release=false" >> "$GITHUB_OUTPUT"
             echo "::notice::标签 ${TAG} 不符合版本命名规则 (v主.次.补[-rc/beta])，视为里程碑/内部标记，跳过发布"
