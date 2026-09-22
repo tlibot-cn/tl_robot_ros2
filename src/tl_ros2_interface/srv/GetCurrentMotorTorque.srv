@@ -2,5 +2,5 @@
 ---
 bool success
 string message
-int32[] motor_torque
-int32[] motor_torque_sync
+int32[] motor_torque           # 单位: %（机器人扭矩，长度 7）
+int32[] motor_torque_sync      # 单位: %（外部轴扭矩，长度 5）

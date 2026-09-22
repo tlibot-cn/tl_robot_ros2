@@ -1,7 +1,8 @@
 # 打开ServoJ
-float64[] vmax
-float64[] amax
-float64[] jmax
+# 单位约定（SDK 口径）：vmax 度/s，amax 度/s²，jmax 度/s³
+float64[] vmax                 # 单位: 度/s（速度约束）
+float64[] amax                 # 单位: 度/s²（加速度约束）
+float64[] jmax                 # 单位: 度/s³（加加速度约束）
 ---
 bool success
 string message

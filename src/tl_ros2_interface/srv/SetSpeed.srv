@@ -1,5 +1,5 @@
 # 设置速度
-float64 speed
+float64 speed                  # 单位: %（范围 0~100，tl_driver 侧校验）
 ---
 bool success
 string message

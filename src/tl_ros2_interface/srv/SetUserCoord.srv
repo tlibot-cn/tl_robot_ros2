@@ -1,6 +1,7 @@
 # 设置用户坐标系
+# 单位约定：pos.position 为 mm（本仓库采用 mm，非 ROS 惯例 m）；pos.rpy 为 rad
 int32 user_num
-tl_ros2_interface/CartesianPose pos
+tl_ros2_interface/CartesianPose pos        # pos.position 单位: mm，pos.rpy 单位: rad
 ---
 bool success
 string message

@@ -1,6 +1,7 @@
 # MoveJ队列运动模式
+# cmd 内字段单位见 tl_ros2_interface/MoveCommand（笛卡尔位置 mm、姿态 rad、关节角 度、速度 % 或 mm/s）
 bool is_continue
-tl_ros2_interface/MoveCommand cmd
+tl_ros2_interface/MoveCommand cmd    # 单位见 MoveCommand.msg
 ---
 bool success
 string message

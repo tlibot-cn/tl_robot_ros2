@@ -1,6 +1,7 @@
 # 设置工具参数
+# param 内字段单位见 tl_ros2_interface/ToolParam（x/y/z 与质心 mm、质量 kg、惯量 kg·m²；a/b/c 见 ToolParam.msg）
 int32 tool_num
-tl_ros2_interface/ToolParam param
+tl_ros2_interface/ToolParam param          # 单位见 ToolParam.msg
 ---
 bool success
 string message

@@ -2,6 +2,6 @@
 ---
 bool success
 string message
-float64 line_speed
-float64[] joint_speed
-float64[] joint_speed_sync
+float64 line_speed             # 单位: mm/s（末端线速度）
+float64[] joint_speed          # 单位: 度/s（关节速度，长度 5）
+float64[] joint_speed_sync     # 单位: 度/s（外部轴速度，长度 5）

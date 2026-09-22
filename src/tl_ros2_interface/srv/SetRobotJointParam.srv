@@ -1,6 +1,7 @@
 # 设置机械臂关节参数
+# param 内字段单位见 tl_ros2_interface/RobotJointParam（限位 度、速度 度/s）
 int32 id
-tl_ros2_interface/RobotJointParam param
+tl_ros2_interface/RobotJointParam param    # 单位见 RobotJointParam.msg
 ---
 bool success
 string message

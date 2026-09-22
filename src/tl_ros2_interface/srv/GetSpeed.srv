@@ -2,4 +2,4 @@
 ---
 bool success
 string message
-float64 speed
+float64 speed                  # 单位: %（0~100）

@@ -1,5 +1,6 @@
 # 获取DH参数
+# param 内字段单位见 tl_ros2_interface/RobotDHParam（l1..l20/pitch/导程/喷料距离 为 mm，转换比等无量纲）
 ---
 bool success
 string message
-tl_ros2_interface/RobotDHParam param
+tl_ros2_interface/RobotDHParam param   # 单位见 RobotDHParam.msg

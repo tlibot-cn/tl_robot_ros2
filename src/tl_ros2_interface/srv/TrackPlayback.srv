@@ -1,5 +1,5 @@
 # 轨迹回放
-int32 vel
+int32 vel                      # 回放速度（SDK 头 track_record_playback 仅写「速度」，未标注单位）
 ---
 bool success
 string message

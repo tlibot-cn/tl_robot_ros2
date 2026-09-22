@@ -1,6 +1,7 @@
-# 位姿转换
-float64[] input
+# 位姿转换（四元数 / 欧拉角 / 旋转矩阵互转）
+# 本接口不含长度量：输入输出均为姿态量，欧拉角 单位: rad，四元数与旋转矩阵分量为无量纲。
+float64[] input                # 输入姿态量：欧拉角 单位: rad；四元数/旋转矩阵分量 无量纲
 ---
 bool success
 string message
-float64[] output
+float64[] output               # 输出姿态量：欧拉角 单位: rad；四元数/旋转矩阵分量 无量纲

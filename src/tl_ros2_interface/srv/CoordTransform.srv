@@ -1,10 +1,11 @@
 # 坐标转换
-int32 origin_coord
-int32 target_coord
-int32 form
-float64[] origin_pos
-float64[] reference_pos
+# 单位约定：coord = 0（关节）时点位为关节角，单位 度；coord = 1/2/3（直角/工具/用户）时位置为 mm（本仓库采用 mm，非 ROS 惯例 m）、姿态为 rad。
+int32 origin_coord            # 原坐标系：0=关节 1=直角 2=工具 3=用户
+int32 target_coord            # 目标坐标系：0=关节 1=直角 2=工具 3=用户
+int32 form                    # 形态
+float64[] origin_pos          # 待转换坐标值 [0..6]：origin_coord=0 时为单位 度 的关节角；=1/2/3 时 [0..2] 单位: mm、[3..5] 单位: rad
+float64[] reference_pos       # 参考点（单位口径同 origin_pos）
 ---
 bool success
 string message
-float64[] target_pos
+float64[] target_pos          # 转换后的坐标值，单位口径同 origin_pos（关节 度 / 位置 mm + 姿态 rad）
