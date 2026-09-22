@@ -176,7 +176,7 @@ tl_bringup         （启动聚合器：包含 tl_driver + tl_description）
 - **`_tl_host.so`** 是预编译专有库，禁止尝试重新编译或修改。构建时链接，安装到 `lib/tl_driver/`。
 - **tl_driver 使用 `MultiThreadedExecutor`** 驱动 3 个回调组（`service_group_`、`topic_group_`、`timer_group_`），三组均为 `MutuallyExclusive`：服务、话题、定时器回调各自串行，组间可并行。这是回调组架构正常工作的必要条件（历史上 `timer_group_` 曾为 `Reentrant`，已改为互斥）。
 - **选择性构建时必须先构建 tl_ros2_interface**。不带 `--packages-select` 的 `colcon build` 会自动处理。
-- **机械臂位置单位**：NRC API 返回 mm；ROS2 层使用时需注意单位转换。欧拉角约定为 XYZ 内旋（scipy 中使用大写 `'XYZ'`）。
+- **机械臂位置单位**：NRC SDK 以 mm 表示笛卡尔位置，ROS2 接口**有意沿用 mm**（偏离 ROS 惯例 m，已评估并保留）——`/tcp_pose.position`、`/tl_driver/set_servol_pos` 的 `target_pose`/`step_size`、`MoveCommand.target_pos_value`（`coord≠0` 时）、`set_user_coord`、`set_tool_param` 的 `x/y/z` 与负载质心、`coord_transform`、`get_pos_reachable`、`set/get_global_pos` 均按 mm 解释；姿态为 rad，关节量为度（`/joint_states` 已换算为 rad）。消费方**不要**自行 ×1000/÷1000；逐字段口径见本文件下方「关键话题」与 `src/tl_driver/doc/tl_driver服务与话题说明书.md` §1.4，跨层不变量见 `.omp/WATCHDOG.md`。欧拉角约定为 XYZ 内旋（scipy 中使用大写 `'XYZ'`）。
 - **无单元测试**。测试面为两层：`ament_lint_auto` 代码风格检查（tl_bringup、tl_description、tl_gazebo、tl_teleop、tl_teleop_f710 的 `CMakeLists.txt` 中启用）与 `src/tl_driver/test/` 下的手工接口脚本（`test_moveJ.sh`、`test_moveL.sh`、`test_job_insert_*.sh`、`test_publisher.py`），后者需机械臂在线，手动运行。
 - **提交前必须跑**：`./scripts/format-cpp.sh`（C++）与 `black . && isort .`（Python）；CI（`.github/workflows/ci.yml`）会对 push/PR 强制检查，不通过即失败。
 - **开发环境通过 Docker 搭建**（Docker 配置不在本仓库中）。构建和运行均在容器内进行。

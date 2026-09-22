@@ -43,11 +43,22 @@
 |---|---|---|
 | `/joint_states.position` | **rad**（SDK 返回度，驱动内批量转换） | `tl_driver.cpp:2751-2757` |
 | `/tcp_pose.position` | **mm**（SDK coord=1 原值直接透传，**不是** ROS 惯例的 m） | `tl_driver.cpp:2786-2798`；下游 `tl_teleop.cpp:366` 亦按 mm 处理 |
-| `/tcp_pose.rpy` | rad | 同上 |
+| `/tcp_pose.rpy`、`arm_angle` | rad | 同上 |
 | `/tl_driver/set_servoj_pos` | **度**（订阅方 tl_hardware 自行做弧度↔角度换算） | `tl_driver.cpp:2537-2547` |
-| `MoveCommand.target_pos_value` | coord=0 为度；coord=1 为 mm + rad | 说明书 §1.4 单位制约定、§7.2 |
+| `ServolMove.target_pose` | 位置 **mm** + 姿态 rad；`step_size` **mm**（驱动内默认 2.0，传入 ≤0 取默认） | `tl_driver.cpp:2630-2677` |
+| `MoveCommand.target_pos_value` | 14 维：前 7 位本体位姿 [X **mm**, Y **mm**, Z **mm**, RX rad, RY rad, RZ rad, 冗余臂角 rad]，后 7 位为外部轴点位（单位随外部轴类型，本仓库不做换算、按 SDK 原值透传）；`coord=0` 时整组为关节角（度） | 实现 `tl_driver.cpp:2496`、`2527` 等 MoveCmd 组包点；布局依据 `lib/include/cpp/parameter/tl_define.h:64`、`test/test_moveL.sh` |
+| `ToolParam.x/y/z`、`payload_mass_center_x/y/z` | **mm**；`a/b/c` 现文档标 度（SDK 头未标注，待现场核对）；`payload_mass` kg；`payload_inertia` kg·m² | `tl_driver.cpp:1424-1447` |
+| `SetUserCoord.pos.position` | **mm** + 姿态 rad | `tl_driver.cpp:1454-1465` |
+| `CoordTransform.origin_pos`/`reference_pos`/`target_pos` | 对应 `coord = 0` 为关节度；`coord = 1/2/3` 为位置 **mm** + 姿态 rad | `tl_driver.cpp:1749-1782`、SDK 头 `tl_interface.h:497-507` |
+| `GetPosReachable.pos`、`SetGlobalPos.pos_info`、`GetGlobalPos.pos` | **14 维点位容器**：`[0]`坐标系 `[1]`单位制(0=度/1=弧度) `[2]`形态 `[3]`工具 `[4]`用户 `[5][6]`备用 `[7..13]`点位信息（笛卡尔时位置 **mm**、姿态 rad） | `tl_driver.cpp:1785`、`2168`、`2200`；SDK 头 `tl_interface.h:238-243`、`366-382` |
+| `GetCurrentLineJointSpeed.line_speed` | **mm/s**（`joint_speed` 为度/s） | `tl_driver.cpp:2440-2463`、SDK 头 `tl_interface.h:648-653` |
+| `MoveCommand.velocity`、`acc`/`dec`、`SetSpeed` | 关节运动为 %，直角（MOVL）运动速度为 **mm/s**，`acc`/`dec` 为 % | SDK 头 `tl_interface.h:731-746` |
+| `RobotDHParam`（`l1..l20`、`pitch`、导程、喷料距离、`sp`/`tl`） | **mm**（控制器机构常数） | `tl_driver.cpp:1819-1970`、说明书 DH 章节 |
+| `OpenServoJ.vmax/amax/jmax` | 度/s、度/s²、度/s³ | SDK 头 `tl_interface.h:920-925` |
+| `GetPosTransform.input/output`、`GetCurrentMotorTorque`、`RobotJointParam` | 旋转量 rad / 无量纲；力矩 %；关节量度、度/s | `tl_driver.cpp:773-926`、`2410-2431`、`1086-1170` |
 
-> 说明书 §4.2「查询末端位姿」曾把 `/tcp_pose.position` 的单位标为 **m**，与代码（mm 原值透传，无任何 mm→m 换算）及下游 `tl_teleop` 的按 mm 处理不符。**已于 2026-09-22 按代码口径修正为 mm**（说明书修订记录 V1.7、提交 `d0fd361`）；1.4 单位制约定的表述同步限定为「节点/直角坐标各自的实际口径」。若将来要改为 ROS 惯例的 m，属对外契约破坏性变更，须同步全部消费方后再动。
+> 单位口径是**有意选择**：笛卡尔位置保留 SDK 原生的 **mm**（与示教器/现场手册一致），不随 ROS 惯例改为 m。因此集成方**不得**把某个字段按 m 解释；`msg/srv` 字段注释、`tl_ros2_interface/README.md` 与 `tl_driver服务与话题说明书.md` §1.4 现已逐字段标注。若要改为 m，属破坏性变更：须同时改 `tl_driver` 全部接口边界、三个消费方（tl_teleop / tl_teleop_f710 / tl_example）、文档与现场脚本，并单独发一个破坏性版本。
+> 历史上说明书 §4.2 曾把 `/tcp_pose.position` 标为 m（与实现不符），已于 2026-09-22 修正为 mm（`d0fd361`）；§8.2 `set_user_coord` 同类问题于 `29b7841` 修正。
 
 ## ROS2 节点结构不变量
 
