@@ -14,6 +14,7 @@
 |V1.5 | 2026-6-8  | 修订（详细化全部接口的输入输出参数说明，补全单位、范围、注意事项；优化参数表格式；修复锚点链接）|
 |V1.6 | 2026-6-23 | 新增[15.4 发送跟踪笛卡尔位姿](#154-发送跟踪笛卡尔位姿) |
 |V1.7 | 2026-9-22 | 修订（`/tcp_pose` 位置单位 m → mm、1.4 单位制约定表述、15.4 `step_size` 默认值 5.0 → 2.0）|
+|V1.8 | 2026-9-22 | 修订（8.2 `set_user_coord` 输入位姿位置单位 m → mm）|
 
 </div>
 
@@ -1325,9 +1326,9 @@ ros2 service call /tl_driver/set_tool_param tl_ros2_interface/srv/SetToolParam \
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
 | user_num | int32 | — | 用户坐标系编号（1～N） |
-| pos.position.x | float64 | m | X方向偏移（ROS标准单位） |
-| pos.position.y | float64 | m | Y方向偏移 |
-| pos.position.z | float64 | m | Z方向偏移 |
+| pos.position.x | float64 | mm | X方向偏移 |
+| pos.position.y | float64 | mm | Y方向偏移 |
+| pos.position.z | float64 | mm | Z方向偏移 |
 | pos.rpy.x | float64 | rad | 绕X轴旋转（欧拉角） |
 | pos.rpy.y | float64 | rad | 绕Y轴旋转（欧拉角） |
 | pos.rpy.z | float64 | rad | 绕Z轴旋转（欧拉角） |
