@@ -28,7 +28,7 @@
 
 ## 硬约束（改代码前先读）
 
-**① 专有库只读。** `src/tl_driver/lib/`（`libtl_host.so` + `include/*.h` 14 个头，V3.0.2）与 `src/tl_teleop/lib/`（`libPXREARobotSDK.so`）是预编译第三方产物 —— 不改、不格式化（`scripts/format-cpp.sh` 已跳过 `lib/include/`）。
+**① 专有库只读。** `src/tl_driver/lib/`（`libtl_host.so` + `include/*.h` 14 个头，V3.1.0）与 `src/tl_teleop/lib/`（`libPXREARobotSDK.so`）是预编译第三方产物 —— 不改、不格式化（`scripts/format-cpp.sh` 已跳过 `lib/include/`）。
 
 **② 单位口径。** ROS 侧 m / rad；控制器与服务接口 mm / 度 / %。换算发生在驱动内或各消费方，**改任一端必须同时改另一端**：
 
