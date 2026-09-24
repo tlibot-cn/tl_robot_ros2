@@ -9,6 +9,20 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic -std=c++17)
 endif()
 
+# 版本号单一来源：package.xml 的 <version>，生成编译期宏 TL_DRIVER_VERSION
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/package.xml" TL_PACKAGE_XML)
+string(REGEX MATCH "<version>([^<]+)</version>" TL_PACKAGE_VERSION_MATCH "${TL_PACKAGE_XML}")
+if(NOT TL_PACKAGE_VERSION_MATCH)
+  message(FATAL_ERROR "tl_driver: failed to parse <version> from package.xml")
+endif()
+set(TL_DRIVER_VERSION "${CMAKE_MATCH_1}")
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/tl_driver/version.hpp.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/include/tl_driver/version.hpp"
+  @ONLY
+)
+message(STATUS "tl_driver: version ${TL_DRIVER_VERSION}")
+
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_srvs REQUIRED)
@@ -45,6 +59,7 @@ add_executable(tl_driver
 
 target_include_directories(tl_driver PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  "${CMAKE_CURRENT_BINARY_DIR}/include"
   "${CMAKE_CURRENT_SOURCE_DIR}/lib/include"
 )
 

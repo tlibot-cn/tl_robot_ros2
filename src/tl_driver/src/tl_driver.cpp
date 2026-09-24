@@ -2,8 +2,8 @@
 #include <thread>
 
 #include "tl_driver/tl_driver.h"
+#include "tl_driver/version.hpp"
 #include "tl_servo_ext.h"
-
 using namespace tl;
 
 namespace
@@ -450,7 +450,8 @@ TL_Arm::TL_Arm() : rclcpp::Node("tl_driver")
 
   state_publish_timer_ = this->create_wall_timer(period, std::bind(&TL_Arm::publish_arm_state, this), timer_group_);
 
-  // 获取sdk库版本
+  // 获取本包版本与sdk库版本
+  RCLCPP_INFO(this->get_logger(), "Driver Version: %s", TL_DRIVER_VERSION);
   RCLCPP_INFO(this->get_logger(), "SDK Version: %s", tl::get_library_version().c_str());
 
   // 初始化

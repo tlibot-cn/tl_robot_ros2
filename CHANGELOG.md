@@ -11,6 +11,12 @@
 
 ## [Unreleased]
 
+### 2026-09-24
+
+#### 新增
+
+- tl_driver：启动日志新增驱动包自身版本行（`Driver Version: x.y.z`，取自 `package.xml`），与已有的 `SDK Version` 行并列输出
+
 ### 2026-09-22
 
 #### 移除
