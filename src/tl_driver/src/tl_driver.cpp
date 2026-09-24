@@ -2,6 +2,9 @@
 #include <thread>
 
 #include "tl_driver/tl_driver.h"
+#include "tl_servo_ext.h"
+
+using namespace tl;
 
 namespace
 {
@@ -446,6 +449,9 @@ TL_Arm::TL_Arm() : rclcpp::Node("tl_driver")
       std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::duration<double>(1.0 / publish_rate_));
 
   state_publish_timer_ = this->create_wall_timer(period, std::bind(&TL_Arm::publish_arm_state, this), timer_group_);
+
+  // 获取sdk库版本
+  RCLCPP_INFO(this->get_logger(), "SDK Version: %s", tl::get_library_version().c_str());
 
   // 初始化
   init();
@@ -959,7 +965,7 @@ void TL_Arm::handle_get_controller_id_service(const std::shared_ptr<std_srvs::sr
     return;
   }
 
-  char id[128] = {0};
+  std::string id = {0};
   int ret = get_controller_id(socket_fd_, id);
   response->success = (ret == Result::SUCCESS);
   response->message = response->success ? std::string(id) : "Failed to get controller ID";
@@ -1238,8 +1244,8 @@ void TL_Arm::handle_get_motor_current_service(
     return;
   }
 
-  std::vector<double> motor_current;
-  int ret = get_current_motor_current_independent(socket_fd_, motor_current);
+  std::vector<double> motor_current, motor_current_sync;
+  int ret = get_current_motor_current(socket_fd_, motor_current, motor_current_sync);
   if (ret == Result::SUCCESS)
   {
     response->success = true;
@@ -2043,7 +2049,7 @@ void TL_Arm::handle_job_insert_movej_service(
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = request->cmd.coord;
+  cmd.coord = static_cast<tl::Coord>(request->cmd.coord);
   cmd.velocity = request->cmd.velocity;
   cmd.velocitySync = request->cmd.velocity_sync;
   cmd.acc = request->cmd.acc;
@@ -2077,7 +2083,7 @@ void TL_Arm::handle_job_insert_movel_service(
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = request->cmd.coord;
+  cmd.coord = static_cast<tl::Coord>(request->cmd.coord);
   cmd.velocity = request->cmd.velocity;
   cmd.velocitySync = request->cmd.velocity_sync;
   cmd.acc = request->cmd.acc;
@@ -2111,7 +2117,7 @@ void TL_Arm::handle_job_insert_imove_service(
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = request->cmd.coord;
+  cmd.coord = static_cast<tl::Coord>(request->cmd.coord);
   cmd.velocity = request->cmd.velocity;
   cmd.velocitySync = request->cmd.velocity_sync;
   cmd.acc = request->cmd.acc;
@@ -2145,7 +2151,7 @@ void TL_Arm::handle_job_insert_movec_service(
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = request->cmd.coord;
+  cmd.coord = static_cast<tl::Coord>(request->cmd.coord);
   cmd.velocity = request->cmd.velocity;
   cmd.velocitySync = request->cmd.velocity_sync;
   cmd.acc = request->cmd.acc;
@@ -2347,7 +2353,7 @@ void TL_Arm::handle_queue_motion_movej_service(
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = request->cmd.coord;
+  cmd.coord = static_cast<tl::Coord>(request->cmd.coord);
   cmd.velocity = request->cmd.velocity;
   cmd.velocitySync = request->cmd.velocity_sync;
   cmd.acc = request->cmd.acc;
@@ -2480,7 +2486,7 @@ void TL_Arm::handle_movej_topic(const tl_ros2_interface::msg::MoveCommand::Share
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = msg->coord;
+  cmd.coord = static_cast<tl::Coord>(msg->coord);
   cmd.velocity = msg->velocity;
   cmd.velocitySync = msg->velocity_sync;
   cmd.acc = msg->acc;
@@ -2511,7 +2517,7 @@ void TL_Arm::handle_movel_topic(const tl_ros2_interface::msg::MoveCommand::Share
   MoveCmd cmd{};
   cmd.targetPosType = static_cast<PosType>(PosType::data);
   cmd.targetPosName = "";
-  cmd.coord = msg->coord;
+  cmd.coord = static_cast<tl::Coord>(msg->coord);
   cmd.velocity = msg->velocity;
   cmd.velocitySync = msg->velocity_sync;
   cmd.acc = msg->acc;
