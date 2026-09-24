@@ -82,12 +82,7 @@
 #include "tl_ros2_interface/srv/get_current_line_joint_speed.hpp"
 
 // lib
-#include "tl_interface.h"
-#include "tl_job_operate.h"
-#include "tl_track.h"
-#include "tl_io.h"
-#include "tl_modbus.h"
-#include "tl_queue_operate.h"
+#include "tl_types.h"
 
 enum MessageLists
 {
