@@ -4,7 +4,6 @@
 #include "tl_driver/tl_driver.h"
 #include "tl_driver/version.hpp"
 
-// SDK 符号一律用 tl:: 限定（不使用 using namespace tl，避免 unscoped enum 成员与其它头/全局符号重名）
 namespace
 {
 
