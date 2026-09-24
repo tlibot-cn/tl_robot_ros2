@@ -16,7 +16,7 @@
 
 - tl_driver：启动日志新增驱动包自身版本行（`Driver Version: x.y.z`，取自 `package.xml`），与已有的 `SDK Version` 行并列输出（`c857ac0`）
 - tl_driver：专有库更新到 V3.1.0（`lib/arm`、`lib/x86` 的 `libtl_host.so` 与 `lib/include/` 下 14 个 API 头），`README.md`、`AGENTS.md` 中的版本标注同步订正为 V3.1.0（`87a456e`）
-- tl_ros2_interface：12 个 msg 头部标注用途（话题载荷 / 仅作 srv 嵌套参数 / 未接线）并在 README 补分类说明，避免把只作服务参数的结构误读为话题接口
+- tl_ros2_interface：12 个 msg 头部标注用途（话题载荷 / 仅作 srv 嵌套参数 / 未接线）并在 README 补分类说明，避免把只作服务参数的结构误读为话题接口（`d29b9f1`）
 
 ### 2026-09-22
 
