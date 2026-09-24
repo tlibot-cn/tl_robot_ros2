@@ -12,6 +12,10 @@
 
 ## [Unreleased]
 
+### 2026-09-24
+
+- tl_driver：启动日志新增驱动包自身版本行（`Driver Version: x.y.z`，取自 `package.xml`），与已有的 `SDK Version` 行并列输出
+
 ### 2026-09-22
 
 - tl_hardware：修复 MoveIt2 / ros2_control 启动瞬间机械臂先被拉向零位、轨迹控制器接管后才停下的问题：硬件接口 `on_activate()` 改用当前关节角播种命令接口，启动阶段不再下发零位指令（`46e8132`）
