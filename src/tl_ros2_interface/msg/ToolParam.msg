@@ -1,4 +1,5 @@
 # 工具参数
+# 用途：仅作 srv 嵌套参数（SetToolParam.param），不发布话题。
 # 单位约定：x/y/z 与 payload_mass_center_x/y/z 为 mm；payload_mass 为 kg；payload_inertia 为 kg·m²；
 # a/b/c 见对应行尾说明（SDK 头仅写「绕 A/B/C 轴旋转量」，未标注单位）。
 float64 x                        # 单位: mm（工具 X 轴偏移量）

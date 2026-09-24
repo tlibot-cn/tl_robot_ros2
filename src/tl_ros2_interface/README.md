@@ -164,7 +164,17 @@ tl_ros2_interface/
 ```
 
 ## tl_ros2_interface消息（msg）说明
-以下列出 msg 文件定义及字段说明。
+以下列出 msg 文件定义及字段说明。**12 个 msg 分三类，每个 `.msg` 头部注释里都标了用途，读之前先看那一行：**
+
+| 用途 | 数量 | msg |
+| :-- | :--: | :-- |
+| 话题载荷（在 publisher / subscriber 上出现） | 4 | `ArmStatus`、`CartesianPose`、`MoveCommand`、`ServolMove` |
+| 仅作 srv 嵌套参数（不发布话题） | 7 | `JobFileName`、`ModbusMasterParam`、`ModbusRTUParam`、`ModbusTCPParam`、`RobotDHParam`、`RobotJointParam`、`ToolParam` |
+| 未接线（无话题、无 srv 引用，定义保留备用） | 1 | `ObjectInfo` |
+
+其中 `CartesianPose`、`MoveCommand` 兼有两重身份：既发布/订阅话题，也作为 srv 嵌套参数（`SetUserCoord.pos`、`JobInsertMove.cmd`、`QueueMotionMoveJ.cmd`）。
+
+> **「仅在 srv 中出现的结构为什么放在 `msg/`」**：ROS2 的 `.srv` 只能声明内建类型或消息类型字段，无法内联结构体，也没有「仅供服务使用的结构」这一类——任何被 srv 复用的结构都必须定义成 `.msg`，生成出的类型名也就必然是 `<包>/msg/<名字>`。所以「`msg/` 目录里有不发布话题的类型」是 ROS2 类型系统的必然结果，不代表这些类型接口可以发布。判断一个类型是否发布，看驱动里有没有对应的 `create_publisher` / `create_subscription`。
 
 ### 机械臂运行状态ArmStatus_msg
 ```

@@ -1,4 +1,5 @@
 # 机械臂关节参数
+# 用途：仅作 srv 嵌套参数（GetRobotJointParam.param、SetRobotJointParam.param），不发布话题。
 # 单位约定：pos_sw_limit / neg_sw_limit 为 度；各转速与额定速度字段为 度/s。
 float64 reduction_ratio      # 无量纲（减速比）
 int32 encoder_resolution     # 编码器位数

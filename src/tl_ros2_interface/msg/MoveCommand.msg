@@ -1,4 +1,5 @@
 # 运动指令
+# 用途：话题载荷（/tl_driver/moveJ、/tl_driver/moveL 订阅）；同时作为 srv 嵌套参数（JobInsertMove.cmd、QueueMotionMoveJ.cmd）。
 # 单位约定（本仓库）：笛卡尔位置一律为 mm —— 由 SDK coord=1 的原始值透传，非 ROS 惯例的 m；
 # 姿态为 rad；关节角为 度。各字段单位见下方行尾注释。
 #

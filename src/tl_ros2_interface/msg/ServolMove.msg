@@ -1,4 +1,5 @@
 # ServoL 笛卡尔空间直线伺服运动指令
+# 用途：话题载荷（/tl_driver/set_servol_pos 订阅）；不被任何 srv 引用。
 # 前置条件：需先调用 open_servoj 打开关节跟踪模式
 # 每次收到该话题消息，节点自动获取当前位姿，插值并 IK 转为关节角后通过 servoj 发送
 # 单位约定：位置为 mm（本仓库采用 mm，非 ROS 惯例的 m）；姿态为 rad

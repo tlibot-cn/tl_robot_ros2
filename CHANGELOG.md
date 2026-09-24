@@ -17,6 +17,10 @@
 
 - tl_driver：启动日志新增驱动包自身版本行（`Driver Version: x.y.z`，取自 `package.xml`），与已有的 `SDK Version` 行并列输出（`cf7e12f`）
 
+#### 文档
+
+- tl_ros2_interface：12 个 msg 头部标注用途（话题载荷 / 仅作 srv 嵌套参数 / 未接线）并在 README 补分类说明，避免把只作服务参数的结构误读为话题接口
+
 ### 2026-09-22
 
 #### 移除
