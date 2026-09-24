@@ -14,7 +14,7 @@
 
 ### 2026-09-24
 
-- tl_driver：启动日志新增驱动包自身版本行（`Driver Version: x.y.z`，取自 `package.xml`），与已有的 `SDK Version` 行并列输出
+- tl_driver：启动日志新增驱动包自身版本行（`Driver Version: x.y.z`，取自 `package.xml`），与已有的 `SDK Version` 行并列输出（`c857ac0`）
 
 ### 2026-09-22
 
