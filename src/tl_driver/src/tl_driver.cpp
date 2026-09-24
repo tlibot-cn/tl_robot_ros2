@@ -448,6 +448,9 @@ TL_Arm::TL_Arm() : rclcpp::Node("tl_driver")
 
   state_publish_timer_ = this->create_wall_timer(period, std::bind(&TL_Arm::publish_arm_state, this), timer_group_);
 
+  // 获取sdk库版本
+  RCLCPP_INFO(this->get_logger(), "SDK Version: %s", tl::get_library_version().c_str());
+
   // 初始化
   init();
   RCLCPP_INFO(this->get_logger(), "%s_driver is running ", arm_type_.c_str());
@@ -466,6 +469,7 @@ void TL_Arm::init()
 {
   RCLCPP_INFO(this->get_logger(), "Trying to connect to %s:%s,%s", arm_ip_.c_str(), arm_port_.c_str(),
               arm_port_aux_.c_str());
+
   if (connect())
   {
     // 切换到示教模式
@@ -1087,6 +1091,7 @@ void TL_Arm::handle_get_library_version_service(const std::shared_ptr<std_srvs::
   }
 
   std::string version = get_library_version();
+  RCLCPP_INFO(this->get_logger(), "Library version: %s", version.c_str());
   response->success = (version != "");
   response->message = response->success ? version : "Failed to get library version";
 }
