@@ -1,4 +1,5 @@
 # 机械臂关节参数
+# 用途：仅作 srv 嵌套参数（GetRobotJointParam.param、SetRobotJointParam.param），不发布话题。
 float64 reduction_ratio
 int32 encoder_resolution
 float64 pos_sw_limit

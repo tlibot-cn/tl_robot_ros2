@@ -1,4 +1,5 @@
 # 运动指令
+# 用途：话题载荷（/tl_driver/moveJ、/tl_driver/moveL 订阅）；同时作为 srv 嵌套参数（JobInsertMove.cmd、QueueMotionMoveJ.cmd）。
 float64[] target_pos_value
 string target_pos_name
 int32 target_pos_type

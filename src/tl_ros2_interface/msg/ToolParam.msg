@@ -1,4 +1,5 @@
 # 工具参数
+# 用途：仅作 srv 嵌套参数（SetToolParam.param），不发布话题。
 float64 x
 float64 y
 float64 z

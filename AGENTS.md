@@ -13,7 +13,7 @@
 
 | 包 | 作用 | 关键入口 |
 | --- | --- | --- |
-| `tl_ros2_interface` | 全部自定义接口（12 个 `.msg`、45 个 `.srv`） | `msg/`、`srv/`；**必须最先构建** |
+| `tl_ros2_interface` | 全部自定义接口（12 个 `.msg`、45 个 `.srv`；msg 中 4 个是话题载荷、7 个仅作 srv 嵌套参数、1 个未接线——**`msg/` 目录不是话题清单**，每个 `.msg` 头部标了用途） | `msg/`、`srv/`；**必须最先构建** |
 | `tl_driver` | 机械臂驱动，TCP 连控制器（65 服务 / 4 订阅 / 3 发布） | `src/tl_driver.cpp`（约 2800 行单文件）、`include/tl_driver/tl_driver.h` |
 | `tl_teleop` | VR 遥操作（PXREA Robot SDK，100 Hz 控制线程） | `src/tl_teleop.cpp`；SDK 头 `lib/include/PXREARobotSDK.h`（C 风格 API，用 `uint64_t` 需 `<stdint.h>`） |
 | `tl_teleop_f710` | F710 手柄遥操作 + 仿真桥接（250 Hz ServoJ） | `src/tl_teleop_f710_node.cpp`、`src/tl_teleop_f710_sim_bridge.cpp` |
