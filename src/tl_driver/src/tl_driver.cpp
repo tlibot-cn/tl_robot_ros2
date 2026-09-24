@@ -4,6 +4,14 @@
 #include "tl_driver/tl_driver.h"
 #include "tl_driver/version.hpp"
 
+#include "tl_interface.h"
+#include "tl_job_operate.h"
+#include "tl_track.h"
+#include "tl_io.h"
+#include "tl_modbus.h"
+#include "tl_queue_operate.h"
+#include "tl_servo_ext.h"
+
 namespace
 {
 
