@@ -25,7 +25,7 @@ void register_motion_services(DriverNode& node);
 void register_transform_services(DriverNode& node);
 
 /**
- * @brief 注册配置类服务（坐标系、工具、关节参数、DH、模式、全局点位）。
+ * @brief 注册配置类服务（坐标系、工具、DH、模式、全局点位）。
  * @param[in] node 驱动节点
  */
 void register_config_services(DriverNode& node);

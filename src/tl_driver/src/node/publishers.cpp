@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 
 #include "tl_driver/arm_client.hpp"
 #include "tl_driver/arm_sdk.hpp"

@@ -63,6 +63,8 @@ public:
 
   /**
    * @brief 创建服务并持有其生命周期。
+   * @note 包装 `rclcpp::Node::create_service`（固定 `rmw_qos_profile_services_default` 与服务回调组），
+   *       并把服务存入 `services_` 保活——rclcpp Humble 只弱引用已创建的服务，不持有即注销。
    * @tparam ServiceT 服务类型
    * @tparam CallbackT 回调类型
    * @param[in] name 服务名（含 `/tl_driver/` 前缀）
@@ -80,6 +82,8 @@ public:
 
   /**
    * @brief 创建订阅并持有其生命周期（回调组为话题组）。
+   * @note 同 create_service：存入 `subscriptions_` 保活；订阅选项取自 `topic_options_`，
+   *       该成员须在 create_callback_groups() 中初始化。
    * @tparam MessageT 消息类型
    * @tparam CallbackT 回调类型
    * @param[in] name 话题名（含 `/tl_driver/` 前缀）

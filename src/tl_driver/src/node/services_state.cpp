@@ -453,6 +453,7 @@ void register_state_services(DriverNode& node)
   node.create_service<tl_ros2_interface::srv::SetDragMode>(
       "/tl_driver/set_drag_mode",
       std::bind(&handle_set_drag_mode_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  // 用不了
   node.create_service<std_srvs::srv::Trigger>(
       "/tl_driver/get_drag_status",
       std::bind(&handle_get_drag_status_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));

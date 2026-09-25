@@ -211,7 +211,7 @@ tl_driver:
 │       ├── services_session.cpp   # 连接/断开/上下电/清错
 │       ├── services_motion.cpp    # 速度、点动、ServoJ 开关、队列运动
 │       ├── services_transform.cpp # 四元数/旋转矩阵、坐标变换、可达性
-│       ├── services_config.cpp    # 坐标系、工具、DH、关节参数、模式、全局点位
+│       ├── services_config.cpp    # 坐标系、工具、DH、模式、全局点位
 │       ├── services_io.cpp        # 数字量、Modbus、日志下载、轨迹
 │       ├── services_job.cpp       # job 运行/删除/插入、文件列表
 │       ├── services_state.cpp     # 机器人状态、关节温度/电压/电流、力矩、版本、拖拽

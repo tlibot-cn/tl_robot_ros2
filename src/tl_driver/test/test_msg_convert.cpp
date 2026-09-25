@@ -28,6 +28,8 @@ TEST(MsgConvert, MoveCmdMapsEveryFieldToDistinctValue)
 
   const tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(msg);
 
+  // 当前驱动只支持自定义数组点位：无论消息里的 target_pos_type/target_pos_name 是什么，
+  // 下发前一律改写为 PosType::data + 空点位名。若后续支持 GP 内置点位，本用例需同步调整。
   EXPECT_EQ(cmd.targetPosType, tl::PosType::data);
   EXPECT_TRUE(cmd.targetPosName.empty());
   EXPECT_EQ(cmd.coord, static_cast<tl::Coord>(1));

@@ -72,6 +72,7 @@ void DriverNode::create_callback_groups()
 
 void DriverNode::register_entities()
 {
+  // 前置：declare_parameters() 与 create_callback_groups() 已执行（参数、回调组、topic_options_ 就绪）
   // 服务
   register_session_services(*this);
   register_motion_services(*this);
