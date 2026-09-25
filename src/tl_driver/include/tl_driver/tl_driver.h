@@ -13,6 +13,8 @@
 #include <condition_variable>
 #include <cstdint>
 
+#include "tl_driver/arm_session.hpp"
+
 // ROS2
 #include <rclcpp/rclcpp.hpp>
 #include <std_srvs/srv/trigger.hpp>
@@ -84,12 +86,6 @@ public:
   TL_Arm();
   ~TL_Arm();
 
-  bool connect();
-  bool disconnect();
-  bool power_on();
-  bool power_off();
-  bool is_connected();
-  bool is_powered();
   void init();
 
   // 服务
@@ -320,10 +316,7 @@ private:
   std::string arm_port_aux_;
   std::string arm_type_;
 
-  int socket_fd_{0};
-  int socket_fd_aux_{0};
-  bool is_connected_{false}; // 机械臂是否连接
-  bool is_powered_{false};   // 机械臂是否上电(示教模式)
+  tl_driver::ArmSession session_;
 
   std::vector<std::string> arm_joints_;
   double publish_rate_{100.0};
