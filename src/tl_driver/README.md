@@ -129,9 +129,9 @@ tl_driver:
 │   ├── tl_driver3.png
 │   ├── tl_driver4.png
 │   └── tl_driver服务与话题说明书.md  # 服务与话题逐条说明
-├── include                        # 头文件
+├── include                        # 供 CMake 生成的编译期头
 │   └── tl_driver
-│       └── tl_driver.h
+│       └── version.hpp.in         # 版本号模板，由 CMake 生成 version.hpp
 ├── launch                         # 启动文件
 │   ├── tl_driver.launch.py        # 通用启动（需传arm_type参数）
 │   ├── tl_tcb605_driver.launch.py
@@ -170,10 +170,25 @@ tl_driver:
 │       └── libtl_host.so
 ├── package.xml
 ├── README.md
-├── src                        # 驱动代码源文件
-│   └── tl_driver.cpp
-└── test                       # 接口测试
+├── src                        # 驱动代码源文件（按职责拆分）
+│   ├── tl_driver_main.cpp     # 进程入口：rclcpp 初始化 + 多线程执行器
+│   ├── arm_sdk.hpp            # 专有 SDK 头文件的唯一入口
+│   ├── arm_session.{h,cpp}    # 会话：双端口连接、上下电、7000 口状态帧缓冲
+│   ├── node                     # 节点层
+│   │   ├── driver_node.{h,cpp}  # DriverNode：参数、回调组、订阅、服务注册
+│   │   ├── services_state.cpp   # 状态类服务（连接/上下电/版本/温度/模式）
+│   │   ├── services_config.cpp  # 配置类服务（DH/关节参数/工具/坐标系/全局点位）
+│   │   ├── services_transform.cpp # 位姿换算与坐标系服务（rpy↔四元数、r↔tr）
+│   │   ├── services_motion.cpp  # 运动类服务与话题（速度/点动/轨迹/队列/ServoJ·ServoL）
+│   │   ├── services_io.cpp      # IO 类服务（数字 IO、Modbus、日志下载）
+│   │   ├── services_job.cpp     # 作业类服务（作业运行/删除/插入运动）
+│   │   └── publishers.{h,cpp}   # /joint_states、/tcp_pose、/arm_status 发布
+│   ├── convert/msg_convert.{h,cpp} # ROS 消息 ↔ SDK 结构转换与参数校验
+│   └── math/quaternion.{h,cpp}  # 欧拉角/四元数互转与 slerp（纯函数）
+└── test                       # 测试
     ├── test_all_interfaces.py   # 全接口测试脚本
+    ├── test_quaternion.cpp      # 四元数纯函数单元测试
+    ├── test_msg_convert.cpp     # 消息转换与点位名校验单元测试
     └── tl_driver_接口测试.md    # 接口测试说明文档
 ```
 ## tl_driver功能包话题与服务说明

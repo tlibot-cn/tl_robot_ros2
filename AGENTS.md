@@ -8,13 +8,13 @@
 
 - `src/` 下 10 个功能包 + `scripts/` 工具脚本；ROS2 Humble，C++17 / Python，colcon（ament_cmake + ament_python），无前端/Node.js。
 - 构建：`colcon build --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` → `source install/setup.bash`（产物 `build/`、`install/`、`log/` 已 gitignore）。选择性构建必须先建 `tl_ros2_interface`（生成 msg/srv 头文件）。
-- **无自动化测试**：`test/` 只有 ament lint 脚手架（`ament_copyright`/`flake8`/`pep257`）。不要假设有测试可跑，也不要以"补测试"充当验证 —— 验证靠编译 + 实机/仿真运行。
+- **自动化测试仅限纯逻辑层**：仅 `tl_driver` 有 gtest（`colcon test --packages-select tl_driver`），覆盖四元数换算、ROS↔SDK 消息转换与点位名校验；其余包 `test/` 只有 ament lint 脚手架（`ament_copyright`/`flake8`/`pep257`）。服务/话题行为语义仍需实机或仿真验证 —— 不要假设有测试可跑，也不要以"补测试"充当验证 —— 验证靠编译 + 实机/仿真运行。
 - 开发环境在 Docker 内（配置不在本仓库）。
 
 | 包 | 作用 | 关键入口 |
 | --- | --- | --- |
 | `tl_ros2_interface` | 全部自定义接口（12 个 `.msg`、45 个 `.srv`；msg 中 4 个是话题载荷、7 个仅作 srv 嵌套参数、1 个未接线——**`msg/` 目录不是话题清单**，每个 `.msg` 头部标了用途） | `msg/`、`srv/`；**必须最先构建** |
-| `tl_driver` | 机械臂驱动，TCP 连控制器（65 服务 / 4 订阅 / 3 发布） | `src/tl_driver.cpp`（约 2800 行单文件）、`include/tl_driver/tl_driver.h` |
+| `tl_driver` | 机械臂驱动，TCP 连控制器（65 服务 / 4 订阅 / 3 发布） | `src/tl_driver_main.cpp`（入口）、`src/node/driver_node.{h,cpp}`（参数/回调组/订阅/服务注册）、`src/node/services_*.cpp`（按域 handler）、`src/arm_session.{h,cpp}`（会话与上下电） |
 | `tl_teleop` | VR 遥操作（PXREA Robot SDK，100 Hz 控制线程） | `src/tl_teleop.cpp`；SDK 头 `lib/include/PXREARobotSDK.h`（C 风格 API，用 `uint64_t` 需 `<stdint.h>`） |
 | `tl_teleop_f710` | F710 手柄遥操作 + 仿真桥接（250 Hz ServoJ） | `src/tl_teleop_f710_node.cpp`、`src/tl_teleop_f710_sim_bridge.cpp` |
 | `tl_hardware` | ros2_control 硬件插件，桥接 MoveIt2 ↔ `tl_driver` | `src/tl_hardware_interface.cpp`（`tl_hardware::TLHardwareInterface`） |
@@ -51,7 +51,7 @@
 
 **⑤ 线程模型。** `tl_driver` 三组回调组 `service_group_` / `topic_group_` / `timer_group_` **均为 `MutuallyExclusive`**（同组串行），由 `MultiThreadedExecutor` 驱动（线程数 `max(4, hardware_concurrency)`）。`timer_group_` 曾用 `Reentrant` 导致状态发布回调并发，`4757255` 改为互斥，**勿改回**。
 
-**⑥ 失败即退。** `TL_Arm::init()` 中连接失败、切入示教模式失败均 `rclcpp::shutdown()` + exit —— 不带病运行。
+**⑥ 失败即退。** `DriverNode::init()` 中连接失败、切入示教模式失败均 `rclcpp::shutdown()` + exit —— 不带病运行。
 
 **⑦ 硬编码边界。** IP / 端口 / 关节名只出现在 `config/*.yaml`（默认 `192.168.1.13:6001`），不写进代码。`arm_type` 在配置 YAML 中大写（`TCB605`），启动参数小写（`tcb605`），全部 14 种。
 
