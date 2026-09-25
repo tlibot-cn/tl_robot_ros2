@@ -4,6 +4,7 @@
 #include "node/driver_node.h"
 #include "node/services_state.h"
 #include "node/services_config.h"
+#include "node/services_transform.h"
 #include "tl_driver/version.hpp"
 
 #include "arm_sdk.hpp"
@@ -46,6 +47,7 @@ DriverNode::DriverNode() : rclcpp::Node("tl_driver")
   // 服务
   services::register_state_services(*this, service_group_);
   services::register_config_services(*this, service_group_);
+  services::register_transform_services(*this, service_group_);
 
 
   set_speed_service_ = this->create_service<tl_ros2_interface::srv::SetSpeed>(
@@ -56,31 +58,6 @@ DriverNode::DriverNode() : rclcpp::Node("tl_driver")
   get_speed_service_ = this->create_service<tl_ros2_interface::srv::GetSpeed>(
       "/tl_driver/get_speed",
       std::bind(&DriverNode::handle_get_speed_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  get_quat2rpy_service_ = this->create_service<tl_ros2_interface::srv::GetPosTransform>(
-      "/tl_driver/get_quat2rpy",
-      std::bind(&DriverNode::handle_get_quat2rpy_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  get_rpy2quat_service_ = this->create_service<tl_ros2_interface::srv::GetPosTransform>(
-      "/tl_driver/get_rpy2quat",
-      std::bind(&DriverNode::handle_get_rpy2quat_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  get_rpy2r_service_ = this->create_service<tl_ros2_interface::srv::GetPosTransform>(
-      "/tl_driver/get_rpy2r",
-      std::bind(&DriverNode::handle_get_rpy2r_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  get_tr2r_service_ = this->create_service<tl_ros2_interface::srv::GetPosTransform>(
-      "/tl_driver/get_tr2r",
-      std::bind(&DriverNode::handle_get_tr2r_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  get_r2tr_service_ = this->create_service<tl_ros2_interface::srv::GetPosTransform>(
-      "/tl_driver/get_r2tr",
-      std::bind(&DriverNode::handle_get_r2tr_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
 
@@ -112,17 +89,6 @@ DriverNode::DriverNode() : rclcpp::Node("tl_driver")
       rmw_qos_profile_services_default, service_group_);
 
 
-  set_current_coord_service_ = this->create_service<tl_ros2_interface::srv::SetCurrentCoord>(
-      "/tl_driver/set_current_coord",
-      std::bind(&DriverNode::handle_set_current_coord_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  get_current_coord_service_ = this->create_service<tl_ros2_interface::srv::GetCurrentCoord>(
-      "/tl_driver/get_current_coord",
-      std::bind(&DriverNode::handle_get_current_coord_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-
   set_digital_output_service_ = this->create_service<tl_ros2_interface::srv::SetDigitalOutput>(
       "/tl_driver/set_digital_output",
       std::bind(&DriverNode::handle_set_digital_output_service, this, std::placeholders::_1, std::placeholders::_2),
@@ -142,11 +108,6 @@ DriverNode::DriverNode() : rclcpp::Node("tl_driver")
   modbus_read_service_ = this->create_service<tl_ros2_interface::srv::ModbusRead>(
       "/tl_driver/modbus_read",
       std::bind(&DriverNode::handle_modbus_read_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  coord_transform_service_ = this->create_service<tl_ros2_interface::srv::CoordTransform>(
-      "/tl_driver/coord_transform",
-      std::bind(&DriverNode::handle_coord_transform_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
 
@@ -344,171 +305,6 @@ void DriverNode::handle_get_speed_service(const std::shared_ptr<tl_ros2_interfac
   response->speed = speed;
 }
 
-void DriverNode::handle_get_quat2rpy_service(
-    const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (request->input.size() < 4)
-  {
-    response->success = false;
-    response->message = "Invalid quat input";
-    return;
-  }
-
-  std::vector<double> rpy;
-  tl::Result ret = tl::get_quat2rpy(session_->fd(), request->input, rpy);
-  if (ret == tl::Result::SUCCESS)
-  {
-    response->success = true;
-    response->message = "Get quat2rpy successfully";
-    response->output = rpy;
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Failed to get quat2rpy";
-  }
-}
-
-void DriverNode::handle_get_rpy2quat_service(
-    const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (request->input.size() < 3)
-  {
-    response->success = false;
-    response->message = "Invalid rpy input";
-    return;
-  }
-
-  std::vector<double> quat;
-  tl::Result ret = tl::get_rpy2quat(session_->fd(), request->input, quat);
-  if (ret == tl::Result::SUCCESS)
-  {
-    response->success = true;
-    response->message = "Get rpy2quat successfully";
-    response->output = quat;
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Failed to get rpy2quat";
-  }
-}
-
-void DriverNode::handle_get_rpy2r_service(
-    const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (request->input.size() < 3)
-  {
-    response->success = false;
-    response->message = "Invalid rpy input";
-    return;
-  }
-
-  std::vector<double> rot;
-  tl::Result ret = tl::get_rpy2r(session_->fd(), request->input, rot);
-  if (ret == tl::Result::SUCCESS)
-  {
-    response->success = true;
-    response->message = "Get rpy2r successfully";
-    response->output = rot;
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Failed to get rpy2r";
-  }
-}
-
-void DriverNode::handle_get_tr2r_service(
-    const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (request->input.size() < 16)
-  {
-    response->success = false;
-    response->message = "Invalid tr input";
-    return;
-  }
-
-  std::vector<double> rot;
-  tl::Result ret = tl::get_tr2r(session_->fd(), request->input, rot);
-  if (ret == tl::Result::SUCCESS)
-  {
-    response->success = true;
-    response->message = "Get tr2r successfully";
-    response->output = rot;
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Failed to get tr2r";
-  }
-}
-
-void DriverNode::handle_get_r2tr_service(
-    const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (request->input.size() < 9)
-  {
-    response->success = false;
-    response->message = "Invalid tr matrix input";
-    return;
-  }
-
-  std::vector<double> tr_matrix;
-  tl::Result ret = tl::get_r2tr(session_->fd(), request->input, tr_matrix);
-  if (ret == tl::Result::SUCCESS)
-  {
-    response->success = true;
-    response->message = "Get r2tr successfully";
-    response->output = tr_matrix;
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Failed to get r2tr";
-  }
-}
-
 
 void DriverNode::handle_start_jogging_service(const std::shared_ptr<tl_ros2_interface::srv::Jogging::Request> request,
                                               std::shared_ptr<tl_ros2_interface::srv::Jogging::Response> response)
@@ -601,50 +397,6 @@ void DriverNode::handle_track_playback_service(
   tl::Result ret = tl::track_record_playback(session_->fd(), request->vel);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Track playback successfully" : "Failed to playback track";
-}
-
-
-void DriverNode::handle_set_current_coord_service(
-    const std::shared_ptr<tl_ros2_interface::srv::SetCurrentCoord::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::SetCurrentCoord::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::Result ret = tl::set_current_coord(session_->fd(), static_cast<tl::Coord>(request->coord));
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Set current coordinate successfully" : "Failed to set current coordinate";
-}
-
-void DriverNode::handle_get_current_coord_service(
-    const std::shared_ptr<tl_ros2_interface::srv::GetCurrentCoord::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::GetCurrentCoord::Response> response)
-{
-  (void)request;
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::Coord coord = tl::Coord::JOINT;
-  tl::Result ret = tl::get_current_coord(session_->fd(), coord);
-  if (ret == tl::Result::SUCCESS)
-  {
-    response->success = true;
-    response->message = "Get current coordinate successfully";
-    response->coord = static_cast<int>(coord);
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Failed to get current coordinate";
-  }
 }
 
 
@@ -781,43 +533,6 @@ void DriverNode::handle_modbus_read_service(const std::shared_ptr<tl_ros2_interf
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Modbus read successfully" : "Failed to read Modbus";
   response->data = data;
-}
-
-void DriverNode::handle_coord_transform_service(
-    const std::shared_ptr<tl_ros2_interface::srv::CoordTransform::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::CoordTransform::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (request->origin_coord < 0 || request->origin_coord > 3)
-  {
-    response->success = false;
-    response->message = "Invalid origin coordinate";
-    return;
-  }
-
-  if (request->target_coord < 0 || request->target_coord > 3)
-  {
-    response->success = false;
-    response->message = "Invalid target coordinate";
-    return;
-  }
-
-  std::vector<double> originPos = request->origin_pos;
-  std::vector<double> referencePos = request->reference_pos;
-  std::vector<double> targetPos;
-
-  tl::Result ret = tl::get_origin_coord_to_target_coord(session_->fd(), static_cast<tl::Coord>(request->origin_coord),
-                                                        originPos, static_cast<tl::Coord>(request->target_coord),
-                                                        targetPos, request->form, referencePos);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Coord transform successfully" : "Failed to transform coord";
-  response->target_pos = targetPos;
 }
 
 
