@@ -68,7 +68,7 @@ black .
 ```bash
 ./scripts/format-cpp.sh                          # 格式化所有 C++ 文件
 ./scripts/format-cpp.sh src/tl_driver/src/       # 格式化指定目录
-./scripts/format-cpp.sh src/tl_driver/src/tl_driver.cpp  # 格式化指定文件
+./scripts/format-cpp.sh src/tl_driver/src/node/driver_node.cpp  # 格式化指定文件
 ```
 
 ### Python 格式
