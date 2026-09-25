@@ -122,7 +122,7 @@ private:
 
   ArmSession session_;
 
-  std::unique_ptr<tl_driver::Publishers> publishers_;
+  std::unique_ptr<tl_driver::StatePublishers> publishers_;
 
   rclcpp::CallbackGroup::SharedPtr service_group_;
   rclcpp::CallbackGroup::SharedPtr topic_group_;

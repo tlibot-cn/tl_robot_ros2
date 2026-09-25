@@ -19,7 +19,7 @@
 namespace tl_driver
 {
 /// @brief 三个状态话题的发布器与填充逻辑。
-class Publishers
+class StatePublishers
 {
 public:
   /// @brief 构造并创建三个发布器。
@@ -27,7 +27,7 @@ public:
   /// @param[in] session 会话，提供连接状态与 fd，生命周期须长于本对象
   /// @param[in] joint_names 关节名，写入 /joint_states.name
   /// @param[in] ndof 关节数，决定位姿字段裁剪
-  Publishers(rclcpp::Node& node, const ArmSession& session, std::vector<std::string> joint_names, int ndof);
+  StatePublishers(rclcpp::Node& node, const ArmSession& session, std::vector<std::string> joint_names, int ndof);
 
   /// @brief 定时器入口：未连接时告警返回，否则发布运行状态、关节角与 TCP 位姿。
   void publish_arm_state();

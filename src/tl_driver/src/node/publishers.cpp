@@ -1,5 +1,5 @@
 /// @file publishers.cpp
-/// @brief Publishers 的实现（与拆分前的同名成员实现等价）。
+/// @brief StatePublishers 的实现（与拆分前的同名成员实现等价）。
 
 #include "node/publishers.h"
 
@@ -11,7 +11,8 @@
 
 namespace tl_driver
 {
-Publishers::Publishers(rclcpp::Node& node, const ArmSession& session, std::vector<std::string> joint_names, int ndof)
+StatePublishers::StatePublishers(rclcpp::Node& node, const ArmSession& session, std::vector<std::string> joint_names,
+                                 int ndof)
     : node_(node), session_(session), joint_names_(std::move(joint_names)), ndof_(ndof)
 {
   joint_state_pub_ = node_.create_publisher<sensor_msgs::msg::JointState>("/joint_states", 10);
@@ -21,7 +22,7 @@ Publishers::Publishers(rclcpp::Node& node, const ArmSession& session, std::vecto
   running_status_pub_ = node_.create_publisher<tl_ros2_interface::msg::ArmStatus>("/arm_status", 10);
 }
 
-void Publishers::publish_arm_state()
+void StatePublishers::publish_arm_state()
 {
   if (!session_.is_connected())
   {
@@ -56,7 +57,7 @@ void Publishers::publish_arm_state()
   }
 }
 
-void Publishers::publish_joint_pose(const std::vector<double>& joint_pose)
+void StatePublishers::publish_joint_pose(const std::vector<double>& joint_pose)
 {
   sensor_msgs::msg::JointState msg;
   msg.header.stamp = node_.now();
@@ -74,7 +75,7 @@ void Publishers::publish_joint_pose(const std::vector<double>& joint_pose)
   joint_state_pub_->publish(msg);
 }
 
-void Publishers::publish_tcp_pose(const std::vector<double>& tcp_pose)
+void StatePublishers::publish_tcp_pose(const std::vector<double>& tcp_pose)
 {
   // SDK 返回：位置 mm、欧拉角弧度（rad）→ 统一转换为 ROS 标准单位：m 和 rad
   constexpr double kMmToM = 1.0 / 1000.0;
@@ -104,7 +105,7 @@ void Publishers::publish_tcp_pose(const std::vector<double>& tcp_pose)
   tcp_pose_pub_->publish(msg);
 }
 
-void Publishers::publish_running_status()
+void StatePublishers::publish_running_status()
 {
   tl::RunState running_status = tl::RunState::STOP;
   tl::Result ret = tl::get_robot_running_state(session_.fd(), running_status);

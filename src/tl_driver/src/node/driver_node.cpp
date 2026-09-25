@@ -70,7 +70,7 @@ void DriverNode::register_entities()
   register_state_services(*this);
 
   // 话题pub
-  publishers_ = std::make_unique<tl_driver::Publishers>(*this, session_, arm_joints_, ndof_);
+  publishers_ = std::make_unique<tl_driver::StatePublishers>(*this, session_, arm_joints_, ndof_);
 
   // 话题sub
   register_topics(*this);
