@@ -27,9 +27,6 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(tf2 REQUIRED)
-find_package(tf2_geometry_msgs REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Development)
 find_package(tl_ros2_interface REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -69,18 +66,15 @@ add_executable(tl_driver
 )
 
 target_include_directories(tl_driver PRIVATE
-  "${CMAKE_CURRENT_SOURCE_DIR}/src"
   "${CMAKE_CURRENT_BINARY_DIR}/include"
   "${CMAKE_CURRENT_SOURCE_DIR}/lib/include"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 
 ament_target_dependencies(tl_driver
   rclcpp
   std_srvs
   sensor_msgs
-  geometry_msgs
-  tf2
-  tf2_geometry_msgs
   tl_ros2_interface
   std_msgs
 )

@@ -7,10 +7,12 @@
 
 #include <string>
 
-#include "arm_sdk.hpp"
 #include "tl_ros2_interface/msg/modbus_master_param.hpp"
 #include "tl_ros2_interface/msg/move_command.hpp"
 #include "tl_ros2_interface/msg/robot_dh_param.hpp"
+
+// SDK 头最后引入：tl_interface.h 会 #undef ERROR/DEBUG 等宏
+#include "arm_sdk.hpp"
 
 namespace tl_driver::convert
 {
