@@ -50,11 +50,15 @@ public:
 
   /**
    * @brief 关节名列表（arm_joints 参数）。
+   * @note 当前无调用方（StatePublishers 构造直接收 arm_joints_）；与 dev 线保持一致保留，
+   *       避免下一次结构对齐时被当作死代码清理而再次分叉。
    */
   const std::vector<std::string>& joint_names() const;
 
   /**
    * @brief 服务回调组，65 个服务共用（MutuallyExclusive，串行）。
+   * @note 当前无调用方（create_service 内部直接用成员）；与 dev 线保持一致保留，
+   *       避免下一次结构对齐时被当作死代码清理而再次分叉。
    */
   rclcpp::CallbackGroup::SharedPtr service_group() const;
 

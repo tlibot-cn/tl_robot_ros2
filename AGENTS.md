@@ -75,7 +75,7 @@
 
 ## 命名规范（只列非默认项）
 
-- **C++**：文件 snake_case；类/枚举 PascalCase；枚举值与宏 UPPER_SNAKE；成员变量 `snake_case_`（下划线后缀）；成员函数 camelCase；服务回调 `handle_{name}_service`、话题回调 `handle_{topic}_topic`；句柄变量 `{name}_service_` / `_sub_` / `_pub_`；头文件保护 `包名__文件名_H_`；回调绑定用 `std::bind(&Class::method, this, ...)`。
+- **C++**：文件 snake_case；类/枚举 PascalCase；枚举值与宏 UPPER_SNAKE；成员变量 `snake_case_`（下划线后缀）；成员函数 camelCase；服务回调 `handle_{name}_service`、话题回调 `handle_{topic}_topic`；句柄变量 `{name}_service_` / `_sub_` / `_pub_`；头文件保护 `包名__文件名_HPP_`（`.hpp`；历史上的 `.h` 保留 `_H_`）；回调绑定用 `std::bind(&Class::method, this, ...)`。
 - **Python**：文件/函数/变量 snake_case；类 PascalCase（ROS 节点类继承 `Node`）；私有方法 `_snake_case`；服务客户端 `_cli` 后缀、订阅者 `_sub` 后缀；入口函数与 `console_scripts` 同名。
 - **话题/服务名**：snake_case，驱动侧统一 `/tl_driver/` 前缀。
 - **已知例外（历史遗留，勿"顺手修正"）**：`connect_service_` → `/tl_driver/connect_arm`；`poweron_service_` / `poweroff_service_` → `/tl_driver/power_on` / `power_off`；`running_status_pub_` → `/arm_status`。
