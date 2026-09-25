@@ -2,7 +2,7 @@
 #define TL_DRIVER__ARM_SDK_HPP_
 
 /// @file arm_sdk.hpp
-/// @brief 供应商 SDK（libtl_host.so）头文件的唯一入口，并提供 SDK 返回值到文本的映射。
+/// @brief SDK（libtl_host.so）头文件的唯一入口，并提供 SDK 返回值到文本的映射。
 /// @note SDK 符号一律以 `tl::` 显式限定，禁止 `using namespace tl;`
 ///       ——其 unscoped enum 成员（SUCCESS/TIMEOUT 等）会与其它头或全局符号重名。
 /// @note SDK 返回值的接收类型一律使用其自身类型（如 `tl::Result`），不用 `int`。

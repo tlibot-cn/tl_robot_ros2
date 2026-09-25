@@ -172,7 +172,7 @@ tl_driver:
 ├── README.md
 ├── src                        # 驱动代码源文件（按职责拆分）
 │   ├── tl_driver_main.cpp     # 进程入口：rclcpp 初始化 + 多线程执行器
-│   ├── arm_sdk.hpp            # 专有 SDK 头文件的唯一入口
+│   ├── arm_sdk.hpp            # SDK 头文件唯一入口（libtl_host.so 的 API 头）
 │   ├── arm_session.{h,cpp}    # 会话：双端口连接、上下电、7000 口状态帧缓冲
 │   ├── node                     # 节点层
 │   │   ├── driver_node.{h,cpp}  # DriverNode：参数、回调组、订阅、服务注册
