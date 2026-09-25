@@ -51,12 +51,21 @@ set_target_properties(tl_host_lib PROPERTIES
 )
 
 add_executable(tl_driver
-  src/tl_driver.cpp
+  src/tl_driver_main.cpp
   src/arm_client.cpp
   src/arm_session.cpp
   src/convert/msg_convert.cpp
   src/math/quaternion.cpp
+  src/node/driver_node.cpp
   src/node/publishers.cpp
+  src/node/services_config.cpp
+  src/node/services_io.cpp
+  src/node/services_job.cpp
+  src/node/services_motion.cpp
+  src/node/services_session.cpp
+  src/node/services_state.cpp
+  src/node/services_transform.cpp
+  src/node/topics.cpp
 )
 
 target_include_directories(tl_driver PRIVATE

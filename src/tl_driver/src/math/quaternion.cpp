@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 
 #include "tl_driver/math/quaternion.hpp"

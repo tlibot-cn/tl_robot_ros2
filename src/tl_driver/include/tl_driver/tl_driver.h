@@ -1,401 +1,148 @@
 #ifndef TL_DRIVER__TL_DRIVER_H_
 #define TL_DRIVER__TL_DRIVER_H_
 
-// common
-#include <algorithm>
-#include <iostream>
-#include <chrono>
-#include <functional>
+#include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
+
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
-#include <mutex>
-#include <condition_variable>
-#include <cstdint>
 
 #include "tl_driver/arm_session.hpp"
 #include "tl_driver/node/publishers.hpp"
-
-// ROS2
-#include <rclcpp/rclcpp.hpp>
-#include <std_srvs/srv/trigger.hpp>
-#include <sensor_msgs/msg/joint_state.hpp>
-#include <std_msgs/msg/float64_multi_array.hpp>
-
-// msg
-#include "tl_ros2_interface/msg/arm_status.hpp"
 #include "tl_ros2_interface/msg/move_command.hpp"
-#include "tl_ros2_interface/msg/cartesian_pose.hpp"
-#include "tl_ros2_interface/msg/tool_param.hpp"
-#include "tl_ros2_interface/msg/modbus_tcp_param.hpp"
-#include "tl_ros2_interface/msg/modbus_rtu_param.hpp"
-#include "tl_ros2_interface/msg/modbus_master_param.hpp"
-#include "tl_ros2_interface/msg/robot_dh_param.hpp"
-#include "tl_ros2_interface/msg/job_file_name.hpp"
-#include "tl_ros2_interface/msg/robot_joint_param.hpp"
 #include "tl_ros2_interface/msg/servol_move.hpp"
 
-// srv
-#include "tl_ros2_interface/srv/get_robot_state.hpp"
-#include "tl_ros2_interface/srv/get_robot_joint_param.hpp"
-#include "tl_ros2_interface/srv/set_robot_joint_param.hpp"
-#include "tl_ros2_interface/srv/get_joint_temperature.hpp"
-#include "tl_ros2_interface/srv/get_joint_voltage.hpp"
-#include "tl_ros2_interface/srv/get_motor_current.hpp"
-#include "tl_ros2_interface/srv/get_joint_software_version.hpp"
-#include "tl_ros2_interface/srv/restore_default_dh_param.hpp"
-#include "tl_ros2_interface/srv/log_download.hpp"
-#include "tl_ros2_interface/srv/set_speed.hpp"
-#include "tl_ros2_interface/srv/get_speed.hpp"
-#include "tl_ros2_interface/srv/get_pos_transform.hpp"
-#include "tl_ros2_interface/srv/set_controller_ip.hpp"
-#include "tl_ros2_interface/srv/jogging.hpp"
-#include "tl_ros2_interface/srv/set_drag_mode.hpp"
-#include "tl_ros2_interface/srv/track_save.hpp"
-#include "tl_ros2_interface/srv/track_playback.hpp"
-#include "tl_ros2_interface/srv/set_tool_param.hpp"
-#include "tl_ros2_interface/srv/set_user_coord.hpp"
-#include "tl_ros2_interface/srv/set_axis_zero_pos.hpp"
-#include "tl_ros2_interface/srv/set_current_coord.hpp"
-#include "tl_ros2_interface/srv/get_current_coord.hpp"
-#include "tl_ros2_interface/srv/set_coord_num.hpp"
-#include "tl_ros2_interface/srv/get_coord_num.hpp"
-#include "tl_ros2_interface/srv/set_digital_output.hpp"
-#include "tl_ros2_interface/srv/get_digital_input_output.hpp"
-#include "tl_ros2_interface/srv/modbus_write.hpp"
-#include "tl_ros2_interface/srv/modbus_read.hpp"
-#include "tl_ros2_interface/srv/coord_transform.hpp"
-#include "tl_ros2_interface/srv/get_pos_reachable.hpp"
-#include "tl_ros2_interface/srv/set_dh_param.hpp"
-#include "tl_ros2_interface/srv/get_dh_param.hpp"
-#include "tl_ros2_interface/srv/get_all_job_file_name.hpp"
-#include "tl_ros2_interface/srv/job_run.hpp"
-#include "tl_ros2_interface/srv/job_insert_move.hpp"
-#include "tl_ros2_interface/srv/set_global_pos.hpp"
-#include "tl_ros2_interface/srv/get_global_pos.hpp"
-#include "tl_ros2_interface/srv/open_servo_j.hpp"
-#include "tl_ros2_interface/srv/set_current_mode.hpp"
-#include "tl_ros2_interface/srv/get_current_mode.hpp"
-#include "tl_ros2_interface/srv/queue_motion_set_status.hpp"
-#include "tl_ros2_interface/srv/queue_motion_move_j.hpp"
-#include "tl_ros2_interface/srv/get_current_motor_torque.hpp"
-#include "tl_ros2_interface/srv/get_current_line_joint_speed.hpp"
+namespace tl_driver
+{
 
-class TL_Arm : public rclcpp::Node
+/**
+ * @brief 机械臂驱动节点：参数、回调组、实体创建与服务/话题注册。
+ * @note 回调实现按域分布：服务在 src/node/services_*.cpp，话题在 src/node/topics.cpp，
+ *       由 node/registrars.hpp 声明的注册函数挂载；对外 ROS 接口与拆分前逐字一致。
+ */
+class DriverNode : public rclcpp::Node
 {
 public:
-  TL_Arm();
-  ~TL_Arm();
+  DriverNode();
+  ~DriverNode() override;
 
+  /**
+   * @brief 连接控制器并完成上电流程，由构造函数末尾调用。
+   * @note 连接失败即 `exit(0)`（与拆分前一致；退出码缺陷见架构评审 3.3）。
+   */
   void init();
 
-  // 服务
-  void handle_connect_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                              std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-
-  void handle_disconnect_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                 std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-
-  void handle_poweron_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                              std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-
-  void handle_poweroff_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                               std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-
-  void handle_clear_error_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                  std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-
-  void handle_set_speed_service(const std::shared_ptr<tl_ros2_interface::srv::SetSpeed::Request> request,
-                                std::shared_ptr<tl_ros2_interface::srv::SetSpeed::Response> response);
-
-  void handle_get_speed_service(const std::shared_ptr<tl_ros2_interface::srv::GetSpeed::Request> request,
-                                std::shared_ptr<tl_ros2_interface::srv::GetSpeed::Response> response);
-
-  void handle_get_rpy2quat_service(const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-                                   std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response);
-
-  void handle_get_quat2rpy_service(const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-                                   std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response);
-
-  void handle_get_rpy2r_service(const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-                                std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response);
-
-  void handle_get_tr2r_service(const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-                               std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response);
-
-  void handle_get_r2tr_service(const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-                               std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response);
-
-  void handle_set_controller_ip_service(const std::shared_ptr<tl_ros2_interface::srv::SetControllerIP::Request> request,
-                                        std::shared_ptr<tl_ros2_interface::srv::SetControllerIP::Response> response);
-
-  void handle_get_controller_id_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                        std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-
-  void handle_start_jogging_service(const std::shared_ptr<tl_ros2_interface::srv::Jogging::Request> request,
-                                    std::shared_ptr<tl_ros2_interface::srv::Jogging::Response> response);
-
-  void handle_stop_jogging_service(const std::shared_ptr<tl_ros2_interface::srv::Jogging::Request> request,
-                                   std::shared_ptr<tl_ros2_interface::srv::Jogging::Response> response);
-
-  void handle_get_robot_state_service(const std::shared_ptr<tl_ros2_interface::srv::GetRobotState::Request> request,
-                                      std::shared_ptr<tl_ros2_interface::srv::GetRobotState::Response> response);
-
-  void handle_get_library_version_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                          std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-
-  void handle_get_robot_joint_param_service(
-      const std::shared_ptr<tl_ros2_interface::srv::GetRobotJointParam::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::GetRobotJointParam::Response> response);
-
-  void handle_set_robot_joint_param_service(
-      const std::shared_ptr<tl_ros2_interface::srv::SetRobotJointParam::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::SetRobotJointParam::Response> response);
-
-  void handle_get_joint_temperature_service(
-      const std::shared_ptr<tl_ros2_interface::srv::GetJointTemperature::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::GetJointTemperature::Response> response);
-
-  void handle_get_joint_voltage_service(const std::shared_ptr<tl_ros2_interface::srv::GetJointVoltage::Request> request,
-                                        std::shared_ptr<tl_ros2_interface::srv::GetJointVoltage::Response> response);
-
-  void handle_get_motor_current_service(const std::shared_ptr<tl_ros2_interface::srv::GetMotorCurrent::Request> request,
-                                        std::shared_ptr<tl_ros2_interface::srv::GetMotorCurrent::Response> response);
-
-  void handle_get_joint_software_version_service(
-      const std::shared_ptr<tl_ros2_interface::srv::GetJointSoftwareVersion::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::GetJointSoftwareVersion::Response> response);
-
-  void handle_get_nexmotion_lib_version_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                                std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-
-  void handle_restore_default_dh_param_service(
-      const std::shared_ptr<tl_ros2_interface::srv::RestoreDefaultDHParam::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::RestoreDefaultDHParam::Response> response);
-
-  void handle_set_default_cartesian_param_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                                  std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-
-  void handle_log_download_service(const std::shared_ptr<tl_ros2_interface::srv::LogDownload::Request> request,
-                                   std::shared_ptr<tl_ros2_interface::srv::LogDownload::Response> response);
-
-  void handle_set_drag_mode_service(const std::shared_ptr<tl_ros2_interface::srv::SetDragMode::Request> request,
-                                    std::shared_ptr<tl_ros2_interface::srv::SetDragMode::Response> response);
-
-  void handle_get_drag_status_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                      std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-
-  void handle_track_save_service(const std::shared_ptr<tl_ros2_interface::srv::TrackSave::Request> request,
-                                 std::shared_ptr<tl_ros2_interface::srv::TrackSave::Response> response);
-
-  void handle_track_playback_service(const std::shared_ptr<tl_ros2_interface::srv::TrackPlayback::Request> request,
-                                     std::shared_ptr<tl_ros2_interface::srv::TrackPlayback::Response> response);
-
-  void handle_set_tool_param_service(const std::shared_ptr<tl_ros2_interface::srv::SetToolParam::Request> request,
-                                     std::shared_ptr<tl_ros2_interface::srv::SetToolParam::Response> response);
-
-  void handle_set_user_coord_service(const std::shared_ptr<tl_ros2_interface::srv::SetUserCoord::Request> request,
-                                     std::shared_ptr<tl_ros2_interface::srv::SetUserCoord::Response> response);
-
-  void handle_set_axis_zero_pos_service(const std::shared_ptr<tl_ros2_interface::srv::SetAxisZeroPos::Request> request,
-                                        std::shared_ptr<tl_ros2_interface::srv::SetAxisZeroPos::Response> response);
-
-  void handle_set_current_coord_service(const std::shared_ptr<tl_ros2_interface::srv::SetCurrentCoord::Request> request,
-                                        std::shared_ptr<tl_ros2_interface::srv::SetCurrentCoord::Response> response);
-
-  void handle_get_current_coord_service(const std::shared_ptr<tl_ros2_interface::srv::GetCurrentCoord::Request> request,
-                                        std::shared_ptr<tl_ros2_interface::srv::GetCurrentCoord::Response> response);
-
-  void handle_set_coord_num_service(const std::shared_ptr<tl_ros2_interface::srv::SetCoordNum::Request> request,
-                                    std::shared_ptr<tl_ros2_interface::srv::SetCoordNum::Response> response);
-
-  void handle_get_coord_num_service(const std::shared_ptr<tl_ros2_interface::srv::GetCoordNum::Request> request,
-                                    std::shared_ptr<tl_ros2_interface::srv::GetCoordNum::Response> response);
-
-  void handle_set_digital_output_service(
-      const std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Response> response);
-
-  void handle_get_digital_input_output_service(
-      const std::shared_ptr<tl_ros2_interface::srv::GetDigitalInputOutput::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::GetDigitalInputOutput::Response> response);
-
-  void handle_modbus_write_service(const std::shared_ptr<tl_ros2_interface::srv::ModbusWrite::Request> request,
-                                   std::shared_ptr<tl_ros2_interface::srv::ModbusWrite::Response> response);
-
-  void handle_modbus_read_service(const std::shared_ptr<tl_ros2_interface::srv::ModbusRead::Request> request,
-                                  std::shared_ptr<tl_ros2_interface::srv::ModbusRead::Response> response);
-
-  void handle_coord_transform_service(const std::shared_ptr<tl_ros2_interface::srv::CoordTransform::Request> request,
-                                      std::shared_ptr<tl_ros2_interface::srv::CoordTransform::Response> response);
-
-  void handle_get_pos_reachable_service(const std::shared_ptr<tl_ros2_interface::srv::GetPosReachable::Request> request,
-                                        std::shared_ptr<tl_ros2_interface::srv::GetPosReachable::Response> response);
-
-  void handle_set_dh_param_service(const std::shared_ptr<tl_ros2_interface::srv::SetDHParam::Request> request,
-                                   std::shared_ptr<tl_ros2_interface::srv::SetDHParam::Response> response);
-
-  void handle_get_dh_param_service(const std::shared_ptr<tl_ros2_interface::srv::GetDHParam::Request> request,
-                                   std::shared_ptr<tl_ros2_interface::srv::GetDHParam::Response> response);
-
-  void handle_get_all_job_filename_service(
-      const std::shared_ptr<tl_ros2_interface::srv::GetAllJobFileName::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::GetAllJobFileName::Response> response);
-
-  void handle_job_run_service(const std::shared_ptr<tl_ros2_interface::srv::JobRun::Request> request,
-                              std::shared_ptr<tl_ros2_interface::srv::JobRun::Response> response);
-
-  void handle_job_delete_service(const std::shared_ptr<tl_ros2_interface::srv::JobRun::Request> request,
-                                 std::shared_ptr<tl_ros2_interface::srv::JobRun::Response> response);
-
-  void handle_job_insert_movej_service(const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
-                                       std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response);
-
-  void handle_job_insert_movel_service(const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
-                                       std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response);
-
-  void handle_job_insert_imove_service(const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
-                                       std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response);
-
-  void handle_job_insert_movec_service(const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
-                                       std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response);
-
-  void handle_set_global_pos_service(const std::shared_ptr<tl_ros2_interface::srv::SetGlobalPos::Request> request,
-                                     std::shared_ptr<tl_ros2_interface::srv::SetGlobalPos::Response> response);
-
-  void handle_get_global_pos_service(const std::shared_ptr<tl_ros2_interface::srv::GetGlobalPos::Request> request,
-                                     std::shared_ptr<tl_ros2_interface::srv::GetGlobalPos::Response> response);
-
-  void handle_set_current_mode_service(const std::shared_ptr<tl_ros2_interface::srv::SetCurrentMode::Request> request,
-                                       std::shared_ptr<tl_ros2_interface::srv::SetCurrentMode::Response> response);
-
-  void handle_get_current_mode_service(const std::shared_ptr<tl_ros2_interface::srv::GetCurrentMode::Request> request,
-                                       std::shared_ptr<tl_ros2_interface::srv::GetCurrentMode::Response> response);
-
-  void handle_open_servoj_service(const std::shared_ptr<tl_ros2_interface::srv::OpenServoJ::Request> request,
-                                  std::shared_ptr<tl_ros2_interface::srv::OpenServoJ::Response> response);
-
-  void handle_close_servoj_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                   std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-
-  void handle_queue_motion_set_status_service(
-      const std::shared_ptr<tl_ros2_interface::srv::QueueMotionSetStatus::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::QueueMotionSetStatus::Response> response);
-
-  void handle_queue_motion_movej_service(
-      const std::shared_ptr<tl_ros2_interface::srv::QueueMotionMoveJ::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::QueueMotionMoveJ::Response> response);
-
-  void handle_queue_motion_stop_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                        std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-
-  void handle_get_current_motor_torque_service(
-      const std::shared_ptr<tl_ros2_interface::srv::GetCurrentMotorTorque::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::GetCurrentMotorTorque::Response> response);
-
-  void handle_get_current_line_joint_speed_service(
-      const std::shared_ptr<tl_ros2_interface::srv::GetCurrentLineJointSpeed::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::GetCurrentLineJointSpeed::Response> response);
-
-  // 话题
-  void handle_movej_topic(const tl_ros2_interface::msg::MoveCommand::SharedPtr msg);
-
-  void handle_movel_topic(const tl_ros2_interface::msg::MoveCommand::SharedPtr msg);
-
-  void handle_set_servoj_pos_topic(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
-
-  void handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMove::SharedPtr msg);
+  /**
+   * @brief 按节点参数（arm_ip/arm_port/arm_port_aux）连接控制器。
+   * @return true=两个端口均连接成功
+   */
+  bool connect();
+
+  /**
+   * @brief 会话：fd、连接状态与上下电状态。
+   */
+  ArmSession& session();
+
+  /**
+   * @brief 关节数，由 arm_joints 参数长度决定。
+   */
+  int ndof() const;
+
+  /**
+   * @brief 关节名列表（arm_joints 参数）。
+   */
+  const std::vector<std::string>& joint_names() const;
+
+  /**
+   * @brief 服务回调组，65 个服务共用（MutuallyExclusive，串行）。
+   */
+  rclcpp::CallbackGroup::SharedPtr service_group() const;
+
+  /**
+   * @brief 创建服务并持有其生命周期。
+   * @tparam ServiceT 服务类型
+   * @tparam CallbackT 回调类型
+   * @param[in] name 服务名（含 `/tl_driver/` 前缀）
+   * @param[in] callback 服务回调
+   * @return 服务句柄
+   */
+  template <typename ServiceT, typename CallbackT>
+  typename rclcpp::Service<ServiceT>::SharedPtr create_service(const std::string& name, CallbackT&& callback)
+  {
+    auto service = rclcpp::Node::create_service<ServiceT>(name, std::forward<CallbackT>(callback),
+                                                          rmw_qos_profile_services_default, service_group_);
+    services_.push_back(service);
+    return service;
+  }
+
+  /**
+   * @brief 创建订阅并持有其生命周期（回调组为话题组）。
+   * @tparam MessageT 消息类型
+   * @tparam CallbackT 回调类型
+   * @param[in] name 话题名（含 `/tl_driver/` 前缀）
+   * @param[in] qos 队列深度
+   * @param[in] callback 话题回调
+   * @return 订阅句柄
+   */
+  template <typename MessageT, typename CallbackT>
+  typename rclcpp::Subscription<MessageT>::SharedPtr create_subscription(const std::string& name, const size_t qos,
+                                                                         CallbackT&& callback)
+  {
+    auto subscription =
+        rclcpp::Node::create_subscription<MessageT>(name, qos, std::forward<CallbackT>(callback), topic_options_);
+    subscriptions_.push_back(subscription);
+    return subscription;
+  }
 
 private:
+  /**
+   * @brief 声明并读取节点参数。
+   */
+  void declare_parameters();
+
+  /**
+   * @brief 创建服务/话题/定时器三个互斥回调组。
+   */
+  void create_callback_groups();
+
+  /**
+   * @brief 按域注册全部服务与话题回调。
+   */
+  void register_entities();
+
+  /**
+   * @brief 创建 100 Hz 状态发布定时器。
+   */
+  void create_state_timer();
+
   std::string arm_ip_;
   std::string arm_port_;
   std::string arm_port_aux_;
   std::string arm_type_;
 
-  tl_driver::ArmSession session_;
-
   std::vector<std::string> arm_joints_;
   double publish_rate_{100.0};
   int ndof_{6};
 
+  ArmSession session_;
+
+  std::unique_ptr<StatePublishers> publishers_;
+
   rclcpp::CallbackGroup::SharedPtr service_group_;
   rclcpp::CallbackGroup::SharedPtr topic_group_;
   rclcpp::CallbackGroup::SharedPtr timer_group_;
+  rclcpp::SubscriptionOptions topic_options_;
 
-  std::unique_ptr<tl_driver::StatePublishers> publishers_;
-
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr connect_service_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr disconnect_service_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr poweron_service_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr poweroff_service_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr clear_error_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetSpeed>::SharedPtr set_speed_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetSpeed>::SharedPtr get_speed_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetPosTransform>::SharedPtr get_quat2rpy_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetPosTransform>::SharedPtr get_rpy2quat_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetPosTransform>::SharedPtr get_rpy2r_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetPosTransform>::SharedPtr get_tr2r_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetPosTransform>::SharedPtr get_r2tr_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetControllerIP>::SharedPtr set_controller_ip_service_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr get_controller_id_service_;
-  rclcpp::Service<tl_ros2_interface::srv::Jogging>::SharedPtr start_jogging_service_;
-  rclcpp::Service<tl_ros2_interface::srv::Jogging>::SharedPtr stop_jogging_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetRobotState>::SharedPtr get_robot_state_service_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr get_library_version_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetRobotJointParam>::SharedPtr get_robot_joint_param_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetRobotJointParam>::SharedPtr set_robot_joint_param_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetJointTemperature>::SharedPtr get_joint_temperature_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetJointVoltage>::SharedPtr get_joint_voltage_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetMotorCurrent>::SharedPtr get_motor_current_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetJointSoftwareVersion>::SharedPtr get_joint_software_version_service_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr get_nexmotion_lib_version_service_;
-  rclcpp::Service<tl_ros2_interface::srv::RestoreDefaultDHParam>::SharedPtr restore_default_dh_param_service_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr set_default_cartesian_param_service_;
-  rclcpp::Service<tl_ros2_interface::srv::LogDownload>::SharedPtr log_download_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetDragMode>::SharedPtr set_drag_mode_service_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr get_drag_status_service_;
-  rclcpp::Service<tl_ros2_interface::srv::TrackSave>::SharedPtr track_save_service_;
-  rclcpp::Service<tl_ros2_interface::srv::TrackPlayback>::SharedPtr track_playback_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetToolParam>::SharedPtr set_tool_param_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetUserCoord>::SharedPtr set_user_coord_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetAxisZeroPos>::SharedPtr set_axis_zero_pos_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetCurrentCoord>::SharedPtr set_current_coord_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetCurrentCoord>::SharedPtr get_current_coord_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetCoordNum>::SharedPtr set_coord_num_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetCoordNum>::SharedPtr get_coord_num_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetDigitalOutput>::SharedPtr set_digital_output_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetDigitalInputOutput>::SharedPtr get_digital_input_output_service_;
-  rclcpp::Service<tl_ros2_interface::srv::ModbusWrite>::SharedPtr modbus_write_service_;
-  rclcpp::Service<tl_ros2_interface::srv::ModbusRead>::SharedPtr modbus_read_service_;
-  rclcpp::Service<tl_ros2_interface::srv::CoordTransform>::SharedPtr coord_transform_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetPosReachable>::SharedPtr get_pos_reachable_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetDHParam>::SharedPtr set_dh_param_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetDHParam>::SharedPtr get_dh_param_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetAllJobFileName>::SharedPtr get_all_job_filename_service_;
-  rclcpp::Service<tl_ros2_interface::srv::JobRun>::SharedPtr job_run_service_;
-  rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_movej_service_;
-  rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_movel_service_;
-  rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_imove_service_;
-  rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_movec_service_;
-  rclcpp::Service<tl_ros2_interface::srv::JobRun>::SharedPtr job_delete_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetGlobalPos>::SharedPtr set_global_pos_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetGlobalPos>::SharedPtr get_global_pos_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetCurrentMode>::SharedPtr set_current_mode_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetCurrentMode>::SharedPtr get_current_mode_service_;
-  rclcpp::Service<tl_ros2_interface::srv::OpenServoJ>::SharedPtr open_servoj_service_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr close_servoj_service_;
-  rclcpp::Service<tl_ros2_interface::srv::QueueMotionSetStatus>::SharedPtr queue_motion_set_status_service_;
-  rclcpp::Service<tl_ros2_interface::srv::QueueMotionMoveJ>::SharedPtr queue_motion_movej_service_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr queue_motion_stop_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetCurrentMotorTorque>::SharedPtr get_current_motor_torque_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetCurrentLineJointSpeed>::SharedPtr get_current_line_joint_speed_service_;
-
-  rclcpp::Subscription<tl_ros2_interface::msg::MoveCommand>::SharedPtr movej_sub_;
-  rclcpp::Subscription<tl_ros2_interface::msg::MoveCommand>::SharedPtr movel_sub_;
-  rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr set_servoj_pos_sub_;
-  rclcpp::Subscription<tl_ros2_interface::msg::ServolMove>::SharedPtr set_servol_pos_sub_;
+  // 节点需持有服务/订阅对象，否则对象析构即注销
+  std::vector<rclcpp::ServiceBase::SharedPtr> services_;
+  std::vector<rclcpp::SubscriptionBase::SharedPtr> subscriptions_;
 
   rclcpp::TimerBase::SharedPtr state_publish_timer_;
 };
+
+} // namespace tl_driver
 
 #endif // TL_DRIVER__TL_DRIVER_H_
