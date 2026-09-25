@@ -173,28 +173,6 @@ public:
 
   // 服务
 
-  void handle_get_all_job_filename_service(
-      const std::shared_ptr<tl_ros2_interface::srv::GetAllJobFileName::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::GetAllJobFileName::Response> response);
-
-  void handle_job_run_service(const std::shared_ptr<tl_ros2_interface::srv::JobRun::Request> request,
-                              std::shared_ptr<tl_ros2_interface::srv::JobRun::Response> response);
-
-  void handle_job_delete_service(const std::shared_ptr<tl_ros2_interface::srv::JobRun::Request> request,
-                                 std::shared_ptr<tl_ros2_interface::srv::JobRun::Response> response);
-
-  void handle_job_insert_movej_service(const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
-                                       std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response);
-
-  void handle_job_insert_movel_service(const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
-                                       std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response);
-
-  void handle_job_insert_imove_service(const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
-                                       std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response);
-
-  void handle_job_insert_movec_service(const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
-                                       std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response);
-
 private:
   /// @brief 连接控制器、切入示教模式并上电（构造函数内调用）。
   void init();
@@ -216,14 +194,6 @@ private:
   rclcpp::CallbackGroup::SharedPtr service_group_;
   rclcpp::CallbackGroup::SharedPtr topic_group_;
   rclcpp::CallbackGroup::SharedPtr timer_group_;
-
-  rclcpp::Service<tl_ros2_interface::srv::GetAllJobFileName>::SharedPtr get_all_job_filename_service_;
-  rclcpp::Service<tl_ros2_interface::srv::JobRun>::SharedPtr job_run_service_;
-  rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_movej_service_;
-  rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_movel_service_;
-  rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_imove_service_;
-  rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_movec_service_;
-  rclcpp::Service<tl_ros2_interface::srv::JobRun>::SharedPtr job_delete_service_;
 
   rclcpp::Subscription<tl_ros2_interface::msg::MoveCommand>::SharedPtr movej_sub_;
   rclcpp::Subscription<tl_ros2_interface::msg::MoveCommand>::SharedPtr movel_sub_;

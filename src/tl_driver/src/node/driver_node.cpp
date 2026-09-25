@@ -7,6 +7,7 @@
 #include "node/services_transform.h"
 #include "node/services_motion.h"
 #include "node/services_io.h"
+#include "node/services_job.h"
 #include "tl_driver/version.hpp"
 
 #include "arm_sdk.hpp"
@@ -52,42 +53,7 @@ DriverNode::DriverNode() : rclcpp::Node("tl_driver")
   services::register_transform_services(*this, service_group_);
   services::register_motion_services(*this, service_group_);
   services::register_io_services(*this, service_group_);
-
-
-  get_all_job_filename_service_ = this->create_service<tl_ros2_interface::srv::GetAllJobFileName>(
-      "/tl_driver/get_all_job_filename",
-      std::bind(&DriverNode::handle_get_all_job_filename_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  job_run_service_ = this->create_service<tl_ros2_interface::srv::JobRun>(
-      "/tl_driver/job_run",
-      std::bind(&DriverNode::handle_job_run_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  job_delete_service_ = this->create_service<tl_ros2_interface::srv::JobRun>(
-      "/tl_driver/job_delete",
-      std::bind(&DriverNode::handle_job_delete_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  job_insert_movej_service_ = this->create_service<tl_ros2_interface::srv::JobInsertMove>(
-      "/tl_driver/job_insert_moveJ",
-      std::bind(&DriverNode::handle_job_insert_movej_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  job_insert_movel_service_ = this->create_service<tl_ros2_interface::srv::JobInsertMove>(
-      "/tl_driver/job_insert_moveL",
-      std::bind(&DriverNode::handle_job_insert_movel_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  job_insert_imove_service_ = this->create_service<tl_ros2_interface::srv::JobInsertMove>(
-      "/tl_driver/job_insert_imove",
-      std::bind(&DriverNode::handle_job_insert_imove_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  job_insert_movec_service_ = this->create_service<tl_ros2_interface::srv::JobInsertMove>(
-      "/tl_driver/job_insert_moveC",
-      std::bind(&DriverNode::handle_job_insert_movec_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
+  services::register_job_services(*this, service_group_);
 
 
   // 话题sub
@@ -188,138 +154,6 @@ void DriverNode::init()
     rclcpp::shutdown();
     exit(0);
   }
-}
-
-
-void DriverNode::handle_get_all_job_filename_service(
-    const std::shared_ptr<tl_ros2_interface::srv::GetAllJobFileName::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::GetAllJobFileName::Response> response)
-{
-  (void)request;
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  std::vector<std::vector<std::string>> robotsFile;
-  tl::Result ret = tl::job_get_all_jobfile_name(session_->fd(), robotsFile);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Get all job filename successfully" : "Failed to get all job filename";
-  response->robots_file.clear();
-  for (const auto& file_names : robotsFile)
-  {
-    tl_ros2_interface::msg::JobFileName msg;
-    msg.file_name = file_names;
-    response->robots_file.push_back(msg);
-  }
-}
-
-void DriverNode::handle_job_run_service(const std::shared_ptr<tl_ros2_interface::srv::JobRun::Request> request,
-                                        std::shared_ptr<tl_ros2_interface::srv::JobRun::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::Result ret = tl::job_run(session_->fd(), request->job_name);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Job run successfully" : "Failed to run job";
-
-  // // 运行完成后会自动下电
-  // session_->power_off();
-  // session_->power_on();
-}
-
-void DriverNode::handle_job_delete_service(const std::shared_ptr<tl_ros2_interface::srv::JobRun::Request> request,
-                                           std::shared_ptr<tl_ros2_interface::srv::JobRun::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::Result ret = tl::job_delete(session_->fd(), request->job_name);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Job delete successfully" : "Failed to delete job";
-}
-
-void DriverNode::handle_job_insert_movej_service(
-    const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(request->cmd);
-
-  tl::Result ret = tl::job_insert_moveJ(session_->fd(), request->line, cmd);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Job insert movej successfully" : "Failed to insert job movej";
-}
-
-void DriverNode::handle_job_insert_movel_service(
-    const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(request->cmd);
-
-  tl::Result ret = tl::job_insert_moveL(session_->fd(), request->line, cmd);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Job insert movel successfully" : "Failed to insert job movel";
-}
-
-void DriverNode::handle_job_insert_imove_service(
-    const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(request->cmd);
-
-  tl::Result ret = tl::job_insert_imove(session_->fd(), request->line, cmd);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Job insert imove successfully" : "Failed to insert job imove";
-}
-
-void DriverNode::handle_job_insert_movec_service(
-    const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(request->cmd);
-
-  tl::Result ret = tl::job_insert_moveC(session_->fd(), request->line, cmd);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Job insert movec successfully" : "Failed to insert job movec";
 }
 
 
