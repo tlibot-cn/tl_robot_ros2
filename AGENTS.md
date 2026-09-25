@@ -14,7 +14,7 @@
 | 包 | 作用 | 关键入口 |
 | --- | --- | --- |
 | `tl_ros2_interface` | 全部自定义接口（12 个 `.msg`、45 个 `.srv`；msg 中 4 个是话题载荷、7 个仅作 srv 嵌套参数、1 个未接线——**`msg/` 目录不是话题清单**，每个 `.msg` 头部标了用途） | `msg/`、`srv/`；**必须最先构建** |
-| `tl_driver` | 机械臂驱动，TCP 连控制器（65 服务 / 4 订阅 / 3 发布） | `src/tl_driver_main.cpp`（入口）、`src/node/driver_node.{h,cpp}`（参数/回调组/订阅/服务注册）、`src/node/services_*.cpp`（按域 handler）、`src/arm_session.{h,cpp}`（会话与上下电） |
+| `tl_driver` | 机械臂驱动，TCP 连控制器（65 服务 / 4 订阅 / 3 发布） | `src/tl_driver_main.cpp`（入口）、`src/node/driver_node.{hpp,cpp}`（参数/回调组/实体创建）、`src/node/registrars.hpp` + `src/node/services_*.cpp`（按域 handler 与注册，handler 为文件内匿名 namespace）、`src/node/topics.cpp`（4 个话题）、`src/arm_session.{hpp,cpp}`（会话）、`src/arm_client.{hpp,cpp}`（SDK 薄封装与状态帧通道） |
 | `tl_teleop` | VR 遥操作（PXREA Robot SDK，100 Hz 控制线程） | `src/tl_teleop.cpp`；SDK 头 `lib/include/PXREARobotSDK.h`（C 风格 API，用 `uint64_t` 需 `<stdint.h>`） |
 | `tl_teleop_f710` | F710 手柄遥操作 + 仿真桥接（250 Hz ServoJ） | `src/tl_teleop_f710_node.cpp`、`src/tl_teleop_f710_sim_bridge.cpp` |
 | `tl_hardware` | ros2_control 硬件插件，桥接 MoveIt2 ↔ `tl_driver` | `src/tl_hardware_interface.cpp`（`tl_hardware::TLHardwareInterface`） |

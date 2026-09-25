@@ -170,18 +170,22 @@ tl_driver:
 ├── src                        # 驱动代码源文件（按职责拆分）
 │   ├── tl_driver_main.cpp     # 进程入口：rclcpp 初始化 + 多线程执行器
 │   ├── arm_sdk.hpp            # SDK 头文件唯一入口（libtl_host.so 的 API 头）
-│   ├── arm_session.{h,cpp}    # 会话：双端口连接、上下电、7000 口状态帧缓冲
+│   ├── arm_client.{hpp,cpp}   # SDK 薄封装：返回值文本化、错误回调、7000 口状态帧通道
+│   ├── arm_session.{hpp,cpp}  # 会话：双端口连接、上下电
 │   ├── node                     # 节点层
-│   │   ├── driver_node.{h,cpp}  # DriverNode：参数、回调组、订阅、服务注册
-│   │   ├── services_state.{h,cpp}   # 状态类服务（连接/上下电/版本/温度/模式）
-│   │   ├── services_config.{h,cpp}  # 配置类服务（DH/关节参数/工具/坐标系/全局点位）
-│   │   ├── services_transform.{h,cpp} # 位姿换算与坐标系服务（rpy↔四元数、r↔tr）
-│   │   ├── services_motion.{h,cpp}  # 运动类服务与话题（速度/点动/轨迹/队列/ServoJ·ServoL）
-│   │   ├── services_io.{h,cpp}      # IO 类服务（数字 IO、Modbus、日志下载）
-│   │   ├── services_job.{h,cpp}     # 作业类服务（作业运行/删除/插入运动）
-│   │   └── publishers.{h,cpp}   # /joint_states、/tcp_pose、/arm_status 发布
-│   ├── convert/msg_convert.{h,cpp} # ROS 消息 ↔ SDK 结构转换与参数校验
-│   ├── math/quaternion.{h,cpp}  # 欧拉角/四元数互转与 slerp（纯函数）
+│   │   ├── driver_node.{hpp,cpp}  # DriverNode：参数、回调组、实体创建与服务/话题注册
+│   │   ├── registrars.hpp       # 8 个注册函数声明（7 个服务域 + 话题）
+│   │   ├── services_session.cpp # 会话类服务（连接/上下电/清错）
+│   │   ├── services_state.cpp   # 状态类服务（机器人状态/版本/温度/电压/电流/力矩/模式）
+│   │   ├── services_config.cpp  # 配置类服务（DH/关节参数/工具/坐标系/全局点位）
+│   │   ├── services_transform.cpp # 位姿换算与坐标系服务（rpy↔四元数、r↔tr）
+│   │   ├── services_motion.cpp  # 运动类服务（速度/点动/轨迹/队列/ServoJ 开关）
+│   │   ├── services_io.cpp      # IO 类服务（数字 IO、Modbus、日志下载）
+│   │   ├── services_job.cpp     # 作业类服务（作业运行/删除/插入运动）
+│   │   ├── topics.cpp           # 话题订阅（moveJ/moveL/servoJ/servoL）
+│   │   └── publishers.{hpp,cpp} # StatePublishers：/joint_states、/tcp_pose、/arm_status 发布
+│   ├── convert/msg_convert.{hpp,cpp} # ROS 消息 ↔ SDK 结构转换与参数校验
+│   ├── math/quaternion.{hpp,cpp}  # 欧拉角/四元数互转与 slerp（纯函数）
 │   └── version.hpp.in         # 版本号模板，构建时由 CMake 生成 tl_driver/version.hpp
 └── test                       # 测试
     ├── test_all_interfaces.py   # 全接口测试脚本
