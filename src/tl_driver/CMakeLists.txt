@@ -56,6 +56,7 @@ add_executable(tl_driver
   src/arm_session.cpp
   src/convert/msg_convert.cpp
   src/math/quaternion.cpp
+  src/node/publishers.cpp
 )
 
 target_include_directories(tl_driver PRIVATE

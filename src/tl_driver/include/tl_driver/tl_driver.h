@@ -14,6 +14,7 @@
 #include <cstdint>
 
 #include "tl_driver/arm_session.hpp"
+#include "tl_driver/node/publishers.hpp"
 
 // ROS2
 #include <rclcpp/rclcpp.hpp>
@@ -305,11 +306,6 @@ public:
 
   void handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMove::SharedPtr msg);
 
-  void publish_arm_state();
-  void publish_joint_pose(const std::vector<double>& joint_pose);
-  void publish_tcp_pose(const std::vector<double>& tcp_pose);
-  void publish_running_status();
-
 private:
   std::string arm_ip_;
   std::string arm_port_;
@@ -325,6 +321,8 @@ private:
   rclcpp::CallbackGroup::SharedPtr service_group_;
   rclcpp::CallbackGroup::SharedPtr topic_group_;
   rclcpp::CallbackGroup::SharedPtr timer_group_;
+
+  std::unique_ptr<tl_driver::StatePublishers> publishers_;
 
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr connect_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr disconnect_service_;
@@ -391,10 +389,6 @@ private:
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr queue_motion_stop_service_;
   rclcpp::Service<tl_ros2_interface::srv::GetCurrentMotorTorque>::SharedPtr get_current_motor_torque_service_;
   rclcpp::Service<tl_ros2_interface::srv::GetCurrentLineJointSpeed>::SharedPtr get_current_line_joint_speed_service_;
-
-  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
-  rclcpp::Publisher<tl_ros2_interface::msg::CartesianPose>::SharedPtr tcp_pose_pub_;
-  rclcpp::Publisher<tl_ros2_interface::msg::ArmStatus>::SharedPtr running_status_pub_;
 
   rclcpp::Subscription<tl_ros2_interface::msg::MoveCommand>::SharedPtr movej_sub_;
   rclcpp::Subscription<tl_ros2_interface::msg::MoveCommand>::SharedPtr movel_sub_;

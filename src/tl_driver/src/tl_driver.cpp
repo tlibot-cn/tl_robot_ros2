@@ -363,11 +363,7 @@ TL_Arm::TL_Arm() : rclcpp::Node("tl_driver"), session_(this->get_logger())
       rmw_qos_profile_services_default, service_group_);
 
   // 话题pub
-  joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>("/joint_states", 10);
-
-  tcp_pose_pub_ = this->create_publisher<tl_ros2_interface::msg::CartesianPose>("/tcp_pose", 10);
-
-  running_status_pub_ = this->create_publisher<tl_ros2_interface::msg::ArmStatus>("/arm_status", 10);
+  publishers_ = std::make_unique<tl_driver::StatePublishers>(*this, session_, arm_joints_, ndof_);
 
   // 话题sub
   movej_sub_ = this->create_subscription<tl_ros2_interface::msg::MoveCommand>(
@@ -387,7 +383,8 @@ TL_Arm::TL_Arm() : rclcpp::Node("tl_driver"), session_(this->get_logger())
   auto period =
       std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::duration<double>(1.0 / publish_rate_));
 
-  state_publish_timer_ = this->create_wall_timer(period, std::bind(&TL_Arm::publish_arm_state, this), timer_group_);
+  state_publish_timer_ = this->create_wall_timer(
+      period, std::bind(&tl_driver::StatePublishers::publish_arm_state, publishers_.get()), timer_group_);
 
   // 获取本包版本与sdk库版本
   RCLCPP_INFO(this->get_logger(), "Driver Version: %s", TL_DRIVER_VERSION);
@@ -2192,116 +2189,6 @@ void TL_Arm::handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMov
   // ========= 5. 记录完成 =========
   RCLCPP_INFO(this->get_logger(), "[ServoL] completed to [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f], %d points", tx, ty, tz,
               trx, try_, trz, N);
-}
-
-void TL_Arm::publish_arm_state()
-{
-  if (!session_.is_connected())
-  {
-    RCLCPP_WARN(this->get_logger(), "[Pub]: arm is not connected");
-    return;
-  }
-
-  publish_running_status();
-
-  std::vector<double> joint_pose;
-  std::vector<double> tcp_pose;
-
-  joint_pose.clear();
-  tcp_pose.clear();
-
-  if (tl::get_current_position(session_.fd(), 0, joint_pose) == tl::Result::SUCCESS)
-  {
-    // 将角度转换为弧度(批量转换)
-    const double deg_to_rad = M_PI / 180.0;
-    std::transform(joint_pose.begin(), joint_pose.end(), joint_pose.begin(),
-                   [deg_to_rad](double deg)
-                   {
-                     return deg * deg_to_rad;
-                   });
-
-    publish_joint_pose(joint_pose);
-  }
-
-  if (tl::get_current_position(session_.fd(), 1, tcp_pose) == tl::Result::SUCCESS)
-  {
-    publish_tcp_pose(tcp_pose);
-  }
-}
-
-void TL_Arm::publish_joint_pose(const std::vector<double>& joint_pose)
-{
-  sensor_msgs::msg::JointState msg;
-  msg.header.stamp = this->now();
-  msg.name = arm_joints_;
-  switch (ndof_)
-  {
-    case 6:
-      msg.position.assign(joint_pose.begin(), joint_pose.end() - 1);
-      break;
-    case 7:
-      msg.position.assign(joint_pose.begin(), joint_pose.end());
-      break;
-  }
-
-  joint_state_pub_->publish(msg);
-}
-
-void TL_Arm::publish_tcp_pose(const std::vector<double>& tcp_pose)
-{
-  tl_ros2_interface::msg::CartesianPose msg;
-  msg.header.stamp = this->now();
-  msg.header.frame_id = "base_link";
-
-  msg.position.x = tcp_pose[0];
-  msg.position.y = tcp_pose[1];
-  msg.position.z = tcp_pose[2];
-
-  msg.rpy.x = tcp_pose[3];
-  msg.rpy.y = tcp_pose[4];
-  msg.rpy.z = tcp_pose[5];
-
-  switch (ndof_)
-  {
-    case 6:
-      msg.arm_angle = 0;
-      break;
-    case 7:
-      msg.arm_angle = tcp_pose[6];
-      break;
-  }
-
-  tcp_pose_pub_->publish(msg);
-}
-
-void TL_Arm::publish_running_status()
-{
-  int running_status = -1;
-  tl::Result ret = tl::get_robot_running_state(session_.fd(), running_status);
-  if (ret != tl::Result::SUCCESS)
-  {
-    RCLCPP_INFO(this->get_logger(), "[Read Running Status]: failed to read running status, result=%s",
-                tl_driver::arm_client::result_to_string(ret));
-    return;
-  }
-
-  tl_ros2_interface::msg::ArmStatus msg;
-
-  msg.stamp = this->now();
-  switch (running_status)
-  {
-    case 0:
-      msg.run_state = "STOP";
-      break;
-    case 1:
-      msg.run_state = "PAUSE";
-      break;
-    case 2:
-      msg.run_state = "RUNNING";
-      break;
-  }
-
-  running_status_pub_->publish(msg);
 }
 
 int main(int argc, char **argv)
