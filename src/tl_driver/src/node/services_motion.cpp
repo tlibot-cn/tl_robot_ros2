@@ -296,7 +296,7 @@ void handle_movel_topic(DriverNode& node, const tl_ros2_interface::msg::MoveComm
 /**
  * @brief 透传模式必须先使用open_servoJ开启跟踪模式
  */
-void handle_set_servoj_pos_topic(DriverNode & node, const std_msgs::msg::Float64MultiArray::SharedPtr msg)
+void handle_set_servoj_pos_topic(DriverNode& node, const std_msgs::msg::Float64MultiArray::SharedPtr msg)
 {
   if (!node.session().is_connected())
   {
@@ -316,7 +316,7 @@ void handle_set_servoj_pos_topic(DriverNode & node, const std_msgs::msg::Float64
  * 前置条件：需先调用 open_servoj 开启关节跟踪模式
  * 收到目标笛卡尔位姿后，自动获取当前位姿，插值并 IK 转为关节角后通过 servoj 发送
  */
-void handle_set_servol_pos_topic(DriverNode & node, const tl_ros2_interface::msg::ServolMove::SharedPtr msg)
+void handle_set_servol_pos_topic(DriverNode& node, const tl_ros2_interface::msg::ServolMove::SharedPtr msg)
 {
   if (!node.session().is_connected())
   {
