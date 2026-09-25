@@ -13,7 +13,7 @@ namespace tl_driver::convert
 /**
  * @brief 由 ROS 运动指令消息构造 SDK 运动指令。
  * @param[in] msg ROS 运动指令（`/tl_driver/moveJ`、`/tl_driver/moveL`、队列与 job 指令共用）
- * @return SDK 运动指令，`targetPosValue` 为 14 元素点位
+ * @return SDK 运动指令，`targetPosValue` 取消息原值（SDK 默认构造为 14 元素）
  */
 tl::MoveCmd to_move_cmd(const tl_ros2_interface::msg::MoveCommand& msg);
 

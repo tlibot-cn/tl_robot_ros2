@@ -11,13 +11,13 @@
 
 - `src/` 下 10 个顶层目录、共 **23 个功能包**（`package.xml`，其中 `tl_moveit2_config/` 含 14 个型号子包）+ `scripts/` 工具脚本；ROS2 Humble，C++17 / Python，colcon（ament_cmake + ament_python），无前端/Node.js。
 - 构建：`colcon build --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` → `source install/setup.bash`（产物 `build/`、`install/`、`log/` 已 gitignore）。选择性构建必须先建 `tl_ros2_interface`（生成 msg/srv 头文件）。
-- **无测试**：仓库里唯一的自动化检查是 `ament_lint_auto` 代码风格检查（`tl_bringup`/`tl_description`/`tl_gazebo`/`tl_teleop`/`tl_teleop_f710` 的 `CMakeLists.txt` 中启用）。不要以"补测试"充当验证，验证靠编译 + 实机/仿真运行。
+- **测试面**：`tl_driver` 有纯逻辑 gtest（`test/test_quaternion.cpp`、`test/test_msg_convert.cpp`，`BUILD_TESTING` 开启时构建，`colcon test --packages-select tl_driver`）；其余包只有 `ament_lint_auto` 代码风格检查（`tl_bringup`/`tl_description`/`tl_gazebo`/`tl_teleop`/`tl_teleop_f710` 的 `CMakeLists.txt` 中启用）。单测覆盖不到 SDK 调用、上下电时序与运动质量，这些改动仍须实机/仿真验证，不要以"补测试"充当验证。
 - 开发环境在 Docker 内（配置不在本仓库）。
 
 | 包 | 作用 | 关键入口 |
 | --- | --- | --- |
 | `tl_ros2_interface` | 全部自定义接口（12 个 `.msg`、45 个 `.srv`，字段带单位注释；msg 中 4 个是话题载荷、7 个仅作 srv 嵌套参数、1 个未接线——**`msg/` 目录不是话题清单**，每个 `.msg` 头部标了用途） | `msg/`、`srv/`；**必须最先构建** |
-| `tl_driver` | 机械臂驱动，TCP 连控制器（65 服务 / 4 订阅 / 3 发布） | `src/tl_driver.cpp`（约 2850 行单文件）、`include/tl_driver/tl_driver.h` |
+| `tl_driver` | 机械臂驱动，TCP 连控制器（65 服务 / 4 订阅 / 3 发布） | `src/node/driver_node.cpp`（节点装配与按域注册）、`src/node/services_*.cpp`、`src/node/topics.cpp`、`include/tl_driver/tl_driver.h`（`tl_driver::DriverNode`） |
 | `tl_teleop` | VR 遥操作（PXREA Robot SDK，100 Hz 控制循环） | `src/tl_teleop.cpp` |
 | `tl_teleop_f710` | F710 手柄遥操作（250 Hz）+ Gazebo 仿真桥接 | `src/tl_teleop_f710_node.cpp`、`src/tl_teleop_f710_sim_bridge.cpp` |
 | `tl_hardware` | ros2_control 硬件插件，接 `joint_trajectory_controller` ↔ `tl_driver` | `src/tl_hardware_interface.cpp`（`tl_hardware::TLHardwareInterface`） |
@@ -54,7 +54,7 @@
 
 **⑤ 线程模型。** `tl_driver` 三组回调组 `service_group_` / `topic_group_` / `timer_group_` **均为 `MutuallyExclusive`**（同组串行），由 `MultiThreadedExecutor` 驱动（线程数 `max(4, hardware_concurrency)`）；状态发布定时器 100 Hz（`publish_rate_`，硬编码 100.0）。`timer_group_` 曾为 `Reentrant` 导致定时器回调并发，已改互斥，**勿改回**。
 
-**⑥ 失败即退与激活失败即报错。** `TL_Arm::init()` 中 `connect()` 失败、切入示教模式失败均 `rclcpp::shutdown()` + `exit(0)`；`tl_hardware` 的 `on_activate()` 等首帧关节状态超时 5 s 返回 `CallbackReturn::ERROR`（**激活失败，不是仅告警**），并用当前关节角播种命令接口，避免控制器接管前把机械臂拉向零点。
+**⑥ 失败即退与激活失败即报错。** `DriverNode::init()` 中 `connect()` 失败、切入示教模式失败均 `rclcpp::shutdown()` + `exit(0)`；`tl_hardware` 的 `on_activate()` 等首帧关节状态超时 5 s 返回 `CallbackReturn::ERROR`（**激活失败，不是仅告警**），并用当前关节角播种命令接口，避免控制器接管前把机械臂拉向零点。
 
 **⑦ 硬编码边界。** IP / 端口 / 关节名只出现在 `config/*.yaml`（默认 `192.168.1.13:6001`），不写进代码。`arm_type` 在配置 YAML 中大写（`TCB605`），启动参数小写（`tcb605`），全部 14 种。
 

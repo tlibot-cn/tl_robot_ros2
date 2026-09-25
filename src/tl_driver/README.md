@@ -117,7 +117,18 @@ tl_driver:
 │   └── tl_driver服务与话题说明书.md      # 服务与话题接口说明书（对外契约）
 ├── include                        # 头文件
 │   └── tl_driver
-│       └── tl_driver.h
+│       ├── tl_driver.h            # 节点类 DriverNode：参数、回调组、实体创建与按域注册
+│       ├── arm_sdk.hpp            # 供应商 SDK 头唯一入口（SDK 符号一律 tl:: 显式限定）
+│       ├── arm_session.hpp        # 会话：fd 所有权、连接与上下电状态
+│       ├── arm_client.hpp         # SDK 返回值映射与机器人状态异步通道
+│       ├── convert
+│       │   └── msg_convert.hpp    # ROS 消息 ↔ SDK 结构转换
+│       ├── math
+│       │   └── quaternion.hpp     # rpy/quat/slerp 纯函数
+│       ├── node
+│       │   ├── publishers.hpp     # /joint_states、/tcp_pose、/arm_status 发布
+│       │   └── registrars.hpp     # 各域服务/话题注册入口
+│       └── version.hpp.in         # 版本号模板（构建期生成 version.hpp，勿手动改）
 ├── launch                         # 启动文件
 │   ├── tl_driver.launch.py        # 通用启动（需传arm_type参数）
 │   ├── tl_tcb605_driver.launch.py
@@ -186,8 +197,28 @@ tl_driver:
 │       └── tl_interface.py
 ├── package.xml
 ├── README.md
-└── src                        # 驱动代码源文件
-    └── tl_driver.cpp
+├── src                        # 驱动代码源文件
+│   ├── tl_driver_main.cpp     # 进程入口：main 与多线程执行器
+│   ├── arm_client.cpp         # SDK 返回值映射与机器人状态异步通道
+│   ├── arm_session.cpp        # 会话：fd 所有权、连接与上下电
+│   ├── convert
+│   │   └── msg_convert.cpp    # ROS 消息 ↔ SDK 结构转换
+│   ├── math
+│   │   └── quaternion.cpp     # rpy/quat/slerp 纯函数
+│   └── node
+│       ├── driver_node.cpp        # 参数、回调组、实体创建、按域注册
+│       ├── publishers.cpp         # 状态发布（joint_states/tcp_pose/arm_status）
+│       ├── services_session.cpp   # 连接/断开/上下电/清错
+│       ├── services_motion.cpp    # 速度、点动、ServoJ 开关、队列运动
+│       ├── services_transform.cpp # 四元数/旋转矩阵、坐标变换、可达性
+│       ├── services_config.cpp    # 坐标系、工具、DH、关节参数、模式、全局点位
+│       ├── services_io.cpp        # 数字量、Modbus、日志下载、轨迹
+│       ├── services_job.cpp       # job 运行/删除/插入、文件列表
+│       ├── services_state.cpp     # 机器人状态、关节温度/电压/电流、力矩、版本、拖拽
+│       └── topics.cpp             # moveJ/moveL/servoJ/servoL 订阅回调
+└── test                       # 单元测试（BUILD_TESTING 开启时构建）
+    ├── test_quaternion.cpp    # 四元数/欧拉角转换与 slerp
+    └── test_msg_convert.cpp   # MoveCmd/DH/Modbus 转换
 ```
 ## tl_driver功能包话题与服务说明
 tl_driver功能包的服务和话题较多，可以通过如下指令了解其话题信息。
