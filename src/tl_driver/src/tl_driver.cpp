@@ -4,77 +4,10 @@
 #include "tl_driver/tl_driver.h"
 #include "tl_driver/version.hpp"
 
-#include "tl_interface.h"
-#include "tl_modbus.h"
-#include "tl_queue_operate.h"
-#include "tl_io.h"
-#include "tl_job_operate.h"
-#include "tl_servo_ext.h"
-#include "tl_track.h"
-
-namespace
-{
-
-struct RobotStateMessageBuffer
-{
-  std::mutex mutex;
-  std::condition_variable cv;
-
-  int last_msg_id = -1;
-  std::string last_msg;
-  uint64_t seq = 0;
-};
-
-RobotStateMessageBuffer g_robot_state_msg_buffer;
-
-// 普通 C 风格函数指针回调
-void robot_state_recv_callback(int msg_id, const char *msg)
-{
-  {
-    std::lock_guard<std::mutex> lock(g_robot_state_msg_buffer.mutex);
-
-    g_robot_state_msg_buffer.last_msg_id = msg_id;
-    g_robot_state_msg_buffer.last_msg = msg ? msg : "";
-    ++g_robot_state_msg_buffer.seq;
-  }
-
-  g_robot_state_msg_buffer.cv.notify_all();
-
-  std::cout << "\033[32m"
-            << "id = " << msg_id << ", msg = " << (msg ? msg : "") << "\033[0m" << std::endl;
-}
-
-void receive_error_or_warning_message_callback(int messageType, const char *message, int messageCode)
-{
-  std::cout << "\033[31m"
-            << "messageType = " << messageType << ", message = " << message << ", messageCode = " << messageCode
-            << "\033[0m" << std::endl;
-}
-
-const char *result_to_string(tl::Result ret)
-{
-  switch (ret)
-  {
-    case tl::Result::SUCCESS:
-      return "SUCCESS";
-    case tl::Result::RECEIVE_FAILED:
-      return "RECEIVE_FAILED";
-    case tl::Result::DISCONNECT:
-      return "DISCONNECT";
-    case tl::Result::PARAM_ERR:
-      return "PARAM_ERR";
-    case tl::Result::OPERATION_NOT_ALLOWED:
-      return "OPERATION_NOT_ALLOWED";
-    case tl::Result::EXCEPTION:
-      return "EXCEPTION";
-    case tl::Result::TIMEOUT:
-      return "TIMEOUT";
-    default:
-      return "UNKNOWN_ERROR";
-  }
-}
-} // namespace
-
+#include "tl_driver/arm_client.hpp"
+#include "tl_driver/arm_sdk.hpp"
+#include "tl_driver/convert/msg_convert.hpp"
+#include "tl_driver/math/quaternion.hpp"
 
 TL_Arm::TL_Arm() : rclcpp::Node("tl_driver")
 {
@@ -484,7 +417,8 @@ void TL_Arm::init()
     tl::Result ret = tl::set_current_mode(socket_fd_, 0);
     if (ret != tl::Result::SUCCESS)
     {
-      RCLCPP_ERROR(this->get_logger(), "[Init]: failed to set teach mode, result=%s", result_to_string(ret));
+      RCLCPP_ERROR(this->get_logger(), "[Init]: failed to set teach mode, result=%s",
+                   tl_driver::arm_client::result_to_string(ret));
       rclcpp::shutdown();
       exit(0);
     }
@@ -493,7 +427,7 @@ void TL_Arm::init()
     ret = tl::clear_error(socket_fd_);
     if (ret != tl::Result::SUCCESS)
     {
-      RCLCPP_WARN(this->get_logger(), "[Init]: clear_error result=%s", result_to_string(ret));
+      RCLCPP_WARN(this->get_logger(), "[Init]: clear_error result=%s", tl_driver::arm_client::result_to_string(ret));
     }
 
     // 清错后下电，释放控制器占用状态
@@ -619,11 +553,11 @@ bool TL_Arm::connect()
 
   is_connected_ = true;
 
-  tl::set_receive_error_or_warnning_message_callback(socket_fd_, receive_error_or_warning_message_callback);
+  tl_driver::arm_client::register_error_callback(socket_fd_);
 
-  tl::set_receive_error_or_warnning_message_callback(socket_fd_aux_, receive_error_or_warning_message_callback);
+  tl_driver::arm_client::register_error_callback(socket_fd_aux_);
 
-  tl::recv_message(socket_fd_aux_, robot_state_recv_callback);
+  tl_driver::arm_client::start_robot_state_channel(socket_fd_aux_);
 
   RCLCPP_INFO(this->get_logger(), "[Connect]: successfully connected to arm at %s:%s,%s", arm_ip_.c_str(),
               arm_port_.c_str(), arm_port_aux_.c_str());
@@ -733,8 +667,9 @@ void TL_Arm::handle_clear_error_service(const std::shared_ptr<std_srvs::srv::Tri
 
   tl::Result ret = tl::clear_error(socket_fd_);
   response->success = (ret == tl::Result::SUCCESS);
-  response->message =
-      response->success ? "Clear error successfully" : std::string("Clear error failed: ") + result_to_string(ret);
+  response->message = response->success
+                          ? "Clear error successfully"
+                          : std::string("Clear error failed: ") + tl_driver::arm_client::result_to_string(ret);
 }
 
 void TL_Arm::handle_set_speed_service(const std::shared_ptr<tl_ros2_interface::srv::SetSpeed::Request> request,
@@ -1045,11 +980,7 @@ void TL_Arm::handle_get_robot_state_service(
   param.ioPort = request->io_port;
   param.optional = request->optional;
 
-  uint64_t start_seq = 0;
-  {
-    std::lock_guard<std::mutex> lock(g_robot_state_msg_buffer.mutex);
-    start_seq = g_robot_state_msg_buffer.seq;
-  }
+  const uint64_t start_seq = tl_driver::arm_client::robot_state_seq();
 
   tl::Result ret = tl::get_robot_state(socket_fd_, param);
   if (ret != tl::Result::SUCCESS)
@@ -1059,17 +990,8 @@ void TL_Arm::handle_get_robot_state_service(
     return;
   }
 
-  std::unique_lock<std::mutex> lock(g_robot_state_msg_buffer.mutex);
-
-  bool received =
-      g_robot_state_msg_buffer.cv.wait_for(lock, std::chrono::seconds(5),
-                                           [start_seq]()
-                                           {
-                                             return g_robot_state_msg_buffer.seq > start_seq &&
-                                                    g_robot_state_msg_buffer.last_msg_id == MessageLists::ROBOT_STATE;
-                                           });
-
-  if (!received)
+  std::string state_msg;
+  if (!tl_driver::arm_client::wait_robot_state(start_seq, std::chrono::seconds(5), state_msg))
   {
     response->success = false;
     response->message = "Timeout waiting for robot state";
@@ -1077,7 +999,7 @@ void TL_Arm::handle_get_robot_state_service(
   }
 
   response->success = true;
-  response->message = g_robot_state_msg_buffer.last_msg;
+  response->message = state_msg;
 }
 
 void TL_Arm::handle_get_library_version_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
@@ -1655,24 +1577,7 @@ void TL_Arm::handle_modbus_write_service(const std::shared_ptr<tl_ros2_interface
   }
 
   tl::ModbusMasterParameter master_param;
-  master_param.type = request->master_param.type;
-  master_param.startAddress = request->master_param.start_addr;
-
-  if (master_param.type == "TCP")
-  {
-    master_param.TCP.IP = request->master_param.tcp.ip;
-    master_param.TCP.port = request->master_param.tcp.port;
-  }
-  else if (master_param.type == "RTU")
-  {
-    master_param.RTU.slaveId = request->master_param.rtu.slave_id;
-    master_param.RTU.port = request->master_param.rtu.port;
-    master_param.RTU.baudrate = request->master_param.rtu.baudrate;
-    master_param.RTU.checkBit = request->master_param.rtu.check_bit;
-    master_param.RTU.dataBit = request->master_param.rtu.data_bit;
-    master_param.RTU.stopBit = request->master_param.rtu.stop_bit;
-  }
-  else
+  if (!tl_driver::convert::to_sdk_modbus_param(request->master_param, master_param))
   {
     response->success = false;
     response->message = "Invalid master type";
@@ -1712,24 +1617,7 @@ void TL_Arm::handle_modbus_read_service(const std::shared_ptr<tl_ros2_interface:
   }
 
   tl::ModbusMasterParameter master_param;
-  master_param.type = request->master_param.type;
-  master_param.startAddress = request->master_param.start_addr;
-
-  if (master_param.type == "TCP")
-  {
-    master_param.TCP.IP = request->master_param.tcp.ip;
-    master_param.TCP.port = request->master_param.tcp.port;
-  }
-  else if (master_param.type == "RTU")
-  {
-    master_param.RTU.slaveId = request->master_param.rtu.slave_id;
-    master_param.RTU.port = request->master_param.rtu.port;
-    master_param.RTU.baudrate = request->master_param.rtu.baudrate;
-    master_param.RTU.checkBit = request->master_param.rtu.check_bit;
-    master_param.RTU.dataBit = request->master_param.rtu.data_bit;
-    master_param.RTU.stopBit = request->master_param.rtu.stop_bit;
-  }
-  else
+  if (!tl_driver::convert::to_sdk_modbus_param(request->master_param, master_param))
   {
     response->success = false;
     response->message = "Invalid master type";
@@ -1840,65 +1728,7 @@ void TL_Arm::handle_set_dh_param_service(const std::shared_ptr<tl_ros2_interface
   }
 
   tl::RobotDHParam dh_param{};
-  dh_param.L1 = request->param.l1;
-  dh_param.L2 = request->param.l2;
-  dh_param.L3 = request->param.l3;
-  dh_param.L4 = request->param.l4;
-  dh_param.L5 = request->param.l5;
-  dh_param.L6 = request->param.l6;
-  dh_param.L7 = request->param.l7;
-  dh_param.L8 = request->param.l8;
-  dh_param.L9 = request->param.l9;
-  dh_param.L10 = request->param.l10;
-  dh_param.L11 = request->param.l11;
-  dh_param.L12 = request->param.l12;
-  dh_param.L13 = request->param.l13;
-  dh_param.L14 = request->param.l14;
-  dh_param.L15 = request->param.l15;
-  dh_param.L16 = request->param.l16;
-  dh_param.L17 = request->param.l17;
-  dh_param.L18 = request->param.l18;
-  dh_param.L19 = request->param.l19;
-  dh_param.L20 = request->param.l20;
-
-  dh_param.Couple_Coe_1_2 = request->param.couple_coe_1_2;
-  dh_param.Couple_Coe_2_3 = request->param.couple_coe_2_3;
-  dh_param.Couple_Coe_3_2 = request->param.couple_coe_3_2;
-  dh_param.Couple_Coe_3_4 = request->param.couple_coe_3_4;
-  dh_param.Couple_Coe_4_5 = request->param.couple_coe_4_5;
-  dh_param.Couple_Coe_4_6 = request->param.couple_coe_4_6;
-  dh_param.Couple_Coe_5_6 = request->param.couple_coe_5_6;
-
-  dh_param.dynamicLimit_max = request->param.dynamic_limit_max;
-  dh_param.dynamicLimit_min = request->param.dynamic_limit_max;
-
-  dh_param.pitch = request->param.pitch;
-  dh_param.sliding_lead_value = request->param.sliding_lead_value;
-  dh_param.uplift_lead_value = request->param.uplift_lead_value;
-  dh_param.spray_distance = request->param.spray_distance;
-
-  dh_param.threeAxisDirection = request->param.three_axis_direction;
-  dh_param.fiveAxisDirection = request->param.five_axis_direction;
-
-  dh_param.twoAxisConversionRatio = request->param.two_axis_convertion_ratio;
-  dh_param.threeAxisConversionRatio = request->param.three_axis_convertion_ratio;
-  dh_param.amplificationRatio = request->param.amplification_ratio;
-
-  dh_param.conversionratio_x = request->param.convertion_ratio_x;
-  dh_param.conversionratio_y = request->param.convertion_ratio_y;
-  dh_param.conversionratio_z = request->param.convertion_ratio_z;
-
-  dh_param.conversionratio_J1 = request->param.convertion_ratio_j1;
-  dh_param.conversionratio_J2 = request->param.convertion_ratio_j2;
-  dh_param.conversionratio_J3 = request->param.convertion_ratio_j3;
-  dh_param.upsideDown = request->param.upside_down;
-  dh_param.hanyu.PC = request->param.pc;
-
-  for (size_t i = 0; i < 3; i++)
-  {
-    dh_param.hanyu.SP[i] = (i < request->param.sp.size()) ? request->param.sp[i] : 0.0;
-    dh_param.hanyu.TL[i] = (i < request->param.tl.size()) ? request->param.tl[i] : 0.0;
-  }
+  tl_driver::convert::to_sdk_dh_param(request->param, dh_param);
 
   tl::Result ret = tl::set_robot_dh_param(socket_fd_, dh_param);
   response->success = (ret == tl::Result::SUCCESS);
@@ -1925,62 +1755,7 @@ void TL_Arm::handle_get_dh_param_service(const std::shared_ptr<tl_ros2_interface
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Get DH param successfully" : "Failed to get DH param";
 
-  response->param.l1 = dh_param.L1;
-  response->param.l2 = dh_param.L2;
-  response->param.l3 = dh_param.L3;
-  response->param.l4 = dh_param.L4;
-  response->param.l5 = dh_param.L5;
-  response->param.l6 = dh_param.L6;
-  response->param.l7 = dh_param.L7;
-  response->param.l8 = dh_param.L8;
-  response->param.l9 = dh_param.L9;
-  response->param.l10 = dh_param.L10;
-  response->param.l11 = dh_param.L11;
-  response->param.l12 = dh_param.L12;
-  response->param.l13 = dh_param.L13;
-  response->param.l14 = dh_param.L14;
-  response->param.l15 = dh_param.L15;
-  response->param.l16 = dh_param.L16;
-  response->param.l17 = dh_param.L17;
-  response->param.l18 = dh_param.L18;
-  response->param.l19 = dh_param.L19;
-  response->param.l20 = dh_param.L20;
-
-  response->param.couple_coe_1_2 = dh_param.Couple_Coe_1_2;
-  response->param.couple_coe_2_3 = dh_param.Couple_Coe_2_3;
-  response->param.couple_coe_3_2 = dh_param.Couple_Coe_3_2;
-  response->param.couple_coe_3_4 = dh_param.Couple_Coe_3_4;
-  response->param.couple_coe_4_5 = dh_param.Couple_Coe_4_5;
-  response->param.couple_coe_4_6 = dh_param.Couple_Coe_4_6;
-  response->param.couple_coe_5_6 = dh_param.Couple_Coe_5_6;
-
-  response->param.dynamic_limit_max = dh_param.dynamicLimit_max;
-  response->param.dynamic_limit_min = dh_param.dynamicLimit_min;
-
-  response->param.pitch = dh_param.pitch;
-  response->param.sliding_lead_value = dh_param.sliding_lead_value;
-  response->param.uplift_lead_value = dh_param.uplift_lead_value;
-  response->param.spray_distance = dh_param.spray_distance;
-
-  response->param.three_axis_direction = dh_param.threeAxisDirection;
-  response->param.five_axis_direction = dh_param.fiveAxisDirection;
-
-  response->param.two_axis_convertion_ratio = dh_param.twoAxisConversionRatio;
-  response->param.three_axis_convertion_ratio = dh_param.threeAxisConversionRatio;
-  response->param.amplification_ratio = dh_param.amplificationRatio;
-
-  response->param.convertion_ratio_x = dh_param.conversionratio_x;
-  response->param.convertion_ratio_y = dh_param.conversionratio_y;
-  response->param.convertion_ratio_z = dh_param.conversionratio_z;
-
-  response->param.convertion_ratio_j1 = dh_param.conversionratio_J1;
-  response->param.convertion_ratio_j2 = dh_param.conversionratio_J2;
-  response->param.convertion_ratio_j3 = dh_param.conversionratio_J3;
-
-  response->param.upside_down = dh_param.upsideDown;
-  response->param.pc = dh_param.hanyu.PC;
-  response->param.sp.assign(dh_param.hanyu.SP, dh_param.hanyu.SP + 3);
-  response->param.tl.assign(dh_param.hanyu.TL, dh_param.hanyu.TL + 3);
+  tl_driver::convert::to_msg_dh_param(dh_param, response->param);
 }
 
 void TL_Arm::handle_get_all_job_filename_service(
@@ -2053,23 +1828,7 @@ void TL_Arm::handle_job_insert_movej_service(
     return;
   }
 
-  tl::MoveCmd cmd{};
-  cmd.targetPosType = static_cast<tl::PosType>(tl::PosType::data);
-  cmd.targetPosName = "";
-  cmd.coord = static_cast<tl::Coord>(request->cmd.coord);
-  cmd.velocity = request->cmd.velocity;
-  cmd.velocitySync = request->cmd.velocity_sync;
-  cmd.acc = request->cmd.acc;
-  cmd.dec = request->cmd.dec;
-  cmd.pl = request->cmd.pl;
-  cmd.time = request->cmd.time;
-  cmd.toolNum = request->cmd.tool_num;
-  cmd.userNum = request->cmd.user_num;
-  cmd.posidtype = request->cmd.posidtype;
-  cmd.configuration = request->cmd.configuration;
-  cmd.spin = request->cmd.spin;
-  cmd.parasync = request->cmd.para_sync;
-  cmd.targetPosValue = request->cmd.target_pos_value;
+  tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(request->cmd);
 
   tl::Result ret = tl::job_insert_moveJ(socket_fd_, request->line, cmd);
   response->success = (ret == tl::Result::SUCCESS);
@@ -2087,23 +1846,7 @@ void TL_Arm::handle_job_insert_movel_service(
     return;
   }
 
-  tl::MoveCmd cmd{};
-  cmd.targetPosType = static_cast<tl::PosType>(tl::PosType::data);
-  cmd.targetPosName = "";
-  cmd.coord = static_cast<tl::Coord>(request->cmd.coord);
-  cmd.velocity = request->cmd.velocity;
-  cmd.velocitySync = request->cmd.velocity_sync;
-  cmd.acc = request->cmd.acc;
-  cmd.dec = request->cmd.dec;
-  cmd.pl = request->cmd.pl;
-  cmd.time = request->cmd.time;
-  cmd.toolNum = request->cmd.tool_num;
-  cmd.userNum = request->cmd.user_num;
-  cmd.posidtype = request->cmd.posidtype;
-  cmd.configuration = request->cmd.configuration;
-  cmd.spin = request->cmd.spin;
-  cmd.parasync = request->cmd.para_sync;
-  cmd.targetPosValue = request->cmd.target_pos_value;
+  tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(request->cmd);
 
   tl::Result ret = tl::job_insert_moveL(socket_fd_, request->line, cmd);
   response->success = (ret == tl::Result::SUCCESS);
@@ -2121,23 +1864,7 @@ void TL_Arm::handle_job_insert_imove_service(
     return;
   }
 
-  tl::MoveCmd cmd{};
-  cmd.targetPosType = static_cast<tl::PosType>(tl::PosType::data);
-  cmd.targetPosName = "";
-  cmd.coord = static_cast<tl::Coord>(request->cmd.coord);
-  cmd.velocity = request->cmd.velocity;
-  cmd.velocitySync = request->cmd.velocity_sync;
-  cmd.acc = request->cmd.acc;
-  cmd.dec = request->cmd.dec;
-  cmd.pl = request->cmd.pl;
-  cmd.time = request->cmd.time;
-  cmd.toolNum = request->cmd.tool_num;
-  cmd.userNum = request->cmd.user_num;
-  cmd.posidtype = request->cmd.posidtype;
-  cmd.configuration = request->cmd.configuration;
-  cmd.spin = request->cmd.spin;
-  cmd.parasync = request->cmd.para_sync;
-  cmd.targetPosValue = request->cmd.target_pos_value;
+  tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(request->cmd);
 
   tl::Result ret = tl::job_insert_imove(socket_fd_, request->line, cmd);
   response->success = (ret == tl::Result::SUCCESS);
@@ -2155,23 +1882,7 @@ void TL_Arm::handle_job_insert_movec_service(
     return;
   }
 
-  tl::MoveCmd cmd{};
-  cmd.targetPosType = static_cast<tl::PosType>(tl::PosType::data);
-  cmd.targetPosName = "";
-  cmd.coord = static_cast<tl::Coord>(request->cmd.coord);
-  cmd.velocity = request->cmd.velocity;
-  cmd.velocitySync = request->cmd.velocity_sync;
-  cmd.acc = request->cmd.acc;
-  cmd.dec = request->cmd.dec;
-  cmd.pl = request->cmd.pl;
-  cmd.time = request->cmd.time;
-  cmd.toolNum = request->cmd.tool_num;
-  cmd.userNum = request->cmd.user_num;
-  cmd.posidtype = request->cmd.posidtype;
-  cmd.configuration = request->cmd.configuration;
-  cmd.spin = request->cmd.spin;
-  cmd.parasync = request->cmd.para_sync;
-  cmd.targetPosValue = request->cmd.target_pos_value;
+  tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(request->cmd);
 
   tl::Result ret = tl::job_insert_moveC(socket_fd_, request->line, cmd);
   response->success = (ret == tl::Result::SUCCESS);
@@ -2357,23 +2068,7 @@ void TL_Arm::handle_queue_motion_movej_service(
     return;
   }
 
-  tl::MoveCmd cmd{};
-  cmd.targetPosType = static_cast<tl::PosType>(tl::PosType::data);
-  cmd.targetPosName = "";
-  cmd.coord = static_cast<tl::Coord>(request->cmd.coord);
-  cmd.velocity = request->cmd.velocity;
-  cmd.velocitySync = request->cmd.velocity_sync;
-  cmd.acc = request->cmd.acc;
-  cmd.dec = request->cmd.dec;
-  cmd.pl = request->cmd.pl;
-  cmd.time = request->cmd.time;
-  cmd.toolNum = request->cmd.tool_num;
-  cmd.userNum = request->cmd.user_num;
-  cmd.posidtype = request->cmd.posidtype;
-  cmd.configuration = request->cmd.configuration;
-  cmd.spin = request->cmd.spin;
-  cmd.parasync = request->cmd.para_sync;
-  cmd.targetPosValue = request->cmd.target_pos_value;
+  tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(request->cmd);
 
   tl::Result ret = tl::queue_motion_push_back_moveJ(socket_fd_, cmd);
   if (ret != tl::Result::SUCCESS)
@@ -2490,27 +2185,11 @@ void TL_Arm::handle_movej_topic(const tl_ros2_interface::msg::MoveCommand::Share
     return;
   }
 
-  tl::MoveCmd cmd{};
-  cmd.targetPosType = static_cast<tl::PosType>(tl::PosType::data);
-  cmd.targetPosName = "";
-  cmd.coord = static_cast<tl::Coord>(msg->coord);
-  cmd.velocity = msg->velocity;
-  cmd.velocitySync = msg->velocity_sync;
-  cmd.acc = msg->acc;
-  cmd.dec = msg->dec;
-  cmd.pl = msg->pl;
-  cmd.time = msg->time;
-  cmd.toolNum = msg->tool_num;
-  cmd.userNum = msg->user_num;
-  cmd.posidtype = msg->posidtype;
-  cmd.configuration = msg->configuration;
-  cmd.spin = msg->spin;
-  cmd.parasync = msg->para_sync;
-  cmd.targetPosValue = msg->target_pos_value;
+  tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(*msg);
 
   tl::Result ret = tl::robot_movej(socket_fd_, cmd);
 
-  RCLCPP_INFO(this->get_logger(), "[MoveJ]: result=%s", result_to_string(ret));
+  RCLCPP_INFO(this->get_logger(), "[MoveJ]: result=%s", tl_driver::arm_client::result_to_string(ret));
 }
 
 void TL_Arm::handle_movel_topic(const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
@@ -2521,27 +2200,11 @@ void TL_Arm::handle_movel_topic(const tl_ros2_interface::msg::MoveCommand::Share
     return;
   }
 
-  tl::MoveCmd cmd{};
-  cmd.targetPosType = static_cast<tl::PosType>(tl::PosType::data);
-  cmd.targetPosName = "";
-  cmd.coord = static_cast<tl::Coord>(msg->coord);
-  cmd.velocity = msg->velocity;
-  cmd.velocitySync = msg->velocity_sync;
-  cmd.acc = msg->acc;
-  cmd.dec = msg->dec;
-  cmd.pl = msg->pl;
-  cmd.time = msg->time;
-  cmd.toolNum = msg->tool_num;
-  cmd.userNum = msg->user_num;
-  cmd.posidtype = msg->posidtype;
-  cmd.configuration = msg->configuration;
-  cmd.spin = msg->spin;
-  cmd.parasync = msg->para_sync;
-  cmd.targetPosValue = msg->target_pos_value;
+  tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(*msg);
 
   tl::Result ret = tl::robot_movel(socket_fd_, cmd);
 
-  RCLCPP_INFO(this->get_logger(), "[MoveL]: result=%s", result_to_string(ret));
+  RCLCPP_INFO(this->get_logger(), "[MoveL]: result=%s", tl_driver::arm_client::result_to_string(ret));
 }
 
 /**
@@ -2557,80 +2220,7 @@ void TL_Arm::handle_set_servoj_pos_topic(const std_msgs::msg::Float64MultiArray:
 
   std::vector<double> pos = msg->data;
   tl::Result ret = tl::set_servoJ_pos(socket_fd_aux_, pos);
-  RCLCPP_INFO(this->get_logger(), "[ServoJ]: result=%s", result_to_string(ret));
-}
-
-// ================ 四元数辅助函数 ================
-
-std::vector<double> TL_Arm::_rpy_to_quat(const std::vector<double>& rpy)
-{
-  double cr = std::cos(rpy[0] * 0.5);
-  double sr = std::sin(rpy[0] * 0.5);
-  double cp = std::cos(rpy[1] * 0.5);
-  double sp = std::sin(rpy[1] * 0.5);
-  double cy = std::cos(rpy[2] * 0.5);
-  double sy = std::sin(rpy[2] * 0.5);
-  return {
-      cr * cp * cy + sr * sp * sy, // w
-      sr * cp * cy - cr * sp * sy, // x
-      cr * sp * cy + sr * cp * sy, // y
-      cr * cp * sy - sr * sp * cy, // z
-  };
-}
-
-std::vector<double> TL_Arm::_quat_to_rpy(const std::vector<double>& q)
-{
-  double w = q[0], x = q[1], y = q[2], z = q[3];
-  double t0 = 2.0 * (w * x + y * z);
-  double t1 = 1.0 - 2.0 * (x * x + y * y);
-  double rx = std::atan2(t0, t1);
-  double t2 = 2.0 * (w * y - z * x);
-  t2 = std::max(-1.0, std::min(1.0, t2));
-  double ry = std::asin(t2);
-  double t3 = 2.0 * (w * z + x * y);
-  double t4 = 1.0 - 2.0 * (y * y + z * z);
-  double rz = std::atan2(t3, t4);
-  return {rx, ry, rz};
-}
-
-std::vector<double> TL_Arm::_quat_slerp(const std::vector<double>& q1, const std::vector<double>& q2, double t)
-{
-  double q2w = q2[0], q2x = q2[1], q2y = q2[2], q2z = q2[3];
-  double dot = q1[0] * q2w + q1[1] * q2x + q1[2] * q2y + q1[3] * q2z;
-  if (dot < 0.0)
-  {
-    q2w = -q2w;
-    q2x = -q2x;
-    q2y = -q2y;
-    q2z = -q2z;
-    dot = -dot;
-  }
-  const double DOT_THRESHOLD = 0.9995;
-  if (dot > DOT_THRESHOLD)
-  {
-    std::vector<double> result = {
-        q1[0] + t * (q2w - q1[0]),
-        q1[1] + t * (q2x - q1[1]),
-        q1[2] + t * (q2y - q1[2]),
-        q1[3] + t * (q2z - q1[3]),
-    };
-    double norm =
-        std::sqrt(result[0] * result[0] + result[1] * result[1] + result[2] * result[2] + result[3] * result[3]);
-    for (auto& v : result)
-      v /= norm;
-    return result;
-  }
-  double theta_0 = std::acos(dot);
-  double sin_theta_0 = std::sin(theta_0);
-  double theta = theta_0 * t;
-  double s0 = std::cos(theta) - dot * std::sin(theta) / sin_theta_0;
-  double s1 = std::sin(theta) / sin_theta_0;
-  return {
-      s0 * q1[0] + s1 * q2w,
-      s0 * q1[1] + s1 * q2x,
-      s0 * q1[2] + s1 * q2y,
-      s0 * q1[3] + s1 * q2z,
-  };
+  RCLCPP_INFO(this->get_logger(), "[ServoJ]: result=%s", tl_driver::arm_client::result_to_string(ret));
 }
 
 // ================ ServoL 笛卡尔空间直线伺服 ================
@@ -2691,8 +2281,8 @@ void TL_Arm::handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMov
   RCLCPP_INFO(this->get_logger(), "[ServoL] dist=%.1fmm, step=%.1f, points=%d", dist, step_size, N);
 
   // ========= 3. 准备 IK 参数 =========
-  std::vector<double> cur_quat = _rpy_to_quat({crx, cry, crz});
-  std::vector<double> target_quat = _rpy_to_quat({trx, try_, trz});
+  std::vector<double> cur_quat = tl_driver::math::rpy_to_quat({crx, cry, crz});
+  std::vector<double> target_quat = tl_driver::math::rpy_to_quat({trx, try_, trz});
 
   std::vector<double> ref_pos(7, 0.0);
 
@@ -2710,8 +2300,8 @@ void TL_Arm::handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMov
     double iz = cz + t * dz;
 
     // 姿态四元数 Slerp
-    std::vector<double> iq = _quat_slerp(cur_quat, target_quat, t);
-    std::vector<double> irpy = _quat_to_rpy(iq);
+    std::vector<double> iq = tl_driver::math::quat_slerp(cur_quat, target_quat, t);
+    std::vector<double> irpy = tl_driver::math::quat_to_rpy(iq);
 
     // 构建插值位姿 (7 元素: x,y,z,rx,ry,rz,0)
     std::vector<double> interp_pos = {ix, iy, iz, irpy[0], irpy[1], irpy[2], 0.0};
@@ -2830,7 +2420,7 @@ void TL_Arm::publish_running_status()
   if (ret != tl::Result::SUCCESS)
   {
     RCLCPP_INFO(this->get_logger(), "[Read Running Status]: failed to read running status, result=%s",
-                result_to_string(ret));
+                tl_driver::arm_client::result_to_string(ret));
     return;
   }
 

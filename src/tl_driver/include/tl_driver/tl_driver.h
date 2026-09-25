@@ -17,9 +17,6 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_srvs/srv/trigger.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
-#include <geometry_msgs/msg/pose_stamped.hpp>
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <std_msgs/msg/float64_multi_array.hpp>
 
 // msg
@@ -80,14 +77,6 @@
 #include "tl_ros2_interface/srv/queue_motion_move_j.hpp"
 #include "tl_ros2_interface/srv/get_current_motor_torque.hpp"
 #include "tl_ros2_interface/srv/get_current_line_joint_speed.hpp"
-
-// lib
-#include "tl_types.h"
-
-enum MessageLists
-{
-  ROBOT_STATE = 7681
-};
 
 class TL_Arm : public rclcpp::Node
 {
@@ -319,11 +308,6 @@ public:
   void handle_set_servoj_pos_topic(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
 
   void handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMove::SharedPtr msg);
-
-  // 四元数辅助函数
-  std::vector<double> _rpy_to_quat(const std::vector<double>& rpy);
-  std::vector<double> _quat_to_rpy(const std::vector<double>& q);
-  std::vector<double> _quat_slerp(const std::vector<double>& q1, const std::vector<double>& q2, double t);
 
   void publish_arm_state();
   void publish_joint_pose(const std::vector<double>& joint_pose);

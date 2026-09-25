@@ -27,9 +27,6 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(tf2 REQUIRED)
-find_package(tf2_geometry_msgs REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Development)
 find_package(tl_ros2_interface REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -55,6 +52,9 @@ set_target_properties(tl_host_lib PROPERTIES
 
 add_executable(tl_driver
   src/tl_driver.cpp
+  src/arm_client.cpp
+  src/convert/msg_convert.cpp
+  src/math/quaternion.cpp
 )
 
 target_include_directories(tl_driver PRIVATE
@@ -67,9 +67,6 @@ ament_target_dependencies(tl_driver
   rclcpp
   std_srvs
   sensor_msgs
-  geometry_msgs
-  tf2
-  tf2_geometry_msgs
   tl_ros2_interface
   std_msgs
 )
