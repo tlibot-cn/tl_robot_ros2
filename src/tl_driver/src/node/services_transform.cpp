@@ -10,7 +10,7 @@
 
 #include "arm_sdk.hpp"
 #include "node/registrars.hpp"
-#include "node/driver_node.h"
+#include "node/driver_node.hpp"
 
 #include "tl_ros2_interface/srv/coord_transform.hpp"
 #include "tl_ros2_interface/srv/get_current_coord.hpp"

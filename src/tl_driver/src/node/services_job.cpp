@@ -1,7 +1,7 @@
 /// @file services_job.cpp
 /// @brief 作业类服务：作业文件列表、运行/删除、插入运动指令的实现（由 driver_node.cpp 按域搬移，行为不变）。
 
-#include "convert/msg_convert.h"
+#include "convert/msg_convert.hpp"
 #include <functional>
 #include <memory>
 #include <chrono>
@@ -10,7 +10,7 @@
 
 #include "arm_sdk.hpp"
 #include "node/registrars.hpp"
-#include "node/driver_node.h"
+#include "node/driver_node.hpp"
 
 #include "tl_ros2_interface/srv/get_all_job_file_name.hpp"
 #include "tl_ros2_interface/srv/job_insert_move.hpp"

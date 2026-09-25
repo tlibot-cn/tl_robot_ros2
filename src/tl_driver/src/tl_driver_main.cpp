@@ -7,7 +7,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include "node/driver_node.h"
+#include "node/driver_node.hpp"
 
 int main(int argc, char **argv)
 {

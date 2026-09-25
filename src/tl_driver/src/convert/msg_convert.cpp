@@ -1,7 +1,7 @@
 /// @file msg_convert.cpp
 /// @brief ROS↔SDK 结构转换的实现（与拆分前各 handler 内的内联填充代码等价）。
 
-#include "convert/msg_convert.h"
+#include "convert/msg_convert.hpp"
 
 namespace tl_driver::convert
 {

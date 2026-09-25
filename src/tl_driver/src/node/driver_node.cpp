@@ -2,14 +2,14 @@
 #include <memory>
 #include <thread>
 
-#include "node/driver_node.h"
+#include "node/driver_node.hpp"
 #include "node/registrars.hpp"
 #include "tl_driver/version.hpp"
 
 #include "arm_client.hpp"
 #include "arm_sdk.hpp"
-#include "arm_session.h"
-#include "node/publishers.h"
+#include "arm_session.hpp"
+#include "node/publishers.hpp"
 
 namespace tl_driver
 {

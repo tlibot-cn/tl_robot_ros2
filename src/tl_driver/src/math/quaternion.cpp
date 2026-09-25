@@ -1,7 +1,7 @@
 /// @file quaternion.cpp
 /// @brief 欧拉角/四元数互转与球面插值的实现（与拆分前的成员实现等价）。
 
-#include "math/quaternion.h"
+#include "math/quaternion.hpp"
 
 #include <algorithm>
 #include <cmath>

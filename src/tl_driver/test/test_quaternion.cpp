@@ -5,7 +5,7 @@
 
 #include <gtest/gtest.h>
 
-#include "math/quaternion.h"
+#include "math/quaternion.hpp"
 
 namespace
 {

@@ -1,7 +1,7 @@
 /// @file services_config.cpp
 /// @brief 配置类服务：DH 参数/关节参数/工具/坐标系/全局点位/可达性的实现（由 driver_node.cpp 按域搬移，行为不变）。
 
-#include "convert/msg_convert.h"
+#include "convert/msg_convert.hpp"
 #include <functional>
 #include <memory>
 #include <chrono>
@@ -10,7 +10,7 @@
 
 #include "arm_sdk.hpp"
 #include "node/registrars.hpp"
-#include "node/driver_node.h"
+#include "node/driver_node.hpp"
 
 #include "std_srvs/srv/trigger.hpp"
 #include "tl_ros2_interface/srv/get_coord_num.hpp"

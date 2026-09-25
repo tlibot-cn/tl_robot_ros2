@@ -1,7 +1,7 @@
 /// @file arm_session.cpp
 /// @brief ArmSession 的实现（与拆分前的同名成员实现等价）。
 
-#include "arm_session.h"
+#include "arm_session.hpp"
 
 #include <chrono>
 #include <thread>

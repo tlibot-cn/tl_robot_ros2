@@ -1,5 +1,5 @@
-#ifndef TL_DRIVER__MSG_CONVERT_H_
-#define TL_DRIVER__MSG_CONVERT_H_
+#ifndef TL_DRIVER__MSG_CONVERT_HPP_
+#define TL_DRIVER__MSG_CONVERT_HPP_
 
 /// @file msg_convert.h
 /// @brief ROS 消息 / 服务与 SDK 结构之间的转换（含全局点位名校验）。
@@ -46,4 +46,4 @@ tl::RobotDHParam to_dh_param(const tl_ros2_interface::msg::RobotDHParam& msg);
 void from_dh_param(const tl::RobotDHParam& dh, tl_ros2_interface::msg::RobotDHParam& msg);
 } // namespace tl_driver::convert
 
-#endif // TL_DRIVER__MSG_CONVERT_H_
+#endif // TL_DRIVER__MSG_CONVERT_HPP_

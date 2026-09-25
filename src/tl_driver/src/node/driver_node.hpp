@@ -1,5 +1,5 @@
-#ifndef TL_DRIVER__DRIVER_NODE_H_
-#define TL_DRIVER__DRIVER_NODE_H_
+#ifndef TL_DRIVER__DRIVER_NODE_HPP_
+#define TL_DRIVER__DRIVER_NODE_HPP_
 
 // common
 #include <chrono>
@@ -11,8 +11,8 @@
 #include <rmw/qos_profiles.h>
 #include <rclcpp/rclcpp.hpp>
 
-#include "arm_session.h"
-#include "node/publishers.h"
+#include "arm_session.hpp"
+#include "node/publishers.hpp"
 
 namespace tl_driver
 {
@@ -138,4 +138,4 @@ private:
 
 } // namespace tl_driver
 
-#endif // TL_DRIVER__DRIVER_NODE_H_
+#endif // TL_DRIVER__DRIVER_NODE_HPP_

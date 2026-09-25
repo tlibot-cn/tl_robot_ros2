@@ -3,7 +3,7 @@
 
 #include <gtest/gtest.h>
 
-#include "convert/msg_convert.h"
+#include "convert/msg_convert.hpp"
 #include "tl_ros2_interface/msg/modbus_master_param.hpp"
 #include "tl_ros2_interface/msg/move_command.hpp"
 #include "tl_ros2_interface/msg/robot_dh_param.hpp"

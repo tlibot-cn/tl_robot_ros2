@@ -1,7 +1,7 @@
 /// @file services_io.cpp
 /// @brief IO 类服务：数字输出、数字输入输出、Modbus 读写、日志下载的实现（由 driver_node.cpp 按域搬移，行为不变）。
 
-#include "convert/msg_convert.h"
+#include "convert/msg_convert.hpp"
 #include <functional>
 #include <memory>
 #include <chrono>
@@ -10,7 +10,7 @@
 
 #include "arm_sdk.hpp"
 #include "node/registrars.hpp"
-#include "node/driver_node.h"
+#include "node/driver_node.hpp"
 
 #include "tl_ros2_interface/srv/get_digital_input_output.hpp"
 #include "tl_ros2_interface/srv/log_download.hpp"

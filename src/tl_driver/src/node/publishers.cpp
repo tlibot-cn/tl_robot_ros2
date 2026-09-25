@@ -1,7 +1,7 @@
 /// @file publishers.cpp
 /// @brief StatePublishers 的实现（与拆分前的同名成员实现等价）。
 
-#include "node/publishers.h"
+#include "node/publishers.hpp"
 
 #include <algorithm>
 #include <utility>

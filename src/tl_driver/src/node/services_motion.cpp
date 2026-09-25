@@ -2,7 +2,7 @@
 /// @brief 运动类服务与话题：速度/点动/轨迹/队列/ServoJ·ServoL 与 moveJ·moveL的实现（由 driver_node.cpp
 /// 按域搬移，行为不变）。
 
-#include "convert/msg_convert.h"
+#include "convert/msg_convert.hpp"
 #include <functional>
 #include <memory>
 #include <string>
@@ -10,7 +10,7 @@
 
 #include "arm_sdk.hpp"
 #include "node/registrars.hpp"
-#include "node/driver_node.h"
+#include "node/driver_node.hpp"
 
 #include "std_srvs/srv/trigger.hpp"
 #include "tl_ros2_interface/srv/get_speed.hpp"

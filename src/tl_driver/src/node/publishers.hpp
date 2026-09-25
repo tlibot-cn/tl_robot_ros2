@@ -1,5 +1,5 @@
-#ifndef TL_DRIVER__PUBLISHERS_H_
-#define TL_DRIVER__PUBLISHERS_H_
+#ifndef TL_DRIVER__PUBLISHERS_HPP_
+#define TL_DRIVER__PUBLISHERS_HPP_
 
 /// @file publishers.h
 /// @brief 状态发布：/joint_states、/tcp_pose、/arm_status。
@@ -12,7 +12,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 
-#include "arm_session.h"
+#include "arm_session.hpp"
 #include "tl_ros2_interface/msg/arm_status.hpp"
 #include "tl_ros2_interface/msg/cartesian_pose.hpp"
 
@@ -55,4 +55,4 @@ private:
 };
 } // namespace tl_driver
 
-#endif // TL_DRIVER__PUBLISHERS_H_
+#endif // TL_DRIVER__PUBLISHERS_HPP_

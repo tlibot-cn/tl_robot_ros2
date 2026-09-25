@@ -11,9 +11,9 @@
 
 #include "arm_client.hpp"
 #include "arm_sdk.hpp"
-#include "convert/msg_convert.h"
-#include "math/quaternion.h"
-#include "node/driver_node.h"
+#include "convert/msg_convert.hpp"
+#include "math/quaternion.hpp"
+#include "node/driver_node.hpp"
 
 #include "std_msgs/msg/float64_multi_array.hpp"
 #include "tl_ros2_interface/msg/move_command.hpp"

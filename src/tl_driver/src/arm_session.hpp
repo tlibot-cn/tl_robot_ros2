@@ -1,5 +1,5 @@
-#ifndef TL_DRIVER__ARM_SESSION_H_
-#define TL_DRIVER__ARM_SESSION_H_
+#ifndef TL_DRIVER__ARM_SESSION_HPP_
+#define TL_DRIVER__ARM_SESSION_HPP_
 
 /// @file arm_session.h
 /// @brief 机械臂会话：6001/7000 双端口连接、上下电。
@@ -63,4 +63,4 @@ private:
 };
 } // namespace tl_driver
 
-#endif // TL_DRIVER__ARM_SESSION_H_
+#endif // TL_DRIVER__ARM_SESSION_HPP_
