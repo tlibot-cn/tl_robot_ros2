@@ -8,6 +8,7 @@
 #include <thread>
 #include <utility>
 
+#include "arm_client.hpp"
 #include "arm_sdk.hpp"
 
 namespace
@@ -80,13 +81,6 @@ void ArmSession::on_robot_state_message(const char *state)
 
   std::cout << "\033[32m"
             << "robot_state = " << (state ? state : "") << "\033[0m" << std::endl;
-}
-
-void ArmSession::on_error_or_warning_message(int message_type, const char *message, int message_code)
-{
-  std::cout << "\033[31m"
-            << "messageType = " << message_type << ", message = " << message << ", messageCode = " << message_code
-            << "\033[0m" << std::endl;
 }
 
 bool ArmSession::is_connected() const
@@ -198,9 +192,9 @@ bool ArmSession::connect()
 
   is_connected_ = true;
 
-  tl::set_receive_error_or_warnning_message_callback(socket_fd_, on_error_or_warning_message);
+  arm_client::register_error_callback(socket_fd_);
 
-  tl::set_receive_error_or_warnning_message_callback(socket_fd_aux_, on_error_or_warning_message);
+  arm_client::register_error_callback(socket_fd_aux_);
 
   // 新 SDK：机器人状态通过 robot_state_callback（7000 端口）接收，不再使用旧的 recv_message 机制
   tl::robot_state_callback(socket_fd_aux_, on_robot_state_message);

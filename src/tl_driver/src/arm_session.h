@@ -84,12 +84,6 @@ private:
   /// @param[in] state 状态帧内容
   static void on_robot_state_message(const char *state);
 
-  /// @brief 错误/告警回调（6001 与 7000 均注册）。
-  /// @param[in] message_type 消息类型
-  /// @param[in] message 消息内容
-  /// @param[in] message_code 消息码
-  static void on_error_or_warning_message(int message_type, const char *message, int message_code);
-
   static RobotStateMessageBuffer g_robot_state_msg_buffer;
 
   rclcpp::Logger logger_;

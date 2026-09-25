@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "arm_client.hpp"
 #include "arm_sdk.hpp"
 #include "node/driver_node.h"
 
@@ -92,8 +93,8 @@ void handle_clear_error_service(DriverNode& node, const std::shared_ptr<std_srvs
 
   tl::Result ret = tl::clear_error(node.session().fd());
   response->success = (ret == tl::Result::SUCCESS);
-  response->message =
-      response->success ? "Clear error successfully" : std::string("Clear error failed: ") + result_to_string(ret);
+  response->message = response->success ? "Clear error successfully"
+                                        : std::string("Clear error failed: ") + arm_client::result_to_string(ret);
 }
 
 void handle_set_controller_ip_service(DriverNode& node,

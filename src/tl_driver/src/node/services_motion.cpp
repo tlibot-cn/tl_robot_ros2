@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "arm_client.hpp"
 #include "arm_sdk.hpp"
 #include "node/driver_node.h"
 
@@ -275,7 +276,7 @@ void handle_movej_topic(DriverNode& node, const tl_ros2_interface::msg::MoveComm
 
   tl::Result ret = tl::robot_movej(node.session().fd(), cmd);
 
-  RCLCPP_INFO(node.get_logger(), "[MoveJ]: result=%s", result_to_string(ret));
+  RCLCPP_INFO(node.get_logger(), "[MoveJ]: result=%s", arm_client::result_to_string(ret));
 }
 
 void handle_movel_topic(DriverNode& node, const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
@@ -290,7 +291,7 @@ void handle_movel_topic(DriverNode& node, const tl_ros2_interface::msg::MoveComm
 
   tl::Result ret = tl::robot_movel(node.session().fd(), cmd);
 
-  RCLCPP_INFO(node.get_logger(), "[MoveL]: result=%s", result_to_string(ret));
+  RCLCPP_INFO(node.get_logger(), "[MoveL]: result=%s", arm_client::result_to_string(ret));
 }
 
 /**
@@ -306,7 +307,7 @@ void handle_set_servoj_pos_topic(DriverNode& node, const std_msgs::msg::Float64M
 
   std::vector<double> pos = msg->data;
   tl::Result ret = tl::set_servoJ_pos(node.session().fd_aux(), pos);
-  RCLCPP_INFO(node.get_logger(), "[ServoJ]: result=%s", result_to_string(ret));
+  RCLCPP_INFO(node.get_logger(), "[ServoJ]: result=%s", arm_client::result_to_string(ret));
 }
 
 // ================ ServoL 笛卡尔空间直线伺服 ================

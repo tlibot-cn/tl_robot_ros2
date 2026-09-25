@@ -61,6 +61,7 @@ add_executable(tl_driver
   src/node/services_transform.cpp
   src/node/services_config.cpp
   src/node/services_state.cpp
+  src/arm_client.cpp
   src/arm_session.cpp
   src/math/quaternion.cpp
   src/convert/msg_convert.cpp

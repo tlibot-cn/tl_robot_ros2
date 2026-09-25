@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <utility>
 
+#include "arm_client.hpp"
 #include "arm_sdk.hpp"
 
 namespace tl_driver
@@ -110,7 +111,7 @@ void Publishers::publish_running_status()
   if (ret != tl::Result::SUCCESS)
   {
     RCLCPP_INFO(node_.get_logger(), "[Read Running Status]: failed to read running status, result=%s",
-                tl_driver::result_to_string(ret));
+                arm_client::result_to_string(ret));
     return;
   }
 

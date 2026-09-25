@@ -10,6 +10,7 @@
 #include "node/services_job.h"
 #include "tl_driver/version.hpp"
 
+#include "arm_client.hpp"
 #include "arm_sdk.hpp"
 #include "arm_session.h"
 #include "node/publishers.h"
@@ -129,7 +130,8 @@ void DriverNode::init()
     tl::Result ret = tl::set_current_mode(session_->fd(), tl::RobotMode::TEACH);
     if (ret != tl::Result::SUCCESS)
     {
-      RCLCPP_ERROR(this->get_logger(), "[Init]: failed to set teach mode, result=%s", tl_driver::result_to_string(ret));
+      RCLCPP_ERROR(this->get_logger(), "[Init]: failed to set teach mode, result=%s",
+                   arm_client::result_to_string(ret));
       rclcpp::shutdown();
       exit(0);
     }
@@ -138,7 +140,7 @@ void DriverNode::init()
     ret = tl::clear_error(session_->fd());
     if (ret != tl::Result::SUCCESS)
     {
-      RCLCPP_WARN(this->get_logger(), "[Init]: clear_error result=%s", tl_driver::result_to_string(ret));
+      RCLCPP_WARN(this->get_logger(), "[Init]: clear_error result=%s", arm_client::result_to_string(ret));
     }
 
     // 清错后下电，释放控制器占用状态
