@@ -47,7 +47,7 @@ src/
 ├── tl_driver/               # 硬件驱动（C++ 节点）
 │   ├── config/              # 14 套通信参数配置
 │   ├── launch/              # 驱动节点 launch
-│   ├── lib/                 # TL 专有库（libtl_host.so + API 头文件）
+│   ├── lib/                 # TL SDK 库（libtl_host.so + API 头文件）
 │   └── src/                 # 驱动节点源码
 ├── tl_example/              # 使用示例
 ├── tl_gazebo/               # Gazebo 仿真

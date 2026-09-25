@@ -126,7 +126,7 @@ install(CODE "
 ")
 
 # ARM64 额外的依赖库：新 libtl_host.so 已自包含，无需 libmath/libmodbus/libservoJ_wrapper
-# 若未来厂商提供额外依赖库，可在 arm/ 下放置后在此追加安装
+# 若 SDK 后续提供额外依赖库，可在 arm/ 下放置后在此追加安装
 
 install(DIRECTORY config
   DESTINATION share/${PROJECT_NAME}

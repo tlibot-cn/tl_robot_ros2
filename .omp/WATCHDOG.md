@@ -7,7 +7,7 @@
 
 | 级别 | 判据 | 例 |
 |---|---|---|
-| **blocker** | 真机会动错 / 进程崩 / 明确违反仓库硬规则 | 单位错导致千倍位移；长度契约破坏；动 `lib/` 下第三方产物 |
+| **blocker** | 真机会动错 / 进程崩 / 明确违反仓库硬规则 | 单位错导致千倍位移；长度契约破坏；动 `lib/` 下的 SDK 库（预编译产物） |
 | **concern** | 契约单边修改、消费方或文档未同步、并发与生命周期缺陷 | 改了 `/tcp_pose` 单位没改 `tl_teleop`；launch 参数改了没改 README |
 | **nit** | 其余可维护性问题 | 注释与代码不符 |
 
@@ -100,6 +100,6 @@
 主会话上下文里已有 `AGENTS.md`（含「提交前必做」清单与硬约束），别复述其内容，只盯这几类漏做：
 
 - 改了接口/launch/YAML/行为，却**只有代码没有文档**（`CHANGELOG.md`、包 `README.md`、说明书）→ concern。
-- 动了 `src/*/lib/` 下的专有库或 SDK 头 → blocker（只读产物）。
+- 动了 `src/*/lib/` 下的 SDK 库或 SDK 头 → blocker（预编译只读产物）。
 - 改了 msg/srv 没重建、或没跑 `./scripts/format-cpp.sh` / `black .` → concern（CI 只查格式、不编译）。
 - `CHANGELOG.md` 写成内部日志（构建配置、CI、`.omp/**`、目录重命名）→ nit；条目标准见 `.omp/rules/changelog-user-visible.md`。

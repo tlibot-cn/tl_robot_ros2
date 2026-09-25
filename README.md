@@ -66,7 +66,7 @@ black .
 - Allman 大括号风格，2 空格缩进，120 列宽限制
 - CI 强制格式检查，提交时请先本地格式化
 
-手动格式化（自动跳过三方 SDK 头文件）：
+手动格式化（自动跳过 SDK 库头文件 `lib/include/`）：
 ```bash
 ./scripts/format-cpp.sh                          # 格式化所有 C++ 文件
 ./scripts/format-cpp.sh src/tl_driver/src/       # 格式化指定目录

@@ -181,7 +181,7 @@ tl_teleop_node:
 ├── launch                             # 启动文件
 │   ├── tl_teleop_6axis.launch.py      # 6 轴启动
 │   └── tl_teleop_7axis.launch.py      # 7 轴启动
-├── lib                                # PXREA Robot SDK 专有库
+├── lib                                # PXREA Robot SDK 库（第三方预编译）
 │   ├── arm
 │   │   └── libPXREARobotSDK.so        # ARM64 架构预编译库
 │   ├── include
