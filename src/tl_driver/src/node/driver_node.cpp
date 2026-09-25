@@ -1,26 +1,36 @@
-#include <cmath>
+#include <chrono>
+#include <memory>
 #include <thread>
 
 #include "node/driver_node.h"
 #include "node/registrars.hpp"
-#include "node/services_state.h"
-#include "node/services_config.h"
-#include "node/services_transform.h"
-#include "node/services_motion.h"
-#include "node/services_io.h"
-#include "node/services_job.h"
 #include "tl_driver/version.hpp"
 
 #include "arm_client.hpp"
 #include "arm_sdk.hpp"
 #include "arm_session.h"
 #include "node/publishers.h"
-#include "convert/msg_convert.h"
-#include "math/quaternion.h"
 
 namespace tl_driver
 {
 DriverNode::DriverNode() : rclcpp::Node("tl_driver"), session_(this->get_logger())
+{
+  declare_parameters();
+
+  create_callback_groups();
+
+  register_entities();
+
+  // 获取本包版本与sdk库版本
+  RCLCPP_INFO(this->get_logger(), "Driver Version: %s", TL_DRIVER_VERSION);
+  RCLCPP_INFO(this->get_logger(), "SDK Version: %s", tl::get_library_version().c_str());
+
+  // 初始化
+  init();
+  RCLCPP_INFO(this->get_logger(), "%s_driver is running ", arm_type_.c_str());
+}
+
+void DriverNode::declare_parameters()
 {
   this->declare_parameter("arm_ip", "192.168.1.13");
   this->declare_parameter("arm_port", "6001");
@@ -35,10 +45,10 @@ DriverNode::DriverNode() : rclcpp::Node("tl_driver"), session_(this->get_logger(
   arm_type_ = this->get_parameter("arm_type").as_string();
   arm_joints_ = this->get_parameter("arm_joints").as_string_array();
   ndof_ = arm_joints_.size();
+}
 
-  // 会话与状态发布
-  publishers_ = std::make_unique<tl_driver::Publishers>(*this, session_, arm_joints_, ndof_);
-
+void DriverNode::create_callback_groups()
+{
   // 多线程
   service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
@@ -46,19 +56,30 @@ DriverNode::DriverNode() : rclcpp::Node("tl_driver"), session_(this->get_logger(
   topic_options_.callback_group = topic_group_;
 
   timer_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+}
 
+void DriverNode::register_entities()
+{
   // 服务
-  services::register_state_services(*this, service_group_);
-  services::register_config_services(*this, service_group_);
-  services::register_transform_services(*this, service_group_);
-  services::register_motion_services(*this, service_group_);
-  services::register_io_services(*this, service_group_);
-  services::register_job_services(*this, service_group_);
+  register_session_services(*this);
+  register_motion_services(*this);
+  register_transform_services(*this);
+  register_config_services(*this);
+  register_io_services(*this);
+  register_job_services(*this);
+  register_state_services(*this);
 
+  // 话题pub
+  publishers_ = std::make_unique<tl_driver::Publishers>(*this, session_, arm_joints_, ndof_);
 
   // 话题sub
   register_topics(*this);
 
+  create_state_timer();
+}
+
+void DriverNode::create_state_timer()
+{
   auto period =
       std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::duration<double>(1.0 / publish_rate_));
 
@@ -69,14 +90,6 @@ DriverNode::DriverNode() : rclcpp::Node("tl_driver"), session_(this->get_logger(
         publishers_->publish_arm_state();
       },
       timer_group_);
-
-  // 获取本包版本与sdk库版本
-  RCLCPP_INFO(this->get_logger(), "Driver Version: %s", TL_DRIVER_VERSION);
-  RCLCPP_INFO(this->get_logger(), "SDK Version: %s", tl::get_library_version().c_str());
-
-  // 初始化
-  init();
-  RCLCPP_INFO(this->get_logger(), "%s_driver is running ", arm_type_.c_str());
 }
 
 DriverNode::~DriverNode()

@@ -1,17 +1,36 @@
 /// @file services_config.cpp
 /// @brief 配置类服务：DH 参数/关节参数/工具/坐标系/全局点位/可达性的实现（由 driver_node.cpp 按域搬移，行为不变）。
 
-#include "node/services_config.h"
-
 #include "convert/msg_convert.h"
+#include <functional>
+#include <memory>
 #include <chrono>
 #include <string>
 #include <vector>
 
 #include "arm_sdk.hpp"
+#include "node/registrars.hpp"
 #include "node/driver_node.h"
 
-namespace tl_driver::services
+#include "std_srvs/srv/trigger.hpp"
+#include "tl_ros2_interface/srv/get_coord_num.hpp"
+#include "tl_ros2_interface/srv/get_dh_param.hpp"
+#include "tl_ros2_interface/srv/get_global_pos.hpp"
+#include "tl_ros2_interface/srv/get_pos_reachable.hpp"
+#include "tl_ros2_interface/srv/get_robot_joint_param.hpp"
+#include "tl_ros2_interface/srv/restore_default_dh_param.hpp"
+#include "tl_ros2_interface/srv/set_axis_zero_pos.hpp"
+#include "tl_ros2_interface/srv/set_coord_num.hpp"
+#include "tl_ros2_interface/srv/set_dh_param.hpp"
+#include "tl_ros2_interface/srv/set_drag_mode.hpp"
+#include "tl_ros2_interface/srv/set_global_pos.hpp"
+#include "tl_ros2_interface/srv/set_robot_joint_param.hpp"
+#include "tl_ros2_interface/srv/set_tool_param.hpp"
+#include "tl_ros2_interface/srv/set_user_coord.hpp"
+
+namespace tl_driver
+{
+namespace
 {
 void handle_get_robot_joint_param_service(
     DriverNode& node, const std::shared_ptr<tl_ros2_interface::srv::GetRobotJointParam::Request> request,
@@ -414,37 +433,54 @@ void handle_get_global_pos_service(DriverNode& node,
   response->pos = pos;
 }
 
-void register_config_services(DriverNode& node, rclcpp::CallbackGroup::SharedPtr group)
+} // namespace
+
+void register_config_services(DriverNode& node)
 {
-  node.register_service<tl_ros2_interface::srv::RestoreDefaultDHParam>("/tl_driver/restore_default_dh_param",
-                                                                       handle_restore_default_dh_param_service, group);
-  node.register_service<std_srvs::srv::Trigger>("/tl_driver/set_default_cartesian_param",
-                                                handle_set_default_cartesian_param_service, group);
-  node.register_service<tl_ros2_interface::srv::SetDragMode>("/tl_driver/set_drag_mode", handle_set_drag_mode_service,
-                                                             group);
-  node.register_service<tl_ros2_interface::srv::SetDHParam>("/tl_driver/set_dh_param", handle_set_dh_param_service,
-                                                            group);
-  node.register_service<tl_ros2_interface::srv::GetDHParam>("/tl_driver/get_dh_param", handle_get_dh_param_service,
-                                                            group);
-  node.register_service<tl_ros2_interface::srv::SetRobotJointParam>("/tl_driver/set_robot_joint_param",
-                                                                    handle_set_robot_joint_param_service, group);
-  node.register_service<tl_ros2_interface::srv::GetRobotJointParam>("/tl_driver/get_robot_joint_param",
-                                                                    handle_get_robot_joint_param_service, group);
-  node.register_service<tl_ros2_interface::srv::SetToolParam>("/tl_driver/set_tool_param",
-                                                              handle_set_tool_param_service, group);
-  node.register_service<tl_ros2_interface::srv::SetUserCoord>("/tl_driver/set_user_coord",
-                                                              handle_set_user_coord_service, group);
-  node.register_service<tl_ros2_interface::srv::SetAxisZeroPos>("/tl_driver/set_axis_zero_pos",
-                                                                handle_set_axis_zero_pos_service, group);
-  node.register_service<tl_ros2_interface::srv::SetCoordNum>("/tl_driver/set_coord_num", handle_set_coord_num_service,
-                                                             group);
-  node.register_service<tl_ros2_interface::srv::GetCoordNum>("/tl_driver/get_coord_num", handle_get_coord_num_service,
-                                                             group);
-  node.register_service<tl_ros2_interface::srv::GetPosReachable>("/tl_driver/get_pos_reachable",
-                                                                 handle_get_pos_reachable_service, group);
-  node.register_service<tl_ros2_interface::srv::SetGlobalPos>("/tl_driver/set_global_pos",
-                                                              handle_set_global_pos_service, group);
-  node.register_service<tl_ros2_interface::srv::GetGlobalPos>("/tl_driver/get_global_pos",
-                                                              handle_get_global_pos_service, group);
+  node.create_service<tl_ros2_interface::srv::RestoreDefaultDHParam>(
+      "/tl_driver/restore_default_dh_param", std::bind(&handle_restore_default_dh_param_service, std::ref(node),
+                                                       std::placeholders::_1, std::placeholders::_2));
+  node.create_service<std_srvs::srv::Trigger>("/tl_driver/set_default_cartesian_param",
+                                              std::bind(&handle_set_default_cartesian_param_service, std::ref(node),
+                                                        std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::SetDragMode>(
+      "/tl_driver/set_drag_mode",
+      std::bind(&handle_set_drag_mode_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::SetDHParam>(
+      "/tl_driver/set_dh_param",
+      std::bind(&handle_set_dh_param_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetDHParam>(
+      "/tl_driver/get_dh_param",
+      std::bind(&handle_get_dh_param_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::SetRobotJointParam>(
+      "/tl_driver/set_robot_joint_param",
+      std::bind(&handle_set_robot_joint_param_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetRobotJointParam>(
+      "/tl_driver/get_robot_joint_param",
+      std::bind(&handle_get_robot_joint_param_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::SetToolParam>(
+      "/tl_driver/set_tool_param",
+      std::bind(&handle_set_tool_param_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::SetUserCoord>(
+      "/tl_driver/set_user_coord",
+      std::bind(&handle_set_user_coord_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::SetAxisZeroPos>(
+      "/tl_driver/set_axis_zero_pos",
+      std::bind(&handle_set_axis_zero_pos_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::SetCoordNum>(
+      "/tl_driver/set_coord_num",
+      std::bind(&handle_set_coord_num_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetCoordNum>(
+      "/tl_driver/get_coord_num",
+      std::bind(&handle_get_coord_num_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetPosReachable>(
+      "/tl_driver/get_pos_reachable",
+      std::bind(&handle_get_pos_reachable_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::SetGlobalPos>(
+      "/tl_driver/set_global_pos",
+      std::bind(&handle_set_global_pos_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetGlobalPos>(
+      "/tl_driver/get_global_pos",
+      std::bind(&handle_get_global_pos_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
 }
-} // namespace tl_driver::services
+} // namespace tl_driver

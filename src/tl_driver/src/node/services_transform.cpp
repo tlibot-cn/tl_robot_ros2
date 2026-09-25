@@ -2,16 +2,24 @@
 /// @brief 位姿换算与坐标系服务：rpy↔四元数、r↔tr、坐标系变换、当前坐标系读写的实现（由 driver_node.cpp
 /// 按域搬移，行为不变）。
 
-#include "node/services_transform.h"
-
+#include <functional>
+#include <memory>
 #include <chrono>
 #include <string>
 #include <vector>
 
 #include "arm_sdk.hpp"
+#include "node/registrars.hpp"
 #include "node/driver_node.h"
 
-namespace tl_driver::services
+#include "tl_ros2_interface/srv/coord_transform.hpp"
+#include "tl_ros2_interface/srv/get_current_coord.hpp"
+#include "tl_ros2_interface/srv/get_pos_transform.hpp"
+#include "tl_ros2_interface/srv/set_current_coord.hpp"
+
+namespace tl_driver
+{
+namespace
 {
 void handle_get_quat2rpy_service(DriverNode& node,
                                  const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
@@ -258,21 +266,33 @@ void handle_coord_transform_service(DriverNode& node,
   response->target_pos = targetPos;
 }
 
-void register_transform_services(DriverNode& node, rclcpp::CallbackGroup::SharedPtr group)
+} // namespace
+
+void register_transform_services(DriverNode& node)
 {
-  node.register_service<tl_ros2_interface::srv::GetPosTransform>("/tl_driver/get_quat2rpy", handle_get_quat2rpy_service,
-                                                                 group);
-  node.register_service<tl_ros2_interface::srv::GetPosTransform>("/tl_driver/get_rpy2quat", handle_get_rpy2quat_service,
-                                                                 group);
-  node.register_service<tl_ros2_interface::srv::GetPosTransform>("/tl_driver/get_rpy2r", handle_get_rpy2r_service,
-                                                                 group);
-  node.register_service<tl_ros2_interface::srv::GetPosTransform>("/tl_driver/get_tr2r", handle_get_tr2r_service, group);
-  node.register_service<tl_ros2_interface::srv::GetPosTransform>("/tl_driver/get_r2tr", handle_get_r2tr_service, group);
-  node.register_service<tl_ros2_interface::srv::CoordTransform>("/tl_driver/coord_transform",
-                                                                handle_coord_transform_service, group);
-  node.register_service<tl_ros2_interface::srv::SetCurrentCoord>("/tl_driver/set_current_coord",
-                                                                 handle_set_current_coord_service, group);
-  node.register_service<tl_ros2_interface::srv::GetCurrentCoord>("/tl_driver/get_current_coord",
-                                                                 handle_get_current_coord_service, group);
+  node.create_service<tl_ros2_interface::srv::GetPosTransform>(
+      "/tl_driver/get_quat2rpy",
+      std::bind(&handle_get_quat2rpy_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetPosTransform>(
+      "/tl_driver/get_rpy2quat",
+      std::bind(&handle_get_rpy2quat_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetPosTransform>(
+      "/tl_driver/get_rpy2r",
+      std::bind(&handle_get_rpy2r_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetPosTransform>(
+      "/tl_driver/get_tr2r",
+      std::bind(&handle_get_tr2r_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetPosTransform>(
+      "/tl_driver/get_r2tr",
+      std::bind(&handle_get_r2tr_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::CoordTransform>(
+      "/tl_driver/coord_transform",
+      std::bind(&handle_coord_transform_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::SetCurrentCoord>(
+      "/tl_driver/set_current_coord",
+      std::bind(&handle_set_current_coord_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetCurrentCoord>(
+      "/tl_driver/get_current_coord",
+      std::bind(&handle_get_current_coord_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
 }
-} // namespace tl_driver::services
+} // namespace tl_driver

@@ -1,102 +1,33 @@
 /// @file services_state.cpp
 /// @brief 状态类服务：连接/上下电/清错/版本/温度/电压/电流/力矩/模式的实现（由 driver_node.cpp 按域搬移，行为不变）。
 
-#include "node/services_state.h"
-
+#include <functional>
+#include <memory>
 #include <chrono>
 #include <string>
 #include <vector>
 
 #include "arm_client.hpp"
 #include "arm_sdk.hpp"
+#include "node/registrars.hpp"
 #include "node/driver_node.h"
 
-namespace tl_driver::services
+#include "std_srvs/srv/trigger.hpp"
+#include "tl_ros2_interface/srv/get_current_line_joint_speed.hpp"
+#include "tl_ros2_interface/srv/get_current_mode.hpp"
+#include "tl_ros2_interface/srv/get_current_motor_torque.hpp"
+#include "tl_ros2_interface/srv/get_joint_software_version.hpp"
+#include "tl_ros2_interface/srv/get_joint_temperature.hpp"
+#include "tl_ros2_interface/srv/get_joint_voltage.hpp"
+#include "tl_ros2_interface/srv/get_motor_current.hpp"
+#include "tl_ros2_interface/srv/get_robot_state.hpp"
+#include "tl_ros2_interface/srv/set_controller_ip.hpp"
+#include "tl_ros2_interface/srv/set_current_mode.hpp"
+
+namespace tl_driver
 {
-void handle_connect_service(DriverNode& node, const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                            std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+namespace
 {
-  (void)request;
-  if (node.session().is_connected())
-  {
-    response->success = true; // shc 26.5.19 修改：连接了就响应true
-    response->message = "Arm already connected";
-    return;
-  }
-
-  response->success = node.connect();
-  response->message = response->success ? "Arm connected successfully" : "Failed to connect arm";
-}
-
-void handle_disconnect_service(DriverNode& node, const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                               std::shared_ptr<std_srvs::srv::Trigger::Response> response)
-{
-  (void)request;
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  response->success = node.session().disconnect();
-  response->message = response->success ? "Arm disconnected successfully" : "Failed to disconnect arm";
-}
-
-void handle_poweron_service(DriverNode& node, const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                            std::shared_ptr<std_srvs::srv::Trigger::Response> response)
-{
-  (void)request;
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  response->success = node.session().power_on();
-  response->message = response->success ? "Arm power on successfully" : "Failed to power on arm";
-}
-
-void handle_poweroff_service(DriverNode& node, const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                             std::shared_ptr<std_srvs::srv::Trigger::Response> response)
-{
-  (void)request;
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (!node.session().is_powered())
-  {
-    response->success = true;
-    response->message = "Arm already power off";
-    return;
-  }
-
-  response->success = node.session().power_off();
-  response->message = response->success ? "Arm power off successfully" : "Failed to power off arm";
-}
-
-void handle_clear_error_service(DriverNode& node, const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                std::shared_ptr<std_srvs::srv::Trigger::Response> response)
-{
-  (void)request;
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::Result ret = tl::clear_error(node.session().fd());
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Clear error successfully"
-                                        : std::string("Clear error failed: ") + arm_client::result_to_string(ret);
-}
-
 void handle_set_controller_ip_service(DriverNode& node,
                                       const std::shared_ptr<tl_ros2_interface::srv::SetControllerIP::Request> request,
                                       std::shared_ptr<tl_ros2_interface::srv::SetControllerIP::Response> response)
@@ -458,39 +389,51 @@ void handle_get_current_line_joint_speed_service(
   }
 }
 
-void register_state_services(DriverNode& node, rclcpp::CallbackGroup::SharedPtr group)
+} // namespace
+
+void register_state_services(DriverNode& node)
 {
-  node.register_service<std_srvs::srv::Trigger>("/tl_driver/connect_arm", handle_connect_service, group);
-  node.register_service<std_srvs::srv::Trigger>("/tl_driver/disconnect_arm", handle_disconnect_service, group);
-  node.register_service<std_srvs::srv::Trigger>("/tl_driver/power_on", handle_poweron_service, group);
-  node.register_service<std_srvs::srv::Trigger>("/tl_driver/power_off", handle_poweroff_service, group);
-  node.register_service<std_srvs::srv::Trigger>("/tl_driver/clear_error", handle_clear_error_service, group);
-  node.register_service<std_srvs::srv::Trigger>("/tl_driver/get_controller_id", handle_get_controller_id_service,
-                                                group);
-  node.register_service<tl_ros2_interface::srv::SetControllerIP>("/tl_driver/set_controller_ip",
-                                                                 handle_set_controller_ip_service, group);
-  node.register_service<tl_ros2_interface::srv::GetRobotState>("/tl_driver/get_robot_state",
-                                                               handle_get_robot_state_service, group);
-  node.register_service<std_srvs::srv::Trigger>("/tl_driver/get_library_version", handle_get_library_version_service,
-                                                group);
-  node.register_service<std_srvs::srv::Trigger>("/tl_driver/get_nexmotion_lib_version",
-                                                handle_get_nexmotion_lib_version_service, group);
-  node.register_service<tl_ros2_interface::srv::GetJointTemperature>("/tl_driver/get_joint_temperature",
-                                                                     handle_get_joint_temperature_service, group);
-  node.register_service<tl_ros2_interface::srv::GetJointVoltage>("/tl_driver/get_joint_voltage",
-                                                                 handle_get_joint_voltage_service, group);
-  node.register_service<tl_ros2_interface::srv::GetMotorCurrent>("/tl_driver/get_motor_current",
-                                                                 handle_get_motor_current_service, group);
-  node.register_service<tl_ros2_interface::srv::GetJointSoftwareVersion>(
-      "/tl_driver/get_joint_software_version", handle_get_joint_software_version_service, group);
-  node.register_service<tl_ros2_interface::srv::GetCurrentMotorTorque>("/tl_driver/get_current_motor_torque",
-                                                                       handle_get_current_motor_torque_service, group);
-  node.register_service<tl_ros2_interface::srv::GetCurrentLineJointSpeed>(
-      "/tl_driver/get_current_line_joint_speed", handle_get_current_line_joint_speed_service, group);
-  node.register_service<std_srvs::srv::Trigger>("/tl_driver/get_drag_status", handle_get_drag_status_service, group);
-  node.register_service<tl_ros2_interface::srv::SetCurrentMode>("/tl_driver/set_current_mode",
-                                                                handle_set_current_mode_service, group);
-  node.register_service<tl_ros2_interface::srv::GetCurrentMode>("/tl_driver/get_current_mode",
-                                                                handle_get_current_mode_service, group);
+  node.create_service<std_srvs::srv::Trigger>(
+      "/tl_driver/get_controller_id",
+      std::bind(&handle_get_controller_id_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::SetControllerIP>(
+      "/tl_driver/set_controller_ip",
+      std::bind(&handle_set_controller_ip_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetRobotState>(
+      "/tl_driver/get_robot_state",
+      std::bind(&handle_get_robot_state_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<std_srvs::srv::Trigger>(
+      "/tl_driver/get_library_version",
+      std::bind(&handle_get_library_version_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<std_srvs::srv::Trigger>("/tl_driver/get_nexmotion_lib_version",
+                                              std::bind(&handle_get_nexmotion_lib_version_service, std::ref(node),
+                                                        std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetJointTemperature>(
+      "/tl_driver/get_joint_temperature",
+      std::bind(&handle_get_joint_temperature_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetJointVoltage>(
+      "/tl_driver/get_joint_voltage",
+      std::bind(&handle_get_joint_voltage_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetMotorCurrent>(
+      "/tl_driver/get_motor_current",
+      std::bind(&handle_get_motor_current_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetJointSoftwareVersion>(
+      "/tl_driver/get_joint_software_version", std::bind(&handle_get_joint_software_version_service, std::ref(node),
+                                                         std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetCurrentMotorTorque>(
+      "/tl_driver/get_current_motor_torque", std::bind(&handle_get_current_motor_torque_service, std::ref(node),
+                                                       std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetCurrentLineJointSpeed>(
+      "/tl_driver/get_current_line_joint_speed", std::bind(&handle_get_current_line_joint_speed_service, std::ref(node),
+                                                           std::placeholders::_1, std::placeholders::_2));
+  node.create_service<std_srvs::srv::Trigger>(
+      "/tl_driver/get_drag_status",
+      std::bind(&handle_get_drag_status_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::SetCurrentMode>(
+      "/tl_driver/set_current_mode",
+      std::bind(&handle_set_current_mode_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetCurrentMode>(
+      "/tl_driver/get_current_mode",
+      std::bind(&handle_get_current_mode_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
 }
-} // namespace tl_driver::services
+} // namespace tl_driver

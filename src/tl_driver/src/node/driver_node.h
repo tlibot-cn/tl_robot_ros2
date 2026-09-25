@@ -16,12 +16,22 @@
 
 namespace tl_driver
 {
-/// @brief tl_driver 节点：参数解析、会话、订阅、服务注册与状态发布调度。
+/// @brief 机械臂驱动节点：参数、回调组、实体创建与服务/话题注册。
+/// @note 回调实现按域分布：服务在 src/node/services_*.cpp，话题在 src/node/topics.cpp，
+///       由 node/registrars.hpp 声明的注册函数挂载；对外 ROS 接口与拆分前逐字一致。
 class DriverNode : public rclcpp::Node
 {
 public:
   DriverNode();
   ~DriverNode();
+
+  /// @brief 连接控制器并完成上电流程，由构造函数末尾调用。
+  /// @note 连接失败即 `exit(0)`（与拆分前一致；退出码缺陷见架构评审 P0-3）。
+  void init();
+
+  /// @brief 按节点参数（arm_ip/arm_port/arm_port_aux）连接控制器。
+  /// @return 两个端口均连接成功为 true
+  bool connect();
 
   /// @brief 会话访问，供各域 handler 使用。
   /// @return 会话对象引用
@@ -30,45 +40,48 @@ public:
     return session_;
   }
 
-  /// @brief 按节点参数（arm_ip/arm_port/arm_port_aux）连接控制器。
-  /// @return 两个端口均连接成功为 true
-  bool connect();
-
-  /// @brief 连接控制器、切入示教模式并上电（构造函数内调用）。
-  void init();
-
-  /// @brief 关节数（由 arm_joints 长度决定）。
+  /// @brief 关节数，由 arm_joints 参数长度决定。
   /// @return 关节数
   int ndof() const noexcept
   {
     return ndof_;
   }
 
-  /// @brief 注册服务并托管其生命周期，供各域 register_*_services 使用。
-  /// @note SrvT 必须是 rosidl 生成的服务类型（需具备 Request/Response 成员类型）。
-  /// @tparam SrvT 服务类型，如 tl_ros2_interface::srv::SetSpeed
-  /// @param[in] name 服务名
-  /// @param[in] handler 该域的处理函数
-  /// @param[in] group 回调组
-  template <typename SrvT>
-  void register_service(const std::string& name,
-                        void (*handler)(DriverNode&, typename SrvT::Request::SharedPtr,
-                                        typename SrvT::Response::SharedPtr),
-                        rclcpp::CallbackGroup::SharedPtr group)
+  /// @brief 关节名列表（arm_joints 参数）。
+  /// @return 关节名列表引用
+  const std::vector<std::string>& joint_names() const noexcept
   {
-    auto service = this->create_service<SrvT>(
-        name,
-        [this, handler](typename SrvT::Request::SharedPtr request, typename SrvT::Response::SharedPtr response)
-        {
-          handler(*this, request, response);
-        },
-        rmw_qos_profile_services_default, group);
+    return arm_joints_;
+  }
+
+  /// @brief 服务回调组，65 个服务共用（MutuallyExclusive，串行）。
+  /// @return 回调组句柄
+  rclcpp::CallbackGroup::SharedPtr service_group() const noexcept
+  {
+    return service_group_;
+  }
+
+  /// @brief 创建服务并持有其生命周期，供各域 register_*_services 使用。
+  /// @note 包装 `rclcpp::Node::create_service`（固定 `rmw_qos_profile_services_default` 与服务回调组），
+  ///       并把服务存入 `services_` 保活——rclcpp Humble 只弱引用已创建的服务，不持有即注销。
+  /// @note 与下方 `create_subscription` 一并隐藏 `rclcpp::Node` 的同名重载（名称隐藏）。
+  /// @tparam ServiceT 服务类型，如 tl_ros2_interface::srv::SetSpeed
+  /// @tparam CallbackT 回调类型
+  /// @param[in] name 服务名（含 `/tl_driver/` 前缀）
+  /// @param[in] callback 该域的服务回调
+  /// @return 服务句柄
+  template <typename ServiceT, typename CallbackT>
+  typename rclcpp::Service<ServiceT>::SharedPtr create_service(const std::string& name, CallbackT&& callback)
+  {
+    auto service = rclcpp::Node::create_service<ServiceT>(name, std::forward<CallbackT>(callback),
+                                                          rmw_qos_profile_services_default, service_group_);
     services_.push_back(service);
+    return service;
   }
 
   /// @brief 创建订阅并持有其生命周期（回调组为话题组）。
-  /// @note 存入 `subscriptions_` 保活——rclcpp Humble 只弱引用已创建的订阅，不持有即注销；
-  ///       订阅选项取自 `topic_options_`（构造期已绑定话题回调组）。
+  /// @note 同 create_service：存入 `subscriptions_` 保活；订阅选项取自 `topic_options_`，
+  ///       该成员须在 create_callback_groups() 中绑定话题回调组。
   /// @tparam MessageT 消息类型
   /// @tparam CallbackT 回调类型
   /// @param[in] name 话题名（含 `/tl_driver/` 前缀）
@@ -86,10 +99,17 @@ public:
   }
 
 private:
-  std::vector<rclcpp::ServiceBase::SharedPtr> services_;
+  /// @brief 声明并读取节点参数。
+  void declare_parameters();
 
-  ArmSession session_;
-  std::unique_ptr<tl_driver::Publishers> publishers_;
+  /// @brief 创建服务/话题/定时器三个互斥回调组。
+  void create_callback_groups();
+
+  /// @brief 按域注册全部服务与话题回调。
+  void register_entities();
+
+  /// @brief 创建 100 Hz 状态发布定时器。
+  void create_state_timer();
 
   std::string arm_ip_;
   std::string arm_port_;
@@ -100,14 +120,18 @@ private:
   double publish_rate_{100.0};
   int ndof_{6};
 
+  ArmSession session_;
+
+  std::unique_ptr<tl_driver::Publishers> publishers_;
+
   rclcpp::CallbackGroup::SharedPtr service_group_;
   rclcpp::CallbackGroup::SharedPtr topic_group_;
   rclcpp::CallbackGroup::SharedPtr timer_group_;
   rclcpp::SubscriptionOptions topic_options_;
 
   // 节点需持有服务/订阅对象，否则对象析构即注销
+  std::vector<rclcpp::ServiceBase::SharedPtr> services_;
   std::vector<rclcpp::SubscriptionBase::SharedPtr> subscriptions_;
-
 
   rclcpp::TimerBase::SharedPtr state_publish_timer_;
 };

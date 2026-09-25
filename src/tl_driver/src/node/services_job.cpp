@@ -1,17 +1,24 @@
 /// @file services_job.cpp
 /// @brief 作业类服务：作业文件列表、运行/删除、插入运动指令的实现（由 driver_node.cpp 按域搬移，行为不变）。
 
-#include "node/services_job.h"
-
 #include "convert/msg_convert.h"
+#include <functional>
+#include <memory>
 #include <chrono>
 #include <string>
 #include <vector>
 
 #include "arm_sdk.hpp"
+#include "node/registrars.hpp"
 #include "node/driver_node.h"
 
-namespace tl_driver::services
+#include "tl_ros2_interface/srv/get_all_job_file_name.hpp"
+#include "tl_ros2_interface/srv/job_insert_move.hpp"
+#include "tl_ros2_interface/srv/job_run.hpp"
+
+namespace tl_driver
+{
+namespace
 {
 void handle_get_all_job_filename_service(
     DriverNode& node, const std::shared_ptr<tl_ros2_interface::srv::GetAllJobFileName::Request> request,
@@ -144,19 +151,30 @@ void handle_job_insert_movec_service(DriverNode& node,
   response->message = response->success ? "Job insert movec successfully" : "Failed to insert job movec";
 }
 
-void register_job_services(DriverNode& node, rclcpp::CallbackGroup::SharedPtr group)
+} // namespace
+
+void register_job_services(DriverNode& node)
 {
-  node.register_service<tl_ros2_interface::srv::GetAllJobFileName>("/tl_driver/get_all_job_filename",
-                                                                   handle_get_all_job_filename_service, group);
-  node.register_service<tl_ros2_interface::srv::JobRun>("/tl_driver/job_run", handle_job_run_service, group);
-  node.register_service<tl_ros2_interface::srv::JobRun>("/tl_driver/job_delete", handle_job_delete_service, group);
-  node.register_service<tl_ros2_interface::srv::JobInsertMove>("/tl_driver/job_insert_moveJ",
-                                                               handle_job_insert_movej_service, group);
-  node.register_service<tl_ros2_interface::srv::JobInsertMove>("/tl_driver/job_insert_moveL",
-                                                               handle_job_insert_movel_service, group);
-  node.register_service<tl_ros2_interface::srv::JobInsertMove>("/tl_driver/job_insert_imove",
-                                                               handle_job_insert_imove_service, group);
-  node.register_service<tl_ros2_interface::srv::JobInsertMove>("/tl_driver/job_insert_moveC",
-                                                               handle_job_insert_movec_service, group);
+  node.create_service<tl_ros2_interface::srv::GetAllJobFileName>(
+      "/tl_driver/get_all_job_filename",
+      std::bind(&handle_get_all_job_filename_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::JobRun>(
+      "/tl_driver/job_run",
+      std::bind(&handle_job_run_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::JobRun>(
+      "/tl_driver/job_delete",
+      std::bind(&handle_job_delete_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::JobInsertMove>(
+      "/tl_driver/job_insert_moveJ",
+      std::bind(&handle_job_insert_movej_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::JobInsertMove>(
+      "/tl_driver/job_insert_moveL",
+      std::bind(&handle_job_insert_movel_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::JobInsertMove>(
+      "/tl_driver/job_insert_imove",
+      std::bind(&handle_job_insert_imove_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::JobInsertMove>(
+      "/tl_driver/job_insert_moveC",
+      std::bind(&handle_job_insert_movec_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
 }
-} // namespace tl_driver::services
+} // namespace tl_driver

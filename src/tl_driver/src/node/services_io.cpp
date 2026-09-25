@@ -1,17 +1,26 @@
 /// @file services_io.cpp
 /// @brief IO 类服务：数字输出、数字输入输出、Modbus 读写、日志下载的实现（由 driver_node.cpp 按域搬移，行为不变）。
 
-#include "node/services_io.h"
-
 #include "convert/msg_convert.h"
+#include <functional>
+#include <memory>
 #include <chrono>
 #include <string>
 #include <vector>
 
 #include "arm_sdk.hpp"
+#include "node/registrars.hpp"
 #include "node/driver_node.h"
 
-namespace tl_driver::services
+#include "tl_ros2_interface/srv/get_digital_input_output.hpp"
+#include "tl_ros2_interface/srv/log_download.hpp"
+#include "tl_ros2_interface/srv/modbus_read.hpp"
+#include "tl_ros2_interface/srv/modbus_write.hpp"
+#include "tl_ros2_interface/srv/set_digital_output.hpp"
+
+namespace tl_driver
+{
+namespace
 {
 void handle_log_download_service(DriverNode& node,
                                  const std::shared_ptr<tl_ros2_interface::srv::LogDownload::Request> request,
@@ -166,17 +175,24 @@ void handle_modbus_read_service(DriverNode& node,
   response->data = data;
 }
 
-void register_io_services(DriverNode& node, rclcpp::CallbackGroup::SharedPtr group)
+} // namespace
+
+void register_io_services(DriverNode& node)
 {
-  node.register_service<tl_ros2_interface::srv::SetDigitalOutput>("/tl_driver/set_digital_output",
-                                                                  handle_set_digital_output_service, group);
-  node.register_service<tl_ros2_interface::srv::GetDigitalInputOutput>("/tl_driver/get_digital_input_output",
-                                                                       handle_get_digital_input_output_service, group);
-  node.register_service<tl_ros2_interface::srv::ModbusWrite>("/tl_driver/modbus_write", handle_modbus_write_service,
-                                                             group);
-  node.register_service<tl_ros2_interface::srv::ModbusRead>("/tl_driver/modbus_read", handle_modbus_read_service,
-                                                            group);
-  node.register_service<tl_ros2_interface::srv::LogDownload>("/tl_driver/log_download", handle_log_download_service,
-                                                             group);
+  node.create_service<tl_ros2_interface::srv::SetDigitalOutput>(
+      "/tl_driver/set_digital_output",
+      std::bind(&handle_set_digital_output_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetDigitalInputOutput>(
+      "/tl_driver/get_digital_input_output", std::bind(&handle_get_digital_input_output_service, std::ref(node),
+                                                       std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::ModbusWrite>(
+      "/tl_driver/modbus_write",
+      std::bind(&handle_modbus_write_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::ModbusRead>(
+      "/tl_driver/modbus_read",
+      std::bind(&handle_modbus_read_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::LogDownload>(
+      "/tl_driver/log_download",
+      std::bind(&handle_log_download_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
 }
-} // namespace tl_driver::services
+} // namespace tl_driver

@@ -2,16 +2,29 @@
 /// @brief 运动类服务与话题：速度/点动/轨迹/队列/ServoJ·ServoL 与 moveJ·moveL的实现（由 driver_node.cpp
 /// 按域搬移，行为不变）。
 
-#include "node/services_motion.h"
-
 #include "convert/msg_convert.h"
+#include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "arm_sdk.hpp"
+#include "node/registrars.hpp"
 #include "node/driver_node.h"
 
-namespace tl_driver::services
+#include "std_srvs/srv/trigger.hpp"
+#include "tl_ros2_interface/srv/get_speed.hpp"
+#include "tl_ros2_interface/srv/jogging.hpp"
+#include "tl_ros2_interface/srv/open_servo_j.hpp"
+#include "tl_ros2_interface/srv/queue_motion_move_j.hpp"
+#include "tl_ros2_interface/srv/queue_motion_set_status.hpp"
+#include "tl_ros2_interface/srv/set_speed.hpp"
+#include "tl_ros2_interface/srv/track_playback.hpp"
+#include "tl_ros2_interface/srv/track_save.hpp"
+
+namespace tl_driver
+{
+namespace
 {
 void handle_set_speed_service(DriverNode& node,
                               const std::shared_ptr<tl_ros2_interface::srv::SetSpeed::Request> request,
@@ -261,24 +274,42 @@ void handle_queue_motion_stop_service(DriverNode& node, const std::shared_ptr<st
   response->message = response->success ? "Queue motion movej stop successfully" : "Failed to stop queue motion movej";
 }
 
-void register_motion_services(DriverNode& node, rclcpp::CallbackGroup::SharedPtr group)
+} // namespace
+
+void register_motion_services(DriverNode& node)
 {
-  node.register_service<tl_ros2_interface::srv::SetSpeed>("/tl_driver/set_speed", handle_set_speed_service, group);
-  node.register_service<tl_ros2_interface::srv::GetSpeed>("/tl_driver/get_speed", handle_get_speed_service, group);
-  node.register_service<tl_ros2_interface::srv::Jogging>("/tl_driver/start_jogging", handle_start_jogging_service,
-                                                         group);
-  node.register_service<tl_ros2_interface::srv::Jogging>("/tl_driver/stop_jogging", handle_stop_jogging_service, group);
-  node.register_service<tl_ros2_interface::srv::TrackSave>("/tl_driver/track_save", handle_track_save_service, group);
-  node.register_service<tl_ros2_interface::srv::TrackPlayback>("/tl_driver/track_playback",
-                                                               handle_track_playback_service, group);
-  node.register_service<tl_ros2_interface::srv::OpenServoJ>("/tl_driver/open_servoj", handle_open_servoj_service,
-                                                            group);
-  node.register_service<std_srvs::srv::Trigger>("/tl_driver/close_servoj", handle_close_servoj_service, group);
-  node.register_service<tl_ros2_interface::srv::QueueMotionSetStatus>("/tl_driver/queue_motion_set_status",
-                                                                      handle_queue_motion_set_status_service, group);
-  node.register_service<tl_ros2_interface::srv::QueueMotionMoveJ>("/tl_driver/queue_motion_movej",
-                                                                  handle_queue_motion_movej_service, group);
-  node.register_service<std_srvs::srv::Trigger>("/tl_driver/queue_motion_stop", handle_queue_motion_stop_service,
-                                                group);
+  node.create_service<tl_ros2_interface::srv::SetSpeed>(
+      "/tl_driver/set_speed",
+      std::bind(&handle_set_speed_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetSpeed>(
+      "/tl_driver/get_speed",
+      std::bind(&handle_get_speed_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::Jogging>(
+      "/tl_driver/start_jogging",
+      std::bind(&handle_start_jogging_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::Jogging>(
+      "/tl_driver/stop_jogging",
+      std::bind(&handle_stop_jogging_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::TrackSave>(
+      "/tl_driver/track_save",
+      std::bind(&handle_track_save_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::TrackPlayback>(
+      "/tl_driver/track_playback",
+      std::bind(&handle_track_playback_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::OpenServoJ>(
+      "/tl_driver/open_servoj",
+      std::bind(&handle_open_servoj_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<std_srvs::srv::Trigger>(
+      "/tl_driver/close_servoj",
+      std::bind(&handle_close_servoj_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::QueueMotionSetStatus>(
+      "/tl_driver/queue_motion_set_status",
+      std::bind(&handle_queue_motion_set_status_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::QueueMotionMoveJ>(
+      "/tl_driver/queue_motion_movej",
+      std::bind(&handle_queue_motion_movej_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<std_srvs::srv::Trigger>(
+      "/tl_driver/queue_motion_stop",
+      std::bind(&handle_queue_motion_stop_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
 }
-} // namespace tl_driver::services
+} // namespace tl_driver
