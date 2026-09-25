@@ -320,11 +320,6 @@ public:
 
   void handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMove::SharedPtr msg);
 
-  // 四元数辅助函数
-  std::vector<double> _rpy_to_quat(const std::vector<double>& rpy);
-  std::vector<double> _quat_to_rpy(const std::vector<double>& q);
-  std::vector<double> _quat_slerp(const std::vector<double>& q1, const std::vector<double>& q2, double t);
-
   void publish_arm_state();
   void publish_joint_pose(const std::vector<double>& joint_pose);
   void publish_tcp_pose(const std::vector<double>& tcp_pose);
