@@ -133,4 +133,23 @@ install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}
 )
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+
+  # 纯逻辑单元测试：不需要机械臂，可在 CI 与容器内运行
+  ament_add_gtest(test_quaternion test/test_quaternion.cpp src/math/quaternion.cpp)
+  target_include_directories(test_quaternion PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  )
+
+  ament_add_gtest(test_msg_convert test/test_msg_convert.cpp src/convert/msg_convert.cpp)
+  target_include_directories(test_msg_convert PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/lib/include"
+  )
+  ament_target_dependencies(test_msg_convert
+    tl_ros2_interface
+  )
+endif()
+
 ament_package()
