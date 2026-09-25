@@ -173,23 +173,6 @@ public:
 
   // 服务
 
-  void handle_log_download_service(const std::shared_ptr<tl_ros2_interface::srv::LogDownload::Request> request,
-                                   std::shared_ptr<tl_ros2_interface::srv::LogDownload::Response> response);
-
-  void handle_set_digital_output_service(
-      const std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Response> response);
-
-  void handle_get_digital_input_output_service(
-      const std::shared_ptr<tl_ros2_interface::srv::GetDigitalInputOutput::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::GetDigitalInputOutput::Response> response);
-
-  void handle_modbus_write_service(const std::shared_ptr<tl_ros2_interface::srv::ModbusWrite::Request> request,
-                                   std::shared_ptr<tl_ros2_interface::srv::ModbusWrite::Response> response);
-
-  void handle_modbus_read_service(const std::shared_ptr<tl_ros2_interface::srv::ModbusRead::Request> request,
-                                  std::shared_ptr<tl_ros2_interface::srv::ModbusRead::Response> response);
-
   void handle_get_all_job_filename_service(
       const std::shared_ptr<tl_ros2_interface::srv::GetAllJobFileName::Request> request,
       std::shared_ptr<tl_ros2_interface::srv::GetAllJobFileName::Response> response);
@@ -234,11 +217,6 @@ private:
   rclcpp::CallbackGroup::SharedPtr topic_group_;
   rclcpp::CallbackGroup::SharedPtr timer_group_;
 
-  rclcpp::Service<tl_ros2_interface::srv::LogDownload>::SharedPtr log_download_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetDigitalOutput>::SharedPtr set_digital_output_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetDigitalInputOutput>::SharedPtr get_digital_input_output_service_;
-  rclcpp::Service<tl_ros2_interface::srv::ModbusWrite>::SharedPtr modbus_write_service_;
-  rclcpp::Service<tl_ros2_interface::srv::ModbusRead>::SharedPtr modbus_read_service_;
   rclcpp::Service<tl_ros2_interface::srv::GetAllJobFileName>::SharedPtr get_all_job_filename_service_;
   rclcpp::Service<tl_ros2_interface::srv::JobRun>::SharedPtr job_run_service_;
   rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_movej_service_;

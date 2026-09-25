@@ -6,6 +6,7 @@
 #include "node/services_config.h"
 #include "node/services_transform.h"
 #include "node/services_motion.h"
+#include "node/services_io.h"
 #include "tl_driver/version.hpp"
 
 #include "arm_sdk.hpp"
@@ -50,34 +51,7 @@ DriverNode::DriverNode() : rclcpp::Node("tl_driver")
   services::register_config_services(*this, service_group_);
   services::register_transform_services(*this, service_group_);
   services::register_motion_services(*this, service_group_);
-
-
-  log_download_service_ = this->create_service<tl_ros2_interface::srv::LogDownload>(
-      "/tl_driver/log_download",
-      std::bind(&DriverNode::handle_log_download_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-
-  set_digital_output_service_ = this->create_service<tl_ros2_interface::srv::SetDigitalOutput>(
-      "/tl_driver/set_digital_output",
-      std::bind(&DriverNode::handle_set_digital_output_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  get_digital_input_output_service_ = this->create_service<tl_ros2_interface::srv::GetDigitalInputOutput>(
-      "/tl_driver/get_digital_input_output",
-      std::bind(&DriverNode::handle_get_digital_input_output_service, this, std::placeholders::_1,
-                std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  modbus_write_service_ = this->create_service<tl_ros2_interface::srv::ModbusWrite>(
-      "/tl_driver/modbus_write",
-      std::bind(&DriverNode::handle_modbus_write_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  modbus_read_service_ = this->create_service<tl_ros2_interface::srv::ModbusRead>(
-      "/tl_driver/modbus_read",
-      std::bind(&DriverNode::handle_modbus_read_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
+  services::register_io_services(*this, service_group_);
 
 
   get_all_job_filename_service_ = this->create_service<tl_ros2_interface::srv::GetAllJobFileName>(
@@ -214,159 +188,6 @@ void DriverNode::init()
     rclcpp::shutdown();
     exit(0);
   }
-}
-
-
-void DriverNode::handle_log_download_service(
-    const std::shared_ptr<tl_ros2_interface::srv::LogDownload::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::LogDownload::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::Result ret = tl::log_download_by_quantity(session_->fd(), request->count, request->directory_path);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Log download successfully" : "Failed to download log";
-}
-
-
-void DriverNode::handle_set_digital_output_service(
-    const std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (request->value < 0 || request->value > 1)
-  {
-    response->success = false;
-    response->message = "Invalid value";
-    return;
-  }
-
-  tl::Result ret = tl::set_digital_output(session_->fd(), request->port, static_cast<tl::IoLevel>(request->value));
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Set digital output successfully" : "Failed to set digital output";
-}
-
-void DriverNode::handle_get_digital_input_output_service(
-    const std::shared_ptr<tl_ros2_interface::srv::GetDigitalInputOutput::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::GetDigitalInputOutput::Response> response)
-{
-  (void)request;
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  std::vector<int> digitalInput;
-  std::vector<int> digitalOutput;
-  tl::Result ret = tl::get_digital_input(session_->fd(), digitalInput);
-  tl::Result ret1 = tl::get_digital_output(session_->fd(), digitalOutput);
-  if (ret == tl::Result::SUCCESS && ret1 == tl::Result::SUCCESS)
-  {
-    response->success = true;
-    response->message = "Get digital input and output successfully";
-    response->input = digitalInput;
-    response->output = digitalOutput;
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Failed to get digital input and output";
-  }
-}
-
-void DriverNode::handle_modbus_write_service(
-    const std::shared_ptr<tl_ros2_interface::srv::ModbusWrite::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::ModbusWrite::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::ModbusMasterParameter master_param;
-  if (!tl_driver::convert::to_modbus_master_param(request->master_param, master_param))
-  {
-    response->success = false;
-    response->message = "Invalid master type";
-    return;
-  }
-
-  tl::Result ret = tl::modbus_set_master_parameter(session_->fd(), request->master_id, master_param);
-  if (ret != tl::Result::SUCCESS)
-  {
-    response->success = false;
-    response->message = "Failed to set master paramter";
-    return;
-  }
-
-  ret = tl::modbus_open_master(session_->fd(), request->master_id);
-  if (ret != tl::Result::SUCCESS)
-  {
-    response->success = false;
-    response->message = "Failed to open master";
-    return;
-  }
-
-  std::vector<int> data = request->data;
-  ret = tl::modbus_write_multiple_holding_registers(session_->fd(), request->master_id, request->addr, data);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Modbus write successfully" : "Failed to write Modbus";
-}
-
-void DriverNode::handle_modbus_read_service(const std::shared_ptr<tl_ros2_interface::srv::ModbusRead::Request> request,
-                                            std::shared_ptr<tl_ros2_interface::srv::ModbusRead::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::ModbusMasterParameter master_param;
-  if (!tl_driver::convert::to_modbus_master_param(request->master_param, master_param))
-  {
-    response->success = false;
-    response->message = "Invalid master type";
-    return;
-  }
-
-  tl::Result ret = tl::modbus_set_master_parameter(session_->fd(), request->master_id, master_param);
-  if (ret != tl::Result::SUCCESS)
-  {
-    response->success = false;
-    response->message = "Failed to set master paramter";
-    return;
-  }
-
-  ret = tl::modbus_open_master(session_->fd(), request->master_id);
-  if (ret != tl::Result::SUCCESS)
-  {
-    response->success = false;
-    response->message = "Failed to open master";
-    return;
-  }
-
-  std::vector<int> data{};
-  ret = tl::modbus_read_holding_registers(session_->fd(), request->master_id, request->addr, request->quantity, data);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Modbus read successfully" : "Failed to read Modbus";
-  response->data = data;
 }
 
 
