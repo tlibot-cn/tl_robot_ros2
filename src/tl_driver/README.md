@@ -129,9 +129,6 @@ tl_driver:
 │   ├── tl_driver3.png
 │   ├── tl_driver4.png
 │   └── tl_driver服务与话题说明书.md  # 服务与话题逐条说明
-├── include                        # 供 CMake 生成的编译期头
-│   └── tl_driver
-│       └── version.hpp.in         # 版本号模板，由 CMake 生成 version.hpp
 ├── launch                         # 启动文件
 │   ├── tl_driver.launch.py        # 通用启动（需传arm_type参数）
 │   ├── tl_tcb605_driver.launch.py
@@ -184,7 +181,8 @@ tl_driver:
 │   │   ├── services_job.{h,cpp}     # 作业类服务（作业运行/删除/插入运动）
 │   │   └── publishers.{h,cpp}   # /joint_states、/tcp_pose、/arm_status 发布
 │   ├── convert/msg_convert.{h,cpp} # ROS 消息 ↔ SDK 结构转换与参数校验
-│   └── math/quaternion.{h,cpp}  # 欧拉角/四元数互转与 slerp（纯函数）
+│   ├── math/quaternion.{h,cpp}  # 欧拉角/四元数互转与 slerp（纯函数）
+│   └── version.hpp.in         # 版本号模板，构建时由 CMake 生成 tl_driver/version.hpp
 └── test                       # 测试
     ├── test_all_interfaces.py   # 全接口测试脚本
     ├── test_quaternion.cpp      # 四元数纯函数单元测试

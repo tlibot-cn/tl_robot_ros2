@@ -10,6 +10,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 # 版本号单一来源：package.xml 的 <version>，生成编译期宏 TL_DRIVER_VERSION
+# 模板随源码放在 src/ 下；生成物落在构建目录的 include/tl_driver/（标准生成头暂存位置）
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/package.xml" TL_PACKAGE_XML)
 string(REGEX MATCH "<version>([^<]+)</version>" TL_PACKAGE_VERSION_MATCH "${TL_PACKAGE_XML}")
 if(NOT TL_PACKAGE_VERSION_MATCH)
@@ -17,7 +18,7 @@ if(NOT TL_PACKAGE_VERSION_MATCH)
 endif()
 set(TL_DRIVER_VERSION "${CMAKE_MATCH_1}")
 configure_file(
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/tl_driver/version.hpp.in"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/version.hpp.in"
   "${CMAKE_CURRENT_BINARY_DIR}/include/tl_driver/version.hpp"
   @ONLY
 )
