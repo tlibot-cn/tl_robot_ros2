@@ -161,6 +161,8 @@ TEST(MsgConvert, DhParamIgnoresJointsBeyondSixth)
 
 TEST(MsgConvert, GlobalPosNameValidation)
 {
+  // 仅覆盖拆分前后不变的行为；"GP12ab"（被 std::stoi 漏放行）与 "GPab12"（抛 std::invalid_argument）
+  // 属架构评审 P0-1 的待修缺陷，修复后在此补齐拒绝断言
   EXPECT_TRUE(tl_driver::convert::is_valid_gp_name("GP0001"));
   EXPECT_TRUE(tl_driver::convert::is_valid_gp_name("GP9999"));
   EXPECT_FALSE(tl_driver::convert::is_valid_gp_name("GP0000"));  // 0 超出 1..9999

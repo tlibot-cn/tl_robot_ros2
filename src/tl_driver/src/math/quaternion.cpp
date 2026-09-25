@@ -1,5 +1,5 @@
 /// @file quaternion.cpp
-/// @brief 欧拉角/四元数互转与球面插值的实现（与拆分前 TL_Arm 内的实现等价）。
+/// @brief 欧拉角/四元数互转与球面插值的实现（与拆分前的成员实现等价）。
 
 #include "math/quaternion.h"
 

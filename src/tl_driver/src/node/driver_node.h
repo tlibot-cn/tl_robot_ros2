@@ -35,48 +35,6 @@ public:
     return *session_;
   }
 
-  /// @brief 发布器访问。
-  /// @return 发布器对象引用
-  Publishers& publishers() noexcept
-  {
-    return *publishers_;
-  }
-
-  /// @brief 控制器 IP 参数。
-  /// @return 参数值
-  const std::string& arm_ip() const noexcept
-  {
-    return arm_ip_;
-  }
-
-  /// @brief 6001 端口参数。
-  /// @return 参数值
-  const std::string& arm_port() const noexcept
-  {
-    return arm_port_;
-  }
-
-  /// @brief 7000 端口参数。
-  /// @return 参数值
-  const std::string& arm_port_aux() const noexcept
-  {
-    return arm_port_aux_;
-  }
-
-  /// @brief 臂型标识参数（仅作标识，不参与行为）。
-  /// @return 参数值
-  const std::string& arm_type() const noexcept
-  {
-    return arm_type_;
-  }
-
-  /// @brief 关节名列表参数。
-  /// @return 参数值
-  const std::vector<std::string>& arm_joints() const noexcept
-  {
-    return arm_joints_;
-  }
-
   /// @brief 关节数（由 arm_joints 长度决定）。
   /// @return 关节数
   int ndof() const noexcept
@@ -85,6 +43,7 @@ public:
   }
 
   /// @brief 注册服务并托管其生命周期，供各域 register_*_services 使用。
+  /// @note SrvT 必须是 rosidl 生成的服务类型（需具备 Request/Response 成员类型）。
   /// @tparam SrvT 服务类型，如 tl_ros2_interface::srv::SetSpeed
   /// @param[in] name 服务名
   /// @param[in] handler 该域的处理函数

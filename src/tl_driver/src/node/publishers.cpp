@@ -1,5 +1,5 @@
 /// @file publishers.cpp
-/// @brief Publishers 的实现（与拆分前 TL_Arm 内同名实现等价）。
+/// @brief Publishers 的实现（与拆分前的同名成员实现等价）。
 
 #include "node/publishers.h"
 
