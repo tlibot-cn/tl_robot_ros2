@@ -32,8 +32,15 @@ public:
   /// @return 会话对象引用
   ArmSession& session() noexcept
   {
-    return *session_;
+    return session_;
   }
+
+  /// @brief 按节点参数（arm_ip/arm_port/arm_port_aux）连接控制器。
+  /// @return 两个端口均连接成功为 true
+  bool connect();
+
+  /// @brief 连接控制器、切入示教模式并上电（构造函数内调用）。
+  void init();
 
   /// @brief 关节数（由 arm_joints 长度决定）。
   /// @return 关节数
@@ -67,12 +74,9 @@ public:
   // 服务
 
 private:
-  /// @brief 连接控制器、切入示教模式并上电（构造函数内调用）。
-  void init();
-
   std::vector<rclcpp::ServiceBase::SharedPtr> services_;
 
-  std::unique_ptr<tl_driver::ArmSession> session_;
+  ArmSession session_;
   std::unique_ptr<tl_driver::Publishers> publishers_;
 
   std::string arm_ip_;

@@ -24,7 +24,7 @@ void handle_connect_service(DriverNode& node, const std::shared_ptr<std_srvs::sr
     return;
   }
 
-  response->success = node.session().connect();
+  response->success = node.connect();
   response->message = response->success ? "Arm connected successfully" : "Failed to connect arm";
 }
 
@@ -161,7 +161,7 @@ void handle_get_robot_state_service(DriverNode& node,
     param.ioState = false;
   }
 
-  const uint64_t start_seq = tl_driver::ArmSession::robot_state_seq();
+  const uint64_t start_seq = arm_client::robot_state_seq();
 
   // get_robot_state 需使用 7000 端口（fd_aux），回调亦注册在 7000 端口
   tl::Result ret = tl::get_robot_state(node.session().fd_aux(), param);
@@ -173,7 +173,7 @@ void handle_get_robot_state_service(DriverNode& node,
   }
 
   std::string state_message;
-  if (!tl_driver::ArmSession::wait_robot_state(start_seq, std::chrono::seconds(5), state_message))
+  if (!arm_client::wait_robot_state(start_seq, std::chrono::seconds(5), state_message))
   {
     response->success = false;
     response->message = "Timeout waiting for robot state";

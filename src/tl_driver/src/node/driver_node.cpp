@@ -19,7 +19,7 @@
 
 namespace tl_driver
 {
-DriverNode::DriverNode() : rclcpp::Node("tl_driver")
+DriverNode::DriverNode() : rclcpp::Node("tl_driver"), session_(this->get_logger())
 {
   this->declare_parameter("arm_ip", "192.168.1.13");
   this->declare_parameter("arm_port", "6001");
@@ -36,8 +36,7 @@ DriverNode::DriverNode() : rclcpp::Node("tl_driver")
   ndof_ = arm_joints_.size();
 
   // 会话与状态发布
-  session_ = std::make_unique<tl_driver::ArmSession>(this->get_logger(), arm_ip_, arm_port_, arm_port_aux_);
-  publishers_ = std::make_unique<tl_driver::Publishers>(*this, *session_, arm_joints_, ndof_);
+  publishers_ = std::make_unique<tl_driver::Publishers>(*this, session_, arm_joints_, ndof_);
 
   // 多线程
   service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -112,11 +111,16 @@ DriverNode::DriverNode() : rclcpp::Node("tl_driver")
 
 DriverNode::~DriverNode()
 {
-  if (session_->is_connected())
+  if (session_.is_connected())
   {
-    session_->power_off();
-    session_->disconnect();
+    session_.power_off();
+    session_.disconnect();
   }
+}
+
+bool DriverNode::connect()
+{
+  return session_.connect(arm_ip_, arm_port_, arm_port_aux_);
 }
 
 void DriverNode::init()
@@ -124,10 +128,10 @@ void DriverNode::init()
   RCLCPP_INFO(this->get_logger(), "Trying to connect to %s:%s,%s", arm_ip_.c_str(), arm_port_.c_str(),
               arm_port_aux_.c_str());
 
-  if (session_->connect())
+  if (connect())
   {
     // 切换到示教模式
-    tl::Result ret = tl::set_current_mode(session_->fd(), tl::RobotMode::TEACH);
+    tl::Result ret = tl::set_current_mode(session_.fd(), tl::RobotMode::TEACH);
     if (ret != tl::Result::SUCCESS)
     {
       RCLCPP_ERROR(this->get_logger(), "[Init]: failed to set teach mode, result=%s",
@@ -137,16 +141,16 @@ void DriverNode::init()
     }
 
     // 清除控制器错误和报警
-    ret = tl::clear_error(session_->fd());
+    ret = tl::clear_error(session_.fd());
     if (ret != tl::Result::SUCCESS)
     {
       RCLCPP_WARN(this->get_logger(), "[Init]: clear_error result=%s", arm_client::result_to_string(ret));
     }
 
     // 清错后下电，释放控制器占用状态
-    session_->power_off();
+    session_.power_off();
 
-    session_->power_on();
+    session_.power_on();
     RCLCPP_INFO(this->get_logger(), "上电延时2s...");
     std::this_thread::sleep_for(std::chrono::seconds(2));
     RCLCPP_INFO(this->get_logger(), "上电延时完成");

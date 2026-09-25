@@ -4,30 +4,14 @@
 #include "arm_session.h"
 
 #include <chrono>
-#include <iostream>
 #include <thread>
-#include <utility>
 
 #include "arm_client.hpp"
 #include "arm_sdk.hpp"
 
-namespace
-{
-enum MessageLists
-{
-  ROBOT_STATE = 7681
-};
-} // namespace
-
 namespace tl_driver
 {
-ArmSession::RobotStateMessageBuffer ArmSession::g_robot_state_msg_buffer;
-
-ArmSession::ArmSession(rclcpp::Logger logger, std::string arm_ip, std::string arm_port, std::string arm_port_aux)
-    : logger_(logger), arm_ip_(std::move(arm_ip)), arm_port_(std::move(arm_port)),
-      arm_port_aux_(std::move(arm_port_aux))
-{
-}
+ArmSession::ArmSession(rclcpp::Logger logger) : logger_(logger) {}
 
 int ArmSession::fd() const
 {
@@ -37,50 +21,6 @@ int ArmSession::fd() const
 int ArmSession::fd_aux() const
 {
   return socket_fd_aux_;
-}
-
-uint64_t ArmSession::robot_state_seq()
-{
-  std::lock_guard<std::mutex> lock(g_robot_state_msg_buffer.mutex);
-  return g_robot_state_msg_buffer.seq;
-}
-
-bool ArmSession::wait_robot_state(uint64_t start_seq, std::chrono::milliseconds timeout, std::string& message)
-{
-  std::unique_lock<std::mutex> lock(g_robot_state_msg_buffer.mutex);
-
-  const bool received =
-      g_robot_state_msg_buffer.cv.wait_for(lock, timeout,
-                                           [start_seq]()
-                                           {
-                                             return g_robot_state_msg_buffer.seq > start_seq &&
-                                                    g_robot_state_msg_buffer.last_msg_id == MessageLists::ROBOT_STATE;
-                                           });
-
-  if (!received)
-  {
-    return false;
-  }
-
-  message = g_robot_state_msg_buffer.last_msg;
-  return true;
-}
-
-// 新 SDK：7000 端口机器人状态专用回调（robot_state_callback）
-void ArmSession::on_robot_state_message(const char *state)
-{
-  {
-    std::lock_guard<std::mutex> lock(g_robot_state_msg_buffer.mutex);
-
-    g_robot_state_msg_buffer.last_msg_id = MessageLists::ROBOT_STATE;
-    g_robot_state_msg_buffer.last_msg = state ? state : "";
-    ++g_robot_state_msg_buffer.seq;
-  }
-
-  g_robot_state_msg_buffer.cv.notify_all();
-
-  std::cout << "\033[32m"
-            << "robot_state = " << (state ? state : "") << "\033[0m" << std::endl;
 }
 
 bool ArmSession::is_connected() const
@@ -163,7 +103,7 @@ bool ArmSession::power_off()
   return false;
 }
 
-bool ArmSession::connect()
+bool ArmSession::connect(const std::string& ip, const std::string& port, const std::string& port_aux)
 {
   if (is_connected_)
   {
@@ -171,12 +111,12 @@ bool ArmSession::connect()
     return true;
   }
 
-  socket_fd_ = tl::connect_robot(arm_ip_, arm_port_);
-  socket_fd_aux_ = tl::connect_robot(arm_ip_, arm_port_aux_);
+  socket_fd_ = tl::connect_robot(ip, port);
+  socket_fd_aux_ = tl::connect_robot(ip, port_aux);
 
   if (socket_fd_ <= 0)
   {
-    RCLCPP_ERROR(logger_, "[Connect]: failed to connect to %s:%s", arm_ip_.c_str(), arm_port_.c_str());
+    RCLCPP_ERROR(logger_, "[Connect]: failed to connect to %s:%s", ip.c_str(), port.c_str());
     socket_fd_ = 0;
     is_connected_ = false;
     return false;
@@ -184,7 +124,7 @@ bool ArmSession::connect()
 
   if (socket_fd_aux_ <= 0)
   {
-    RCLCPP_ERROR(logger_, "[Connect]: failed to connect to %s:%s", arm_ip_.c_str(), arm_port_aux_.c_str());
+    RCLCPP_ERROR(logger_, "[Connect]: failed to connect to %s:%s", ip.c_str(), port_aux.c_str());
     socket_fd_aux_ = 0;
     is_connected_ = false;
     return false;
@@ -197,10 +137,10 @@ bool ArmSession::connect()
   arm_client::register_error_callback(socket_fd_aux_);
 
   // 新 SDK：机器人状态通过 robot_state_callback（7000 端口）接收，不再使用旧的 recv_message 机制
-  tl::robot_state_callback(socket_fd_aux_, on_robot_state_message);
+  arm_client::start_robot_state_channel(socket_fd_aux_);
 
-  RCLCPP_INFO(logger_, "[Connect]: successfully connected to arm at %s:%s,%s", arm_ip_.c_str(), arm_port_.c_str(),
-              arm_port_aux_.c_str());
+  RCLCPP_INFO(logger_, "[Connect]: successfully connected to arm at %s:%s,%s", ip.c_str(), port.c_str(),
+              port_aux.c_str());
 
   return true;
 }
