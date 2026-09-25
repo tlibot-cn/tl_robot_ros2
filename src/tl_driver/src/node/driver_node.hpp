@@ -2,7 +2,6 @@
 #define TL_DRIVER__DRIVER_NODE_HPP_
 
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/float64_multi_array.hpp>
 
 #include <cstddef>
 #include <memory>
@@ -12,8 +11,6 @@
 
 #include "arm_session.hpp"
 #include "node/publishers.hpp"
-#include "tl_ros2_interface/msg/move_command.hpp"
-#include "tl_ros2_interface/msg/servol_move.hpp"
 
 namespace tl_driver
 {
