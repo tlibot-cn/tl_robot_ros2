@@ -5,6 +5,7 @@
 #include "node/services_state.h"
 #include "node/services_config.h"
 #include "node/services_transform.h"
+#include "node/services_motion.h"
 #include "tl_driver/version.hpp"
 
 #include "arm_sdk.hpp"
@@ -48,44 +49,12 @@ DriverNode::DriverNode() : rclcpp::Node("tl_driver")
   services::register_state_services(*this, service_group_);
   services::register_config_services(*this, service_group_);
   services::register_transform_services(*this, service_group_);
-
-
-  set_speed_service_ = this->create_service<tl_ros2_interface::srv::SetSpeed>(
-      "/tl_driver/set_speed",
-      std::bind(&DriverNode::handle_set_speed_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  get_speed_service_ = this->create_service<tl_ros2_interface::srv::GetSpeed>(
-      "/tl_driver/get_speed",
-      std::bind(&DriverNode::handle_get_speed_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-
-  start_jogging_service_ = this->create_service<tl_ros2_interface::srv::Jogging>(
-      "/tl_driver/start_jogging",
-      std::bind(&DriverNode::handle_start_jogging_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  stop_jogging_service_ = this->create_service<tl_ros2_interface::srv::Jogging>(
-      "/tl_driver/stop_jogging",
-      std::bind(&DriverNode::handle_stop_jogging_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
+  services::register_motion_services(*this, service_group_);
 
 
   log_download_service_ = this->create_service<tl_ros2_interface::srv::LogDownload>(
       "/tl_driver/log_download",
       std::bind(&DriverNode::handle_log_download_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-
-  track_save_service_ = this->create_service<tl_ros2_interface::srv::TrackSave>(
-      "/tl_driver/track_save",
-      std::bind(&DriverNode::handle_track_save_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  track_playback_service_ = this->create_service<tl_ros2_interface::srv::TrackPlayback>(
-      "/tl_driver/track_playback",
-      std::bind(&DriverNode::handle_track_playback_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
 
@@ -147,48 +116,37 @@ DriverNode::DriverNode() : rclcpp::Node("tl_driver")
       rmw_qos_profile_services_default, service_group_);
 
 
-  open_servoj_service_ = this->create_service<tl_ros2_interface::srv::OpenServoJ>(
-      "/tl_driver/open_servoj",
-      std::bind(&DriverNode::handle_open_servoj_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  close_servoj_service_ = this->create_service<std_srvs::srv::Trigger>(
-      "/tl_driver/close_servoj",
-      std::bind(&DriverNode::handle_close_servoj_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  queue_motion_set_status_service_ = this->create_service<tl_ros2_interface::srv::QueueMotionSetStatus>(
-      "/tl_driver/queue_motion_set_status",
-      std::bind(&DriverNode::handle_queue_motion_set_status_service, this, std::placeholders::_1,
-                std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  queue_motion_movej_service_ = this->create_service<tl_ros2_interface::srv::QueueMotionMoveJ>(
-      "/tl_driver/queue_motion_movej",
-      std::bind(&DriverNode::handle_queue_motion_movej_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-  queue_motion_stop_service_ = this->create_service<std_srvs::srv::Trigger>(
-      "/tl_driver/queue_motion_stop",
-      std::bind(&DriverNode::handle_queue_motion_stop_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
-
-
   // 话题sub
   movej_sub_ = this->create_subscription<tl_ros2_interface::msg::MoveCommand>(
-      "/tl_driver/moveJ", 10, std::bind(&DriverNode::handle_movej_topic, this, std::placeholders::_1),
+      "/tl_driver/moveJ", 10,
+      [this](const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
+      {
+        services::handle_movej_topic(*this, msg);
+      },
       topic_group_option);
 
   movel_sub_ = this->create_subscription<tl_ros2_interface::msg::MoveCommand>(
-      "/tl_driver/moveL", 10, std::bind(&DriverNode::handle_movel_topic, this, std::placeholders::_1),
+      "/tl_driver/moveL", 10,
+      [this](const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
+      {
+        services::handle_movel_topic(*this, msg);
+      },
       topic_group_option);
 
   set_servoj_pos_sub_ = this->create_subscription<std_msgs::msg::Float64MultiArray>(
-      "/tl_driver/set_servoj_pos", 10, std::bind(&DriverNode::handle_set_servoj_pos_topic, this, std::placeholders::_1),
+      "/tl_driver/set_servoj_pos", 10,
+      [this](const std_msgs::msg::Float64MultiArray::SharedPtr msg)
+      {
+        services::handle_set_servoj_pos_topic(*this, msg);
+      },
       topic_group_option);
 
   set_servol_pos_sub_ = this->create_subscription<tl_ros2_interface::msg::ServolMove>(
-      "/tl_driver/set_servol_pos", 10, std::bind(&DriverNode::handle_set_servol_pos_topic, this, std::placeholders::_1),
+      "/tl_driver/set_servol_pos", 10,
+      [this](const tl_ros2_interface::msg::ServolMove::SharedPtr msg)
+      {
+        services::handle_set_servol_pos_topic(*this, msg);
+      },
       topic_group_option);
 
   auto period =
@@ -259,98 +217,6 @@ void DriverNode::init()
 }
 
 
-void DriverNode::handle_set_speed_service(const std::shared_ptr<tl_ros2_interface::srv::SetSpeed::Request> request,
-                                          std::shared_ptr<tl_ros2_interface::srv::SetSpeed::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (request->speed < 0.0 || request->speed > 100.0)
-  {
-    response->success = false;
-    response->message = "Speed out of range [0, 100]";
-    return;
-  }
-
-  tl::Result ret = tl::set_speed(session_->fd(), request->speed);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Set speed successfully" : "Failed to set speed";
-}
-
-void DriverNode::handle_get_speed_service(const std::shared_ptr<tl_ros2_interface::srv::GetSpeed::Request> request,
-                                          std::shared_ptr<tl_ros2_interface::srv::GetSpeed::Response> response)
-{
-  (void)request;
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  int speed;
-  tl::Result ret = tl::get_speed(session_->fd(), speed);
-  if (ret != tl::Result::SUCCESS)
-  {
-    response->success = false;
-    response->message = "Failed to get speed";
-    return;
-  }
-  response->success = true;
-  response->message = "Get speed successfully";
-  response->speed = speed;
-}
-
-
-void DriverNode::handle_start_jogging_service(const std::shared_ptr<tl_ros2_interface::srv::Jogging::Request> request,
-                                              std::shared_ptr<tl_ros2_interface::srv::Jogging::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (request->axis < 1 || request->axis > ndof_)
-  {
-    response->success = false;
-    response->message = "Invalid axis";
-    return;
-  }
-
-  tl::Result ret = tl::robot_start_jogging(session_->fd(), request->axis, request->direction);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Start jogging successfully" : "Failed to start jogging";
-}
-
-void DriverNode::handle_stop_jogging_service(const std::shared_ptr<tl_ros2_interface::srv::Jogging::Request> request,
-                                             std::shared_ptr<tl_ros2_interface::srv::Jogging::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (request->axis < 1 || request->axis > ndof_)
-  {
-    response->success = false;
-    response->message = "Invalid axis";
-    return;
-  }
-
-  tl::Result ret = tl::robot_stop_jogging(session_->fd(), request->axis);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Stop jogging successfully" : "Failed to stop jogging";
-}
-
-
 void DriverNode::handle_log_download_service(
     const std::shared_ptr<tl_ros2_interface::srv::LogDownload::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::LogDownload::Response> response)
@@ -365,38 +231,6 @@ void DriverNode::handle_log_download_service(
   tl::Result ret = tl::log_download_by_quantity(session_->fd(), request->count, request->directory_path);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Log download successfully" : "Failed to download log";
-}
-
-
-void DriverNode::handle_track_save_service(const std::shared_ptr<tl_ros2_interface::srv::TrackSave::Request> request,
-                                           std::shared_ptr<tl_ros2_interface::srv::TrackSave::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::Result ret = tl::track_record_save(session_->fd(), request->traj_name);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Track save successfully" : "Failed to save track";
-}
-
-void DriverNode::handle_track_playback_service(
-    const std::shared_ptr<tl_ros2_interface::srv::TrackPlayback::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::TrackPlayback::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::Result ret = tl::track_record_playback(session_->fd(), request->vel);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Track playback successfully" : "Failed to playback track";
 }
 
 
@@ -668,173 +502,9 @@ void DriverNode::handle_job_insert_movec_service(
 }
 
 
-void DriverNode::handle_open_servoj_service(const std::shared_ptr<tl_ros2_interface::srv::OpenServoJ::Request> request,
-                                            std::shared_ptr<tl_ros2_interface::srv::OpenServoJ::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  std::vector<double> vmax = request->vmax;
-  std::vector<double> amax = request->amax;
-  std::vector<double> jmax = request->jmax;
-
-  tl::Result ret = tl::open_servoJ(session_->fd_aux(), vmax, amax, jmax);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "ServoJ open successfully" : "Failed to open ServoJ";
-}
-
-void DriverNode::handle_close_servoj_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                             std::shared_ptr<std_srvs::srv::Trigger::Response> response)
-{
-  (void)request;
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::Result ret = tl::close_servoJ(session_->fd_aux());
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "ServoJ close successfully" : "Failed to close ServoJ";
-}
-
-void DriverNode::handle_queue_motion_set_status_service(
-    const std::shared_ptr<tl_ros2_interface::srv::QueueMotionSetStatus::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::QueueMotionSetStatus::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::Result ret = tl::queue_motion_set_status(session_->fd(), request->status);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Set queue motion status successfully" : "Failed to set queue motion status";
-
-  // 关闭连续运动模式后设置为示教模式
-  if (!request->status)
-  {
-    if (tl::set_current_mode(session_->fd(), tl::RobotMode::TEACH) == tl::Result::SUCCESS)
-    {
-      session_->power_off();
-    }
-  }
-}
-
-void DriverNode::handle_queue_motion_movej_service(
-    const std::shared_ptr<tl_ros2_interface::srv::QueueMotionMoveJ::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::QueueMotionMoveJ::Response> response)
-{
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(request->cmd);
-
-  tl::Result ret = tl::queue_motion_push_back_moveJ(session_->fd(), cmd);
-  if (ret != tl::Result::SUCCESS)
-  {
-    response->success = false;
-    response->message = "Failed to push back queue motion movej";
-    return;
-  }
-
-  // 新 SDK 签名: queue_motion_send_to_controller(socketFd, int size, bool isContinue = false)
-  //   size=0 表示发送全部队列指令；isContinue=true 继续排队不运动，false 立即执行
-  // 旧写法把 bool 传给了 size 参数，导致 is_continue=true 时只发送第 1 条，已修正
-  ret = tl::queue_motion_send_to_controller(session_->fd(), 0, request->is_continue);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message =
-      response->success ? "Queue motion movej execute successfully" : "Failed to execute queue motion movej";
-}
-
-void DriverNode::handle_queue_motion_stop_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                                  std::shared_ptr<std_srvs::srv::Trigger::Response> response)
-{
-  (void)request;
-  if (!session_->is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  bool status = false;
-  tl::Result ret = tl::queue_motion_get_status(session_->fd(), status);
-  if (ret != tl::Result::SUCCESS)
-  {
-    response->success = false;
-    response->message = "Failed to get queue motion status";
-    return;
-  }
-  if (!status)
-  {
-    response->success = false;
-    response->message = "Queue motion is not enabled";
-    return;
-  }
-
-  ret = tl::queue_motion_stop_not_power_off(session_->fd());
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Queue motion movej stop successfully" : "Failed to stop queue motion movej";
-}
-
-
-void DriverNode::handle_movej_topic(const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
-{
-  if (!session_->is_connected())
-  {
-    RCLCPP_WARN(this->get_logger(), "[MoveJ]: arm is not connected");
-    return;
-  }
-
-  tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(*msg);
-
-  tl::Result ret = tl::robot_movej(session_->fd(), cmd);
-
-  RCLCPP_INFO(this->get_logger(), "[MoveJ]: result=%s", tl_driver::result_to_string(ret));
-}
-
-void DriverNode::handle_movel_topic(const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
-{
-  if (!session_->is_connected())
-  {
-    RCLCPP_WARN(this->get_logger(), "[MoveL]: arm is not connected");
-    return;
-  }
-
-  tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(*msg);
-
-  tl::Result ret = tl::robot_movel(session_->fd(), cmd);
-
-  RCLCPP_INFO(this->get_logger(), "[MoveL]: result=%s", tl_driver::result_to_string(ret));
-}
-
 /**
  * @brief 透传模式必须先使用open_servoJ开启跟踪模式
  */
-void DriverNode::handle_set_servoj_pos_topic(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
-{
-  if (!session_->is_connected())
-  {
-    RCLCPP_WARN(this->get_logger(), "[ServoJ]: arm is not connected");
-    return;
-  }
-
-  std::vector<double> pos = msg->data;
-  tl::Result ret = tl::set_servoJ_pos(session_->fd_aux(), pos);
-  RCLCPP_INFO(this->get_logger(), "[ServoJ]: result=%s", tl_driver::result_to_string(ret));
-}
 
 // ================ ServoL 笛卡尔空间直线伺服 ================
 
@@ -843,108 +513,4 @@ void DriverNode::handle_set_servoj_pos_topic(const std_msgs::msg::Float64MultiAr
  * 前置条件：需先调用 open_servoj 开启关节跟踪模式
  * 收到目标笛卡尔位姿后，自动获取当前位姿，插值并 IK 转为关节角后通过 servoj 发送
  */
-void DriverNode::handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMove::SharedPtr msg)
-{
-  if (!session_->is_connected())
-  {
-    RCLCPP_WARN(this->get_logger(), "[ServoL]: arm is not connected");
-    return;
-  }
-
-  // ========= 1. 获取当前位姿 =========
-  int coord = msg->coord;
-  if (coord < 1 || coord > 3)
-  {
-    coord = 1; // 默认基座标系
-  }
-
-  std::vector<double> current_pos;
-  tl::Result ret = tl::get_current_position(session_->fd(), static_cast<tl::Coord>(coord), current_pos);
-  if (ret != tl::Result::SUCCESS || current_pos.size() < 6)
-  {
-    RCLCPP_ERROR(this->get_logger(), "[ServoL]: Failed to get current position");
-    return;
-  }
-
-  // 当前位姿 [x, y, z, rx, ry, rz]
-  double cx = current_pos[0], cy = current_pos[1], cz = current_pos[2];
-  double crx = current_pos[3], cry = current_pos[4], crz = current_pos[5];
-
-  // 目标位姿
-  const auto& target_pose = msg->target_pose;
-  if (target_pose.size() < 6)
-  {
-    RCLCPP_ERROR(this->get_logger(), "[ServoL]: target_pose must have at least 6 elements");
-    return;
-  }
-  double tx = target_pose[0], ty = target_pose[1], tz = target_pose[2];
-  double trx = target_pose[3], try_ = target_pose[4], trz = target_pose[5];
-
-  // ========= 2. 计算插值点数 =========
-  double dx = tx - cx, dy = ty - cy, dz = tz - cz;
-  double dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-
-  double step_size = msg->step_size;
-  if (step_size <= 0.0)
-  {
-    step_size = 2.0; // 默认步长 2mm
-  }
-
-  int N = std::max(1, static_cast<int>(std::ceil(dist / step_size)));
-  RCLCPP_INFO(this->get_logger(), "[ServoL] dist=%.1fmm, step=%.1f, points=%d", dist, step_size, N);
-
-  // ========= 3. 准备 IK 参数 =========
-  tl_driver::math::Quat cur_quat = tl_driver::math::rpy_to_quat({crx, cry, crz});
-  tl_driver::math::Quat target_quat = tl_driver::math::rpy_to_quat({trx, try_, trz});
-
-  std::vector<double> ref_pos(7, 0.0);
-
-  // ========= 4. 插值 + IK + servoj 发送 (250Hz) =========
-  const auto period = std::chrono::nanoseconds(4000000); // 250Hz = 4ms
-  auto next_time = std::chrono::steady_clock::now();
-
-  for (int i = 1; i <= N; ++i)
-  {
-    double t = static_cast<double>(i) / static_cast<double>(N);
-
-    // 位置线性插值
-    double ix = cx + t * dx;
-    double iy = cy + t * dy;
-    double iz = cz + t * dz;
-
-    // 姿态四元数 Slerp
-    tl_driver::math::Quat iq = tl_driver::math::quat_slerp(cur_quat, target_quat, t);
-    tl_driver::math::Rpy irpy = tl_driver::math::quat_to_rpy(iq);
-
-    // 构建插值位姿 (7 元素: x,y,z,rx,ry,rz,0)
-    std::vector<double> interp_pos = {ix, iy, iz, irpy[0], irpy[1], irpy[2], 0.0};
-
-    // IK: 笛卡尔(coord) -> 关节(0)
-    std::vector<double> joint_pos;
-    ret = tl::get_origin_coord_to_target_coord(session_->fd(), static_cast<tl::Coord>(coord), interp_pos,
-                                               tl::Coord::JOINT, joint_pos, 0, ref_pos);
-
-    if (ret != tl::Result::SUCCESS)
-    {
-      RCLCPP_WARN(this->get_logger(), "[ServoL] IK failed at point %d/%d, ret=%d", i, N, static_cast<int>(ret));
-      next_time += period;
-      continue;
-    }
-
-    // 通过 servoj 发送关节角
-    ret = tl::set_servoJ_pos(session_->fd_aux(), joint_pos);
-    if (ret != tl::Result::SUCCESS)
-    {
-      RCLCPP_WARN(this->get_logger(), "[ServoL] set_servoJ_pos failed at point %d/%d, ret=%d", i, N,
-                  static_cast<int>(ret));
-    }
-
-    next_time += period;
-    std::this_thread::sleep_until(next_time);
-  }
-
-  // ========= 5. 记录完成 =========
-  RCLCPP_INFO(this->get_logger(), "[ServoL] completed to [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f], %d points", tx, ty, tz,
-              trx, try_, trz, N);
-}
 } // namespace tl_driver

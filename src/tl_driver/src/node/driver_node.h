@@ -173,26 +173,8 @@ public:
 
   // 服务
 
-  void handle_set_speed_service(const std::shared_ptr<tl_ros2_interface::srv::SetSpeed::Request> request,
-                                std::shared_ptr<tl_ros2_interface::srv::SetSpeed::Response> response);
-
-  void handle_get_speed_service(const std::shared_ptr<tl_ros2_interface::srv::GetSpeed::Request> request,
-                                std::shared_ptr<tl_ros2_interface::srv::GetSpeed::Response> response);
-
-  void handle_start_jogging_service(const std::shared_ptr<tl_ros2_interface::srv::Jogging::Request> request,
-                                    std::shared_ptr<tl_ros2_interface::srv::Jogging::Response> response);
-
-  void handle_stop_jogging_service(const std::shared_ptr<tl_ros2_interface::srv::Jogging::Request> request,
-                                   std::shared_ptr<tl_ros2_interface::srv::Jogging::Response> response);
-
   void handle_log_download_service(const std::shared_ptr<tl_ros2_interface::srv::LogDownload::Request> request,
                                    std::shared_ptr<tl_ros2_interface::srv::LogDownload::Response> response);
-
-  void handle_track_save_service(const std::shared_ptr<tl_ros2_interface::srv::TrackSave::Request> request,
-                                 std::shared_ptr<tl_ros2_interface::srv::TrackSave::Response> response);
-
-  void handle_track_playback_service(const std::shared_ptr<tl_ros2_interface::srv::TrackPlayback::Request> request,
-                                     std::shared_ptr<tl_ros2_interface::srv::TrackPlayback::Response> response);
 
   void handle_set_digital_output_service(
       const std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Request> request,
@@ -230,32 +212,6 @@ public:
   void handle_job_insert_movec_service(const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
                                        std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response);
 
-  void handle_open_servoj_service(const std::shared_ptr<tl_ros2_interface::srv::OpenServoJ::Request> request,
-                                  std::shared_ptr<tl_ros2_interface::srv::OpenServoJ::Response> response);
-
-  void handle_close_servoj_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                   std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-
-  void handle_queue_motion_set_status_service(
-      const std::shared_ptr<tl_ros2_interface::srv::QueueMotionSetStatus::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::QueueMotionSetStatus::Response> response);
-
-  void handle_queue_motion_movej_service(
-      const std::shared_ptr<tl_ros2_interface::srv::QueueMotionMoveJ::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::QueueMotionMoveJ::Response> response);
-
-  void handle_queue_motion_stop_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                        std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-
-  // 话题
-  void handle_movej_topic(const tl_ros2_interface::msg::MoveCommand::SharedPtr msg);
-
-  void handle_movel_topic(const tl_ros2_interface::msg::MoveCommand::SharedPtr msg);
-
-  void handle_set_servoj_pos_topic(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
-
-  void handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMove::SharedPtr msg);
-
 private:
   /// @brief 连接控制器、切入示教模式并上电（构造函数内调用）。
   void init();
@@ -278,13 +234,7 @@ private:
   rclcpp::CallbackGroup::SharedPtr topic_group_;
   rclcpp::CallbackGroup::SharedPtr timer_group_;
 
-  rclcpp::Service<tl_ros2_interface::srv::SetSpeed>::SharedPtr set_speed_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetSpeed>::SharedPtr get_speed_service_;
-  rclcpp::Service<tl_ros2_interface::srv::Jogging>::SharedPtr start_jogging_service_;
-  rclcpp::Service<tl_ros2_interface::srv::Jogging>::SharedPtr stop_jogging_service_;
   rclcpp::Service<tl_ros2_interface::srv::LogDownload>::SharedPtr log_download_service_;
-  rclcpp::Service<tl_ros2_interface::srv::TrackSave>::SharedPtr track_save_service_;
-  rclcpp::Service<tl_ros2_interface::srv::TrackPlayback>::SharedPtr track_playback_service_;
   rclcpp::Service<tl_ros2_interface::srv::SetDigitalOutput>::SharedPtr set_digital_output_service_;
   rclcpp::Service<tl_ros2_interface::srv::GetDigitalInputOutput>::SharedPtr get_digital_input_output_service_;
   rclcpp::Service<tl_ros2_interface::srv::ModbusWrite>::SharedPtr modbus_write_service_;
@@ -296,11 +246,6 @@ private:
   rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_imove_service_;
   rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_movec_service_;
   rclcpp::Service<tl_ros2_interface::srv::JobRun>::SharedPtr job_delete_service_;
-  rclcpp::Service<tl_ros2_interface::srv::OpenServoJ>::SharedPtr open_servoj_service_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr close_servoj_service_;
-  rclcpp::Service<tl_ros2_interface::srv::QueueMotionSetStatus>::SharedPtr queue_motion_set_status_service_;
-  rclcpp::Service<tl_ros2_interface::srv::QueueMotionMoveJ>::SharedPtr queue_motion_movej_service_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr queue_motion_stop_service_;
 
   rclcpp::Subscription<tl_ros2_interface::msg::MoveCommand>::SharedPtr movej_sub_;
   rclcpp::Subscription<tl_ros2_interface::msg::MoveCommand>::SharedPtr movel_sub_;
