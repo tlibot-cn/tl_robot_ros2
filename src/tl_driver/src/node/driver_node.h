@@ -171,7 +171,6 @@ public:
     services_.push_back(service);
   }
 
-
   // 服务
 
   void handle_set_speed_service(const std::shared_ptr<tl_ros2_interface::srv::SetSpeed::Request> request,
@@ -201,26 +200,8 @@ public:
   void handle_stop_jogging_service(const std::shared_ptr<tl_ros2_interface::srv::Jogging::Request> request,
                                    std::shared_ptr<tl_ros2_interface::srv::Jogging::Response> response);
 
-  void handle_get_robot_joint_param_service(
-      const std::shared_ptr<tl_ros2_interface::srv::GetRobotJointParam::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::GetRobotJointParam::Response> response);
-
-  void handle_set_robot_joint_param_service(
-      const std::shared_ptr<tl_ros2_interface::srv::SetRobotJointParam::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::SetRobotJointParam::Response> response);
-
-  void handle_restore_default_dh_param_service(
-      const std::shared_ptr<tl_ros2_interface::srv::RestoreDefaultDHParam::Request> request,
-      std::shared_ptr<tl_ros2_interface::srv::RestoreDefaultDHParam::Response> response);
-
-  void handle_set_default_cartesian_param_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                                  std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-
   void handle_log_download_service(const std::shared_ptr<tl_ros2_interface::srv::LogDownload::Request> request,
                                    std::shared_ptr<tl_ros2_interface::srv::LogDownload::Response> response);
-
-  void handle_set_drag_mode_service(const std::shared_ptr<tl_ros2_interface::srv::SetDragMode::Request> request,
-                                    std::shared_ptr<tl_ros2_interface::srv::SetDragMode::Response> response);
 
   void handle_track_save_service(const std::shared_ptr<tl_ros2_interface::srv::TrackSave::Request> request,
                                  std::shared_ptr<tl_ros2_interface::srv::TrackSave::Response> response);
@@ -228,26 +209,11 @@ public:
   void handle_track_playback_service(const std::shared_ptr<tl_ros2_interface::srv::TrackPlayback::Request> request,
                                      std::shared_ptr<tl_ros2_interface::srv::TrackPlayback::Response> response);
 
-  void handle_set_tool_param_service(const std::shared_ptr<tl_ros2_interface::srv::SetToolParam::Request> request,
-                                     std::shared_ptr<tl_ros2_interface::srv::SetToolParam::Response> response);
-
-  void handle_set_user_coord_service(const std::shared_ptr<tl_ros2_interface::srv::SetUserCoord::Request> request,
-                                     std::shared_ptr<tl_ros2_interface::srv::SetUserCoord::Response> response);
-
-  void handle_set_axis_zero_pos_service(const std::shared_ptr<tl_ros2_interface::srv::SetAxisZeroPos::Request> request,
-                                        std::shared_ptr<tl_ros2_interface::srv::SetAxisZeroPos::Response> response);
-
   void handle_set_current_coord_service(const std::shared_ptr<tl_ros2_interface::srv::SetCurrentCoord::Request> request,
                                         std::shared_ptr<tl_ros2_interface::srv::SetCurrentCoord::Response> response);
 
   void handle_get_current_coord_service(const std::shared_ptr<tl_ros2_interface::srv::GetCurrentCoord::Request> request,
                                         std::shared_ptr<tl_ros2_interface::srv::GetCurrentCoord::Response> response);
-
-  void handle_set_coord_num_service(const std::shared_ptr<tl_ros2_interface::srv::SetCoordNum::Request> request,
-                                    std::shared_ptr<tl_ros2_interface::srv::SetCoordNum::Response> response);
-
-  void handle_get_coord_num_service(const std::shared_ptr<tl_ros2_interface::srv::GetCoordNum::Request> request,
-                                    std::shared_ptr<tl_ros2_interface::srv::GetCoordNum::Response> response);
 
   void handle_set_digital_output_service(
       const std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Request> request,
@@ -265,15 +231,6 @@ public:
 
   void handle_coord_transform_service(const std::shared_ptr<tl_ros2_interface::srv::CoordTransform::Request> request,
                                       std::shared_ptr<tl_ros2_interface::srv::CoordTransform::Response> response);
-
-  void handle_get_pos_reachable_service(const std::shared_ptr<tl_ros2_interface::srv::GetPosReachable::Request> request,
-                                        std::shared_ptr<tl_ros2_interface::srv::GetPosReachable::Response> response);
-
-  void handle_set_dh_param_service(const std::shared_ptr<tl_ros2_interface::srv::SetDHParam::Request> request,
-                                   std::shared_ptr<tl_ros2_interface::srv::SetDHParam::Response> response);
-
-  void handle_get_dh_param_service(const std::shared_ptr<tl_ros2_interface::srv::GetDHParam::Request> request,
-                                   std::shared_ptr<tl_ros2_interface::srv::GetDHParam::Response> response);
 
   void handle_get_all_job_filename_service(
       const std::shared_ptr<tl_ros2_interface::srv::GetAllJobFileName::Request> request,
@@ -296,12 +253,6 @@ public:
 
   void handle_job_insert_movec_service(const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
                                        std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response);
-
-  void handle_set_global_pos_service(const std::shared_ptr<tl_ros2_interface::srv::SetGlobalPos::Request> request,
-                                     std::shared_ptr<tl_ros2_interface::srv::SetGlobalPos::Response> response);
-
-  void handle_get_global_pos_service(const std::shared_ptr<tl_ros2_interface::srv::GetGlobalPos::Request> request,
-                                     std::shared_ptr<tl_ros2_interface::srv::GetGlobalPos::Response> response);
 
   void handle_open_servoj_service(const std::shared_ptr<tl_ros2_interface::srv::OpenServoJ::Request> request,
                                   std::shared_ptr<tl_ros2_interface::srv::OpenServoJ::Response> response);
@@ -360,29 +311,16 @@ private:
   rclcpp::Service<tl_ros2_interface::srv::GetPosTransform>::SharedPtr get_r2tr_service_;
   rclcpp::Service<tl_ros2_interface::srv::Jogging>::SharedPtr start_jogging_service_;
   rclcpp::Service<tl_ros2_interface::srv::Jogging>::SharedPtr stop_jogging_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetRobotJointParam>::SharedPtr get_robot_joint_param_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetRobotJointParam>::SharedPtr set_robot_joint_param_service_;
-  rclcpp::Service<tl_ros2_interface::srv::RestoreDefaultDHParam>::SharedPtr restore_default_dh_param_service_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr set_default_cartesian_param_service_;
   rclcpp::Service<tl_ros2_interface::srv::LogDownload>::SharedPtr log_download_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetDragMode>::SharedPtr set_drag_mode_service_;
   rclcpp::Service<tl_ros2_interface::srv::TrackSave>::SharedPtr track_save_service_;
   rclcpp::Service<tl_ros2_interface::srv::TrackPlayback>::SharedPtr track_playback_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetToolParam>::SharedPtr set_tool_param_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetUserCoord>::SharedPtr set_user_coord_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetAxisZeroPos>::SharedPtr set_axis_zero_pos_service_;
   rclcpp::Service<tl_ros2_interface::srv::SetCurrentCoord>::SharedPtr set_current_coord_service_;
   rclcpp::Service<tl_ros2_interface::srv::GetCurrentCoord>::SharedPtr get_current_coord_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetCoordNum>::SharedPtr set_coord_num_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetCoordNum>::SharedPtr get_coord_num_service_;
   rclcpp::Service<tl_ros2_interface::srv::SetDigitalOutput>::SharedPtr set_digital_output_service_;
   rclcpp::Service<tl_ros2_interface::srv::GetDigitalInputOutput>::SharedPtr get_digital_input_output_service_;
   rclcpp::Service<tl_ros2_interface::srv::ModbusWrite>::SharedPtr modbus_write_service_;
   rclcpp::Service<tl_ros2_interface::srv::ModbusRead>::SharedPtr modbus_read_service_;
   rclcpp::Service<tl_ros2_interface::srv::CoordTransform>::SharedPtr coord_transform_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetPosReachable>::SharedPtr get_pos_reachable_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetDHParam>::SharedPtr set_dh_param_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetDHParam>::SharedPtr get_dh_param_service_;
   rclcpp::Service<tl_ros2_interface::srv::GetAllJobFileName>::SharedPtr get_all_job_filename_service_;
   rclcpp::Service<tl_ros2_interface::srv::JobRun>::SharedPtr job_run_service_;
   rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_movej_service_;
@@ -390,8 +328,6 @@ private:
   rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_imove_service_;
   rclcpp::Service<tl_ros2_interface::srv::JobInsertMove>::SharedPtr job_insert_movec_service_;
   rclcpp::Service<tl_ros2_interface::srv::JobRun>::SharedPtr job_delete_service_;
-  rclcpp::Service<tl_ros2_interface::srv::SetGlobalPos>::SharedPtr set_global_pos_service_;
-  rclcpp::Service<tl_ros2_interface::srv::GetGlobalPos>::SharedPtr get_global_pos_service_;
   rclcpp::Service<tl_ros2_interface::srv::OpenServoJ>::SharedPtr open_servoj_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr close_servoj_service_;
   rclcpp::Service<tl_ros2_interface::srv::QueueMotionSetStatus>::SharedPtr queue_motion_set_status_service_;
