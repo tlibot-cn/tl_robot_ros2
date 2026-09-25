@@ -1,5 +1,5 @@
-#ifndef TL_DRIVER__TL_DRIVER_H_
-#define TL_DRIVER__TL_DRIVER_H_
+#ifndef TL_DRIVER__DRIVER_NODE_H_
+#define TL_DRIVER__DRIVER_NODE_H_
 
 // common
 #include <algorithm>
@@ -81,19 +81,17 @@
 #include "tl_ros2_interface/srv/get_current_motor_torque.hpp"
 #include "tl_ros2_interface/srv/get_current_line_joint_speed.hpp"
 
-// lib
-#include "tl_types.h"
-
 #include "arm_session.h"
 #include "node/publishers.h"
 
-class TL_Arm : public rclcpp::Node
+namespace tl_driver
+{
+/// @brief tl_driver 节点：参数解析、会话、订阅、服务注册与状态发布调度。
+class DriverNode : public rclcpp::Node
 {
 public:
-  TL_Arm();
-  ~TL_Arm();
-
-  void init();
+  DriverNode();
+  ~DriverNode();
 
   // 服务
   void handle_connect_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
@@ -313,6 +311,9 @@ public:
   void handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMove::SharedPtr msg);
 
 private:
+  /// @brief 连接控制器、切入示教模式并上电（构造函数内调用）。
+  void init();
+
   std::unique_ptr<tl_driver::ArmSession> session_;
   std::unique_ptr<tl_driver::Publishers> publishers_;
 
@@ -403,4 +404,6 @@ private:
   rclcpp::TimerBase::SharedPtr state_publish_timer_;
 };
 
-#endif // TL_DRIVER__TL_DRIVER_H_
+} // namespace tl_driver
+
+#endif // TL_DRIVER__DRIVER_NODE_H_

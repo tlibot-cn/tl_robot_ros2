@@ -54,16 +54,16 @@ set_target_properties(tl_host_lib PROPERTIES
 )
 
 add_executable(tl_driver
-  src/tl_driver.cpp
-  src/arm_session.cpp
+  src/tl_driver_main.cpp
+  src/node/driver_node.cpp
   src/node/publishers.cpp
+  src/arm_session.cpp
   src/math/quaternion.cpp
   src/convert/msg_convert.cpp
 )
 
 target_include_directories(tl_driver PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include"
   "${CMAKE_CURRENT_BINARY_DIR}/include"
   "${CMAKE_CURRENT_SOURCE_DIR}/lib/include"
 )

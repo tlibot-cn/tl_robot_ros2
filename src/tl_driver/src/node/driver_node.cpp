@@ -1,7 +1,7 @@
 #include <cmath>
 #include <thread>
 
-#include "tl_driver/tl_driver.h"
+#include "node/driver_node.h"
 #include "tl_driver/version.hpp"
 
 #include "arm_sdk.hpp"
@@ -10,8 +10,9 @@
 #include "convert/msg_convert.h"
 #include "math/quaternion.h"
 
-
-TL_Arm::TL_Arm() : rclcpp::Node("tl_driver")
+namespace tl_driver
+{
+DriverNode::DriverNode() : rclcpp::Node("tl_driver")
 {
   this->declare_parameter("arm_ip", "192.168.1.13");
   this->declare_parameter("arm_port", "6001");
@@ -43,344 +44,352 @@ TL_Arm::TL_Arm() : rclcpp::Node("tl_driver")
   // 服务
   connect_service_ = this->create_service<std_srvs::srv::Trigger>(
       "/tl_driver/connect_arm",
-      std::bind(&TL_Arm::handle_connect_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_connect_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   disconnect_service_ = this->create_service<std_srvs::srv::Trigger>(
       "/tl_driver/disconnect_arm",
-      std::bind(&TL_Arm::handle_disconnect_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_disconnect_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   poweron_service_ = this->create_service<std_srvs::srv::Trigger>(
       "/tl_driver/power_on",
-      std::bind(&TL_Arm::handle_poweron_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_poweron_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   poweroff_service_ = this->create_service<std_srvs::srv::Trigger>(
       "/tl_driver/power_off",
-      std::bind(&TL_Arm::handle_poweroff_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_poweroff_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   clear_error_service_ = this->create_service<std_srvs::srv::Trigger>(
       "/tl_driver/clear_error",
-      std::bind(&TL_Arm::handle_clear_error_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_clear_error_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   set_speed_service_ = this->create_service<tl_ros2_interface::srv::SetSpeed>(
       "/tl_driver/set_speed",
-      std::bind(&TL_Arm::handle_set_speed_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_set_speed_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_speed_service_ = this->create_service<tl_ros2_interface::srv::GetSpeed>(
       "/tl_driver/get_speed",
-      std::bind(&TL_Arm::handle_get_speed_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_speed_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_quat2rpy_service_ = this->create_service<tl_ros2_interface::srv::GetPosTransform>(
       "/tl_driver/get_quat2rpy",
-      std::bind(&TL_Arm::handle_get_quat2rpy_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_quat2rpy_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_rpy2quat_service_ = this->create_service<tl_ros2_interface::srv::GetPosTransform>(
       "/tl_driver/get_rpy2quat",
-      std::bind(&TL_Arm::handle_get_rpy2quat_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_rpy2quat_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_rpy2r_service_ = this->create_service<tl_ros2_interface::srv::GetPosTransform>(
       "/tl_driver/get_rpy2r",
-      std::bind(&TL_Arm::handle_get_rpy2r_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_rpy2r_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_tr2r_service_ = this->create_service<tl_ros2_interface::srv::GetPosTransform>(
       "/tl_driver/get_tr2r",
-      std::bind(&TL_Arm::handle_get_tr2r_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_tr2r_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_r2tr_service_ = this->create_service<tl_ros2_interface::srv::GetPosTransform>(
       "/tl_driver/get_r2tr",
-      std::bind(&TL_Arm::handle_get_r2tr_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_r2tr_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   set_controller_ip_service_ = this->create_service<tl_ros2_interface::srv::SetControllerIP>(
       "/tl_driver/set_controller_ip",
-      std::bind(&TL_Arm::handle_set_controller_ip_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_set_controller_ip_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_controller_id_service_ = this->create_service<std_srvs::srv::Trigger>(
       "/tl_driver/get_controller_id",
-      std::bind(&TL_Arm::handle_get_controller_id_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_controller_id_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   start_jogging_service_ = this->create_service<tl_ros2_interface::srv::Jogging>(
       "/tl_driver/start_jogging",
-      std::bind(&TL_Arm::handle_start_jogging_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_start_jogging_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   stop_jogging_service_ = this->create_service<tl_ros2_interface::srv::Jogging>(
       "/tl_driver/stop_jogging",
-      std::bind(&TL_Arm::handle_stop_jogging_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_stop_jogging_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_robot_state_service_ = this->create_service<tl_ros2_interface::srv::GetRobotState>(
       "/tl_driver/get_robot_state",
-      std::bind(&TL_Arm::handle_get_robot_state_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_robot_state_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_library_version_service_ = this->create_service<std_srvs::srv::Trigger>(
       "/tl_driver/get_library_version",
-      std::bind(&TL_Arm::handle_get_library_version_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_library_version_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_robot_joint_param_service_ = this->create_service<tl_ros2_interface::srv::GetRobotJointParam>(
       "/tl_driver/get_robot_joint_param",
-      std::bind(&TL_Arm::handle_get_robot_joint_param_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_robot_joint_param_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   set_robot_joint_param_service_ = this->create_service<tl_ros2_interface::srv::SetRobotJointParam>(
       "/tl_driver/set_robot_joint_param",
-      std::bind(&TL_Arm::handle_set_robot_joint_param_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_set_robot_joint_param_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_joint_temperature_service_ = this->create_service<tl_ros2_interface::srv::GetJointTemperature>(
       "/tl_driver/get_joint_temperature",
-      std::bind(&TL_Arm::handle_get_joint_temperature_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_joint_temperature_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_joint_voltage_service_ = this->create_service<tl_ros2_interface::srv::GetJointVoltage>(
       "/tl_driver/get_joint_voltage",
-      std::bind(&TL_Arm::handle_get_joint_voltage_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_joint_voltage_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_motor_current_service_ = this->create_service<tl_ros2_interface::srv::GetMotorCurrent>(
       "/tl_driver/get_motor_current",
-      std::bind(&TL_Arm::handle_get_motor_current_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_motor_current_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_joint_software_version_service_ = this->create_service<tl_ros2_interface::srv::GetJointSoftwareVersion>(
       "/tl_driver/get_joint_software_version",
-      std::bind(&TL_Arm::handle_get_joint_software_version_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_joint_software_version_service, this, std::placeholders::_1,
+                std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
-  get_nexmotion_lib_version_service_ = this->create_service<std_srvs::srv::Trigger>(
-      "/tl_driver/get_nexmotion_lib_version",
-      std::bind(&TL_Arm::handle_get_nexmotion_lib_version_service, this, std::placeholders::_1, std::placeholders::_2),
-      rmw_qos_profile_services_default, service_group_);
+  get_nexmotion_lib_version_service_ =
+      this->create_service<std_srvs::srv::Trigger>("/tl_driver/get_nexmotion_lib_version",
+                                                   std::bind(&DriverNode::handle_get_nexmotion_lib_version_service,
+                                                             this, std::placeholders::_1, std::placeholders::_2),
+                                                   rmw_qos_profile_services_default, service_group_);
 
   restore_default_dh_param_service_ = this->create_service<tl_ros2_interface::srv::RestoreDefaultDHParam>(
       "/tl_driver/restore_default_dh_param",
-      std::bind(&TL_Arm::handle_restore_default_dh_param_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_restore_default_dh_param_service, this, std::placeholders::_1,
+                std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   set_default_cartesian_param_service_ =
       this->create_service<std_srvs::srv::Trigger>("/tl_driver/set_default_cartesian_param",
-                                                   std::bind(&TL_Arm::handle_set_default_cartesian_param_service, this,
-                                                             std::placeholders::_1, std::placeholders::_2),
+                                                   std::bind(&DriverNode::handle_set_default_cartesian_param_service,
+                                                             this, std::placeholders::_1, std::placeholders::_2),
                                                    rmw_qos_profile_services_default, service_group_);
 
   log_download_service_ = this->create_service<tl_ros2_interface::srv::LogDownload>(
       "/tl_driver/log_download",
-      std::bind(&TL_Arm::handle_log_download_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_log_download_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   set_drag_mode_service_ = this->create_service<tl_ros2_interface::srv::SetDragMode>(
       "/tl_driver/set_drag_mode",
-      std::bind(&TL_Arm::handle_set_drag_mode_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_set_drag_mode_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_drag_status_service_ = this->create_service<std_srvs::srv::Trigger>( // 用不了
       "/tl_driver/get_drag_status",
-      std::bind(&TL_Arm::handle_get_drag_status_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_drag_status_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   track_save_service_ = this->create_service<tl_ros2_interface::srv::TrackSave>(
       "/tl_driver/track_save",
-      std::bind(&TL_Arm::handle_track_save_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_track_save_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   track_playback_service_ = this->create_service<tl_ros2_interface::srv::TrackPlayback>(
       "/tl_driver/track_playback",
-      std::bind(&TL_Arm::handle_track_playback_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_track_playback_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   set_tool_param_service_ = this->create_service<tl_ros2_interface::srv::SetToolParam>(
       "/tl_driver/set_tool_param",
-      std::bind(&TL_Arm::handle_set_tool_param_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_set_tool_param_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   set_user_coord_service_ = this->create_service<tl_ros2_interface::srv::SetUserCoord>(
       "/tl_driver/set_user_coord",
-      std::bind(&TL_Arm::handle_set_user_coord_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_set_user_coord_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   set_axis_zero_pos_service_ = this->create_service<tl_ros2_interface::srv::SetAxisZeroPos>(
       "/tl_driver/set_axis_zero_pos",
-      std::bind(&TL_Arm::handle_set_axis_zero_pos_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_set_axis_zero_pos_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   set_current_coord_service_ = this->create_service<tl_ros2_interface::srv::SetCurrentCoord>(
       "/tl_driver/set_current_coord",
-      std::bind(&TL_Arm::handle_set_current_coord_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_set_current_coord_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_current_coord_service_ = this->create_service<tl_ros2_interface::srv::GetCurrentCoord>(
       "/tl_driver/get_current_coord",
-      std::bind(&TL_Arm::handle_get_current_coord_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_current_coord_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   set_coord_num_service_ = this->create_service<tl_ros2_interface::srv::SetCoordNum>(
       "/tl_driver/set_coord_num",
-      std::bind(&TL_Arm::handle_set_coord_num_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_set_coord_num_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_coord_num_service_ = this->create_service<tl_ros2_interface::srv::GetCoordNum>(
       "/tl_driver/get_coord_num",
-      std::bind(&TL_Arm::handle_get_coord_num_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_coord_num_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   set_digital_output_service_ = this->create_service<tl_ros2_interface::srv::SetDigitalOutput>(
       "/tl_driver/set_digital_output",
-      std::bind(&TL_Arm::handle_set_digital_output_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_set_digital_output_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_digital_input_output_service_ = this->create_service<tl_ros2_interface::srv::GetDigitalInputOutput>(
       "/tl_driver/get_digital_input_output",
-      std::bind(&TL_Arm::handle_get_digital_input_output_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_digital_input_output_service, this, std::placeholders::_1,
+                std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   modbus_write_service_ = this->create_service<tl_ros2_interface::srv::ModbusWrite>(
       "/tl_driver/modbus_write",
-      std::bind(&TL_Arm::handle_modbus_write_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_modbus_write_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   modbus_read_service_ = this->create_service<tl_ros2_interface::srv::ModbusRead>(
       "/tl_driver/modbus_read",
-      std::bind(&TL_Arm::handle_modbus_read_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_modbus_read_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   coord_transform_service_ = this->create_service<tl_ros2_interface::srv::CoordTransform>(
       "/tl_driver/coord_transform",
-      std::bind(&TL_Arm::handle_coord_transform_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_coord_transform_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_pos_reachable_service_ = this->create_service<tl_ros2_interface::srv::GetPosReachable>(
       "/tl_driver/get_pos_reachable",
-      std::bind(&TL_Arm::handle_get_pos_reachable_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_pos_reachable_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   set_dh_param_service_ = this->create_service<tl_ros2_interface::srv::SetDHParam>(
       "/tl_driver/set_dh_param",
-      std::bind(&TL_Arm::handle_set_dh_param_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_set_dh_param_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_dh_param_service_ = this->create_service<tl_ros2_interface::srv::GetDHParam>(
       "/tl_driver/get_dh_param",
-      std::bind(&TL_Arm::handle_get_dh_param_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_dh_param_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_all_job_filename_service_ = this->create_service<tl_ros2_interface::srv::GetAllJobFileName>(
       "/tl_driver/get_all_job_filename",
-      std::bind(&TL_Arm::handle_get_all_job_filename_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_all_job_filename_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   job_run_service_ = this->create_service<tl_ros2_interface::srv::JobRun>(
       "/tl_driver/job_run",
-      std::bind(&TL_Arm::handle_job_run_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_job_run_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   job_delete_service_ = this->create_service<tl_ros2_interface::srv::JobRun>(
       "/tl_driver/job_delete",
-      std::bind(&TL_Arm::handle_job_delete_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_job_delete_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   job_insert_movej_service_ = this->create_service<tl_ros2_interface::srv::JobInsertMove>(
       "/tl_driver/job_insert_moveJ",
-      std::bind(&TL_Arm::handle_job_insert_movej_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_job_insert_movej_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   job_insert_movel_service_ = this->create_service<tl_ros2_interface::srv::JobInsertMove>(
       "/tl_driver/job_insert_moveL",
-      std::bind(&TL_Arm::handle_job_insert_movel_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_job_insert_movel_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   job_insert_imove_service_ = this->create_service<tl_ros2_interface::srv::JobInsertMove>(
       "/tl_driver/job_insert_imove",
-      std::bind(&TL_Arm::handle_job_insert_imove_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_job_insert_imove_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   job_insert_movec_service_ = this->create_service<tl_ros2_interface::srv::JobInsertMove>(
       "/tl_driver/job_insert_moveC",
-      std::bind(&TL_Arm::handle_job_insert_movec_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_job_insert_movec_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   set_global_pos_service_ = this->create_service<tl_ros2_interface::srv::SetGlobalPos>(
       "/tl_driver/set_global_pos",
-      std::bind(&TL_Arm::handle_set_global_pos_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_set_global_pos_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_global_pos_service_ = this->create_service<tl_ros2_interface::srv::GetGlobalPos>(
       "/tl_driver/get_global_pos",
-      std::bind(&TL_Arm::handle_get_global_pos_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_global_pos_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   set_current_mode_service_ = this->create_service<tl_ros2_interface::srv::SetCurrentMode>(
       "/tl_driver/set_current_mode",
-      std::bind(&TL_Arm::handle_set_current_mode_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_set_current_mode_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_current_mode_service_ = this->create_service<tl_ros2_interface::srv::GetCurrentMode>(
       "/tl_driver/get_current_mode",
-      std::bind(&TL_Arm::handle_get_current_mode_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_current_mode_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   open_servoj_service_ = this->create_service<tl_ros2_interface::srv::OpenServoJ>(
       "/tl_driver/open_servoj",
-      std::bind(&TL_Arm::handle_open_servoj_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_open_servoj_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   close_servoj_service_ = this->create_service<std_srvs::srv::Trigger>(
       "/tl_driver/close_servoj",
-      std::bind(&TL_Arm::handle_close_servoj_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_close_servoj_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   queue_motion_set_status_service_ = this->create_service<tl_ros2_interface::srv::QueueMotionSetStatus>(
       "/tl_driver/queue_motion_set_status",
-      std::bind(&TL_Arm::handle_queue_motion_set_status_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_queue_motion_set_status_service, this, std::placeholders::_1,
+                std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   queue_motion_movej_service_ = this->create_service<tl_ros2_interface::srv::QueueMotionMoveJ>(
       "/tl_driver/queue_motion_movej",
-      std::bind(&TL_Arm::handle_queue_motion_movej_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_queue_motion_movej_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   queue_motion_stop_service_ = this->create_service<std_srvs::srv::Trigger>(
       "/tl_driver/queue_motion_stop",
-      std::bind(&TL_Arm::handle_queue_motion_stop_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_queue_motion_stop_service, this, std::placeholders::_1, std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_current_motor_torque_service_ = this->create_service<tl_ros2_interface::srv::GetCurrentMotorTorque>(
       "/tl_driver/get_current_motor_torque",
-      std::bind(&TL_Arm::handle_get_current_motor_torque_service, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&DriverNode::handle_get_current_motor_torque_service, this, std::placeholders::_1,
+                std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   get_current_line_joint_speed_service_ = this->create_service<tl_ros2_interface::srv::GetCurrentLineJointSpeed>(
       "/tl_driver/get_current_line_joint_speed",
-      std::bind(&TL_Arm::handle_get_current_line_joint_speed_service, this, std::placeholders::_1,
+      std::bind(&DriverNode::handle_get_current_line_joint_speed_service, this, std::placeholders::_1,
                 std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
   // 话题sub
   movej_sub_ = this->create_subscription<tl_ros2_interface::msg::MoveCommand>(
-      "/tl_driver/moveJ", 10, std::bind(&TL_Arm::handle_movej_topic, this, std::placeholders::_1), topic_group_option);
+      "/tl_driver/moveJ", 10, std::bind(&DriverNode::handle_movej_topic, this, std::placeholders::_1),
+      topic_group_option);
 
   movel_sub_ = this->create_subscription<tl_ros2_interface::msg::MoveCommand>(
-      "/tl_driver/moveL", 10, std::bind(&TL_Arm::handle_movel_topic, this, std::placeholders::_1), topic_group_option);
+      "/tl_driver/moveL", 10, std::bind(&DriverNode::handle_movel_topic, this, std::placeholders::_1),
+      topic_group_option);
 
   set_servoj_pos_sub_ = this->create_subscription<std_msgs::msg::Float64MultiArray>(
-      "/tl_driver/set_servoj_pos", 10, std::bind(&TL_Arm::handle_set_servoj_pos_topic, this, std::placeholders::_1),
+      "/tl_driver/set_servoj_pos", 10, std::bind(&DriverNode::handle_set_servoj_pos_topic, this, std::placeholders::_1),
       topic_group_option);
 
   set_servol_pos_sub_ = this->create_subscription<tl_ros2_interface::msg::ServolMove>(
-      "/tl_driver/set_servol_pos", 10, std::bind(&TL_Arm::handle_set_servol_pos_topic, this, std::placeholders::_1),
+      "/tl_driver/set_servol_pos", 10, std::bind(&DriverNode::handle_set_servol_pos_topic, this, std::placeholders::_1),
       topic_group_option);
 
   auto period =
@@ -403,7 +412,7 @@ TL_Arm::TL_Arm() : rclcpp::Node("tl_driver")
   RCLCPP_INFO(this->get_logger(), "%s_driver is running ", arm_type_.c_str());
 }
 
-TL_Arm::~TL_Arm()
+DriverNode::~DriverNode()
 {
   if (session_->is_connected())
   {
@@ -412,7 +421,7 @@ TL_Arm::~TL_Arm()
   }
 }
 
-void TL_Arm::init()
+void DriverNode::init()
 {
   RCLCPP_INFO(this->get_logger(), "Trying to connect to %s:%s,%s", arm_ip_.c_str(), arm_port_.c_str(),
               arm_port_aux_.c_str());
@@ -451,8 +460,8 @@ void TL_Arm::init()
 }
 
 
-void TL_Arm::handle_connect_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+void DriverNode::handle_connect_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                        std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
   if (session_->is_connected())
@@ -466,8 +475,8 @@ void TL_Arm::handle_connect_service(const std::shared_ptr<std_srvs::srv::Trigger
   response->message = response->success ? "Arm connected successfully" : "Failed to connect arm";
 }
 
-void TL_Arm::handle_disconnect_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                       std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+void DriverNode::handle_disconnect_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                           std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
   if (!session_->is_connected())
@@ -481,8 +490,8 @@ void TL_Arm::handle_disconnect_service(const std::shared_ptr<std_srvs::srv::Trig
   response->message = response->success ? "Arm disconnected successfully" : "Failed to disconnect arm";
 }
 
-void TL_Arm::handle_poweron_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+void DriverNode::handle_poweron_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                        std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
   if (!session_->is_connected())
@@ -496,8 +505,8 @@ void TL_Arm::handle_poweron_service(const std::shared_ptr<std_srvs::srv::Trigger
   response->message = response->success ? "Arm power on successfully" : "Failed to power on arm";
 }
 
-void TL_Arm::handle_poweroff_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                     std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+void DriverNode::handle_poweroff_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                         std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
   if (!session_->is_connected())
@@ -518,8 +527,8 @@ void TL_Arm::handle_poweroff_service(const std::shared_ptr<std_srvs::srv::Trigge
   response->message = response->success ? "Arm power off successfully" : "Failed to power off arm";
 }
 
-void TL_Arm::handle_clear_error_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                        std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+void DriverNode::handle_clear_error_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                            std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
   if (!session_->is_connected())
@@ -535,8 +544,8 @@ void TL_Arm::handle_clear_error_service(const std::shared_ptr<std_srvs::srv::Tri
                                         : std::string("Clear error failed: ") + tl_driver::result_to_string(ret);
 }
 
-void TL_Arm::handle_set_speed_service(const std::shared_ptr<tl_ros2_interface::srv::SetSpeed::Request> request,
-                                      std::shared_ptr<tl_ros2_interface::srv::SetSpeed::Response> response)
+void DriverNode::handle_set_speed_service(const std::shared_ptr<tl_ros2_interface::srv::SetSpeed::Request> request,
+                                          std::shared_ptr<tl_ros2_interface::srv::SetSpeed::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -557,8 +566,8 @@ void TL_Arm::handle_set_speed_service(const std::shared_ptr<tl_ros2_interface::s
   response->message = response->success ? "Set speed successfully" : "Failed to set speed";
 }
 
-void TL_Arm::handle_get_speed_service(const std::shared_ptr<tl_ros2_interface::srv::GetSpeed::Request> request,
-                                      std::shared_ptr<tl_ros2_interface::srv::GetSpeed::Response> response)
+void DriverNode::handle_get_speed_service(const std::shared_ptr<tl_ros2_interface::srv::GetSpeed::Request> request,
+                                          std::shared_ptr<tl_ros2_interface::srv::GetSpeed::Response> response)
 {
   (void)request;
   if (!session_->is_connected())
@@ -581,7 +590,7 @@ void TL_Arm::handle_get_speed_service(const std::shared_ptr<tl_ros2_interface::s
   response->speed = speed;
 }
 
-void TL_Arm::handle_get_quat2rpy_service(
+void DriverNode::handle_get_quat2rpy_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
 {
@@ -614,7 +623,7 @@ void TL_Arm::handle_get_quat2rpy_service(
   }
 }
 
-void TL_Arm::handle_get_rpy2quat_service(
+void DriverNode::handle_get_rpy2quat_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
 {
@@ -647,8 +656,9 @@ void TL_Arm::handle_get_rpy2quat_service(
   }
 }
 
-void TL_Arm::handle_get_rpy2r_service(const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-                                      std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
+void DriverNode::handle_get_rpy2r_service(
+    const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -679,8 +689,9 @@ void TL_Arm::handle_get_rpy2r_service(const std::shared_ptr<tl_ros2_interface::s
   }
 }
 
-void TL_Arm::handle_get_tr2r_service(const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-                                     std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
+void DriverNode::handle_get_tr2r_service(
+    const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -711,8 +722,9 @@ void TL_Arm::handle_get_tr2r_service(const std::shared_ptr<tl_ros2_interface::sr
   }
 }
 
-void TL_Arm::handle_get_r2tr_service(const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-                                     std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
+void DriverNode::handle_get_r2tr_service(
+    const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -743,7 +755,7 @@ void TL_Arm::handle_get_r2tr_service(const std::shared_ptr<tl_ros2_interface::sr
   }
 }
 
-void TL_Arm::handle_set_controller_ip_service(
+void DriverNode::handle_set_controller_ip_service(
     const std::shared_ptr<tl_ros2_interface::srv::SetControllerIP::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::SetControllerIP::Response> response)
 {
@@ -759,8 +771,8 @@ void TL_Arm::handle_set_controller_ip_service(
   response->message = response->success ? "Set controller IP successfully" : "Failed to set controller IP";
 }
 
-void TL_Arm::handle_get_controller_id_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                              std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+void DriverNode::handle_get_controller_id_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                                  std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
   if (!session_->is_connected())
@@ -776,8 +788,8 @@ void TL_Arm::handle_get_controller_id_service(const std::shared_ptr<std_srvs::sr
   response->message = response->success ? id : "Failed to get controller id, ret=" + std::to_string(ret);
 }
 
-void TL_Arm::handle_start_jogging_service(const std::shared_ptr<tl_ros2_interface::srv::Jogging::Request> request,
-                                          std::shared_ptr<tl_ros2_interface::srv::Jogging::Response> response)
+void DriverNode::handle_start_jogging_service(const std::shared_ptr<tl_ros2_interface::srv::Jogging::Request> request,
+                                              std::shared_ptr<tl_ros2_interface::srv::Jogging::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -798,8 +810,8 @@ void TL_Arm::handle_start_jogging_service(const std::shared_ptr<tl_ros2_interfac
   response->message = response->success ? "Start jogging successfully" : "Failed to start jogging";
 }
 
-void TL_Arm::handle_stop_jogging_service(const std::shared_ptr<tl_ros2_interface::srv::Jogging::Request> request,
-                                         std::shared_ptr<tl_ros2_interface::srv::Jogging::Response> response)
+void DriverNode::handle_stop_jogging_service(const std::shared_ptr<tl_ros2_interface::srv::Jogging::Request> request,
+                                             std::shared_ptr<tl_ros2_interface::srv::Jogging::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -820,7 +832,7 @@ void TL_Arm::handle_stop_jogging_service(const std::shared_ptr<tl_ros2_interface
   response->message = response->success ? "Stop jogging successfully" : "Failed to stop jogging";
 }
 
-void TL_Arm::handle_get_robot_state_service(
+void DriverNode::handle_get_robot_state_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetRobotState::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetRobotState::Response> response)
 {
@@ -873,8 +885,8 @@ void TL_Arm::handle_get_robot_state_service(
   response->message = state_message;
 }
 
-void TL_Arm::handle_get_library_version_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                                std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+void DriverNode::handle_get_library_version_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                                    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
   if (!session_->is_connected())
@@ -890,7 +902,7 @@ void TL_Arm::handle_get_library_version_service(const std::shared_ptr<std_srvs::
   response->message = response->success ? version : "Failed to get library version";
 }
 
-void TL_Arm::handle_get_robot_joint_param_service(
+void DriverNode::handle_get_robot_joint_param_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetRobotJointParam::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetRobotJointParam::Response> response)
 {
@@ -932,7 +944,7 @@ void TL_Arm::handle_get_robot_joint_param_service(
   }
 }
 
-void TL_Arm::handle_set_robot_joint_param_service(
+void DriverNode::handle_set_robot_joint_param_service(
     const std::shared_ptr<tl_ros2_interface::srv::SetRobotJointParam::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::SetRobotJointParam::Response> response)
 {
@@ -971,7 +983,7 @@ void TL_Arm::handle_set_robot_joint_param_service(
   session_->power_on();
 }
 
-void TL_Arm::handle_get_joint_temperature_service(
+void DriverNode::handle_get_joint_temperature_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetJointTemperature::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetJointTemperature::Response> response)
 {
@@ -998,7 +1010,7 @@ void TL_Arm::handle_get_joint_temperature_service(
   }
 }
 
-void TL_Arm::handle_get_joint_voltage_service(
+void DriverNode::handle_get_joint_voltage_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetJointVoltage::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetJointVoltage::Response> response)
 {
@@ -1027,7 +1039,7 @@ void TL_Arm::handle_get_joint_voltage_service(
   }
 }
 
-void TL_Arm::handle_get_motor_current_service(
+void DriverNode::handle_get_motor_current_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetMotorCurrent::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetMotorCurrent::Response> response)
 {
@@ -1055,7 +1067,7 @@ void TL_Arm::handle_get_motor_current_service(
   }
 }
 
-void TL_Arm::handle_get_joint_software_version_service(
+void DriverNode::handle_get_joint_software_version_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetJointSoftwareVersion::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetJointSoftwareVersion::Response> response)
 {
@@ -1079,8 +1091,9 @@ void TL_Arm::handle_get_joint_software_version_service(
   response->message = response->success ? version : "Failed to get joint software version";
 }
 
-void TL_Arm::handle_get_nexmotion_lib_version_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                                      std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+void DriverNode::handle_get_nexmotion_lib_version_service(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
   if (!session_->is_connected())
@@ -1096,7 +1109,7 @@ void TL_Arm::handle_get_nexmotion_lib_version_service(const std::shared_ptr<std_
   response->message = response->success ? version : "Failed to get nexmotion lib version, ret=" + std::to_string(ret);
 }
 
-void TL_Arm::handle_restore_default_dh_param_service(
+void DriverNode::handle_restore_default_dh_param_service(
     const std::shared_ptr<tl_ros2_interface::srv::RestoreDefaultDHParam::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::RestoreDefaultDHParam::Response> response)
 {
@@ -1113,8 +1126,9 @@ void TL_Arm::handle_restore_default_dh_param_service(
       response->success ? "Restore default DH param successfully" : "Failed to restore default DH param";
 }
 
-void TL_Arm::handle_set_default_cartesian_param_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                                        std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+void DriverNode::handle_set_default_cartesian_param_service(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
   if (!session_->is_connected())
@@ -1130,8 +1144,9 @@ void TL_Arm::handle_set_default_cartesian_param_service(const std::shared_ptr<st
       response->success ? "Set default cartesian param successfully" : "Failed to set default cartesian param";
 }
 
-void TL_Arm::handle_log_download_service(const std::shared_ptr<tl_ros2_interface::srv::LogDownload::Request> request,
-                                         std::shared_ptr<tl_ros2_interface::srv::LogDownload::Response> response)
+void DriverNode::handle_log_download_service(
+    const std::shared_ptr<tl_ros2_interface::srv::LogDownload::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::LogDownload::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -1145,8 +1160,9 @@ void TL_Arm::handle_log_download_service(const std::shared_ptr<tl_ros2_interface
   response->message = response->success ? "Log download successfully" : "Failed to download log";
 }
 
-void TL_Arm::handle_set_drag_mode_service(const std::shared_ptr<tl_ros2_interface::srv::SetDragMode::Request> request,
-                                          std::shared_ptr<tl_ros2_interface::srv::SetDragMode::Response> response)
+void DriverNode::handle_set_drag_mode_service(
+    const std::shared_ptr<tl_ros2_interface::srv::SetDragMode::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::SetDragMode::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -1167,8 +1183,8 @@ void TL_Arm::handle_set_drag_mode_service(const std::shared_ptr<tl_ros2_interfac
   response->message = response->success ? "Set drag mode successfully" : "Failed to set drag mode";
 }
 
-void TL_Arm::handle_get_drag_status_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                            std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+void DriverNode::handle_get_drag_status_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                                std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
   if (!session_->is_connected())
@@ -1192,8 +1208,8 @@ void TL_Arm::handle_get_drag_status_service(const std::shared_ptr<std_srvs::srv:
   }
 }
 
-void TL_Arm::handle_track_save_service(const std::shared_ptr<tl_ros2_interface::srv::TrackSave::Request> request,
-                                       std::shared_ptr<tl_ros2_interface::srv::TrackSave::Response> response)
+void DriverNode::handle_track_save_service(const std::shared_ptr<tl_ros2_interface::srv::TrackSave::Request> request,
+                                           std::shared_ptr<tl_ros2_interface::srv::TrackSave::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -1207,7 +1223,7 @@ void TL_Arm::handle_track_save_service(const std::shared_ptr<tl_ros2_interface::
   response->message = response->success ? "Track save successfully" : "Failed to save track";
 }
 
-void TL_Arm::handle_track_playback_service(
+void DriverNode::handle_track_playback_service(
     const std::shared_ptr<tl_ros2_interface::srv::TrackPlayback::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::TrackPlayback::Response> response)
 {
@@ -1223,8 +1239,9 @@ void TL_Arm::handle_track_playback_service(
   response->message = response->success ? "Track playback successfully" : "Failed to playback track";
 }
 
-void TL_Arm::handle_set_tool_param_service(const std::shared_ptr<tl_ros2_interface::srv::SetToolParam::Request> request,
-                                           std::shared_ptr<tl_ros2_interface::srv::SetToolParam::Response> response)
+void DriverNode::handle_set_tool_param_service(
+    const std::shared_ptr<tl_ros2_interface::srv::SetToolParam::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::SetToolParam::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -1251,8 +1268,9 @@ void TL_Arm::handle_set_tool_param_service(const std::shared_ptr<tl_ros2_interfa
   response->message = response->success ? "Set tool hand param successfully" : "Failed to set tool hand param";
 }
 
-void TL_Arm::handle_set_user_coord_service(const std::shared_ptr<tl_ros2_interface::srv::SetUserCoord::Request> request,
-                                           std::shared_ptr<tl_ros2_interface::srv::SetUserCoord::Response> response)
+void DriverNode::handle_set_user_coord_service(
+    const std::shared_ptr<tl_ros2_interface::srv::SetUserCoord::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::SetUserCoord::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -1276,7 +1294,7 @@ void TL_Arm::handle_set_user_coord_service(const std::shared_ptr<tl_ros2_interfa
   response->message = response->success ? "Set user coordinate successfully" : "Failed to set user coordinate";
 }
 
-void TL_Arm::handle_set_axis_zero_pos_service(
+void DriverNode::handle_set_axis_zero_pos_service(
     const std::shared_ptr<tl_ros2_interface::srv::SetAxisZeroPos::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::SetAxisZeroPos::Response> response)
 {
@@ -1292,7 +1310,7 @@ void TL_Arm::handle_set_axis_zero_pos_service(
   response->message = response->success ? "Set user coordinate successfully" : "Failed to set user coordinate";
 }
 
-void TL_Arm::handle_set_current_coord_service(
+void DriverNode::handle_set_current_coord_service(
     const std::shared_ptr<tl_ros2_interface::srv::SetCurrentCoord::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::SetCurrentCoord::Response> response)
 {
@@ -1308,7 +1326,7 @@ void TL_Arm::handle_set_current_coord_service(
   response->message = response->success ? "Set current coordinate successfully" : "Failed to set current coordinate";
 }
 
-void TL_Arm::handle_get_current_coord_service(
+void DriverNode::handle_get_current_coord_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetCurrentCoord::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetCurrentCoord::Response> response)
 {
@@ -1335,8 +1353,9 @@ void TL_Arm::handle_get_current_coord_service(
   }
 }
 
-void TL_Arm::handle_set_coord_num_service(const std::shared_ptr<tl_ros2_interface::srv::SetCoordNum::Request> request,
-                                          std::shared_ptr<tl_ros2_interface::srv::SetCoordNum::Response> response)
+void DriverNode::handle_set_coord_num_service(
+    const std::shared_ptr<tl_ros2_interface::srv::SetCoordNum::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::SetCoordNum::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -1359,8 +1378,9 @@ void TL_Arm::handle_set_coord_num_service(const std::shared_ptr<tl_ros2_interfac
   }
 }
 
-void TL_Arm::handle_get_coord_num_service(const std::shared_ptr<tl_ros2_interface::srv::GetCoordNum::Request> request,
-                                          std::shared_ptr<tl_ros2_interface::srv::GetCoordNum::Response> response)
+void DriverNode::handle_get_coord_num_service(
+    const std::shared_ptr<tl_ros2_interface::srv::GetCoordNum::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::GetCoordNum::Response> response)
 {
   (void)request;
   if (!session_->is_connected())
@@ -1387,7 +1407,7 @@ void TL_Arm::handle_get_coord_num_service(const std::shared_ptr<tl_ros2_interfac
   }
 }
 
-void TL_Arm::handle_set_digital_output_service(
+void DriverNode::handle_set_digital_output_service(
     const std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Response> response)
 {
@@ -1410,7 +1430,7 @@ void TL_Arm::handle_set_digital_output_service(
   response->message = response->success ? "Set digital output successfully" : "Failed to set digital output";
 }
 
-void TL_Arm::handle_get_digital_input_output_service(
+void DriverNode::handle_get_digital_input_output_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetDigitalInputOutput::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetDigitalInputOutput::Response> response)
 {
@@ -1440,8 +1460,9 @@ void TL_Arm::handle_get_digital_input_output_service(
   }
 }
 
-void TL_Arm::handle_modbus_write_service(const std::shared_ptr<tl_ros2_interface::srv::ModbusWrite::Request> request,
-                                         std::shared_ptr<tl_ros2_interface::srv::ModbusWrite::Response> response)
+void DriverNode::handle_modbus_write_service(
+    const std::shared_ptr<tl_ros2_interface::srv::ModbusWrite::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::ModbusWrite::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -1480,8 +1501,8 @@ void TL_Arm::handle_modbus_write_service(const std::shared_ptr<tl_ros2_interface
   response->message = response->success ? "Modbus write successfully" : "Failed to write Modbus";
 }
 
-void TL_Arm::handle_modbus_read_service(const std::shared_ptr<tl_ros2_interface::srv::ModbusRead::Request> request,
-                                        std::shared_ptr<tl_ros2_interface::srv::ModbusRead::Response> response)
+void DriverNode::handle_modbus_read_service(const std::shared_ptr<tl_ros2_interface::srv::ModbusRead::Request> request,
+                                            std::shared_ptr<tl_ros2_interface::srv::ModbusRead::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -1521,7 +1542,7 @@ void TL_Arm::handle_modbus_read_service(const std::shared_ptr<tl_ros2_interface:
   response->data = data;
 }
 
-void TL_Arm::handle_coord_transform_service(
+void DriverNode::handle_coord_transform_service(
     const std::shared_ptr<tl_ros2_interface::srv::CoordTransform::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::CoordTransform::Response> response)
 {
@@ -1558,7 +1579,7 @@ void TL_Arm::handle_coord_transform_service(
   response->target_pos = targetPos;
 }
 
-void TL_Arm::handle_get_pos_reachable_service(
+void DriverNode::handle_get_pos_reachable_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetPosReachable::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetPosReachable::Response> response)
 {
@@ -1592,8 +1613,8 @@ void TL_Arm::handle_get_pos_reachable_service(
   }
 }
 
-void TL_Arm::handle_set_dh_param_service(const std::shared_ptr<tl_ros2_interface::srv::SetDHParam::Request> request,
-                                         std::shared_ptr<tl_ros2_interface::srv::SetDHParam::Response> response)
+void DriverNode::handle_set_dh_param_service(const std::shared_ptr<tl_ros2_interface::srv::SetDHParam::Request> request,
+                                             std::shared_ptr<tl_ros2_interface::srv::SetDHParam::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -1618,8 +1639,8 @@ void TL_Arm::handle_set_dh_param_service(const std::shared_ptr<tl_ros2_interface
   }
 }
 
-void TL_Arm::handle_get_dh_param_service(const std::shared_ptr<tl_ros2_interface::srv::GetDHParam::Request> request,
-                                         std::shared_ptr<tl_ros2_interface::srv::GetDHParam::Response> response)
+void DriverNode::handle_get_dh_param_service(const std::shared_ptr<tl_ros2_interface::srv::GetDHParam::Request> request,
+                                             std::shared_ptr<tl_ros2_interface::srv::GetDHParam::Response> response)
 {
   (void)request;
   if (!session_->is_connected())
@@ -1645,7 +1666,7 @@ void TL_Arm::handle_get_dh_param_service(const std::shared_ptr<tl_ros2_interface
   }
 }
 
-void TL_Arm::handle_get_all_job_filename_service(
+void DriverNode::handle_get_all_job_filename_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetAllJobFileName::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetAllJobFileName::Response> response)
 {
@@ -1670,8 +1691,8 @@ void TL_Arm::handle_get_all_job_filename_service(
   }
 }
 
-void TL_Arm::handle_job_run_service(const std::shared_ptr<tl_ros2_interface::srv::JobRun::Request> request,
-                                    std::shared_ptr<tl_ros2_interface::srv::JobRun::Response> response)
+void DriverNode::handle_job_run_service(const std::shared_ptr<tl_ros2_interface::srv::JobRun::Request> request,
+                                        std::shared_ptr<tl_ros2_interface::srv::JobRun::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -1689,8 +1710,8 @@ void TL_Arm::handle_job_run_service(const std::shared_ptr<tl_ros2_interface::srv
   // session_->power_on();
 }
 
-void TL_Arm::handle_job_delete_service(const std::shared_ptr<tl_ros2_interface::srv::JobRun::Request> request,
-                                       std::shared_ptr<tl_ros2_interface::srv::JobRun::Response> response)
+void DriverNode::handle_job_delete_service(const std::shared_ptr<tl_ros2_interface::srv::JobRun::Request> request,
+                                           std::shared_ptr<tl_ros2_interface::srv::JobRun::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -1704,7 +1725,7 @@ void TL_Arm::handle_job_delete_service(const std::shared_ptr<tl_ros2_interface::
   response->message = response->success ? "Job delete successfully" : "Failed to delete job";
 }
 
-void TL_Arm::handle_job_insert_movej_service(
+void DriverNode::handle_job_insert_movej_service(
     const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response)
 {
@@ -1722,7 +1743,7 @@ void TL_Arm::handle_job_insert_movej_service(
   response->message = response->success ? "Job insert movej successfully" : "Failed to insert job movej";
 }
 
-void TL_Arm::handle_job_insert_movel_service(
+void DriverNode::handle_job_insert_movel_service(
     const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response)
 {
@@ -1740,7 +1761,7 @@ void TL_Arm::handle_job_insert_movel_service(
   response->message = response->success ? "Job insert movel successfully" : "Failed to insert job movel";
 }
 
-void TL_Arm::handle_job_insert_imove_service(
+void DriverNode::handle_job_insert_imove_service(
     const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response)
 {
@@ -1758,7 +1779,7 @@ void TL_Arm::handle_job_insert_imove_service(
   response->message = response->success ? "Job insert imove successfully" : "Failed to insert job imove";
 }
 
-void TL_Arm::handle_job_insert_movec_service(
+void DriverNode::handle_job_insert_movec_service(
     const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response)
 {
@@ -1776,8 +1797,9 @@ void TL_Arm::handle_job_insert_movec_service(
   response->message = response->success ? "Job insert movec successfully" : "Failed to insert job movec";
 }
 
-void TL_Arm::handle_set_global_pos_service(const std::shared_ptr<tl_ros2_interface::srv::SetGlobalPos::Request> request,
-                                           std::shared_ptr<tl_ros2_interface::srv::SetGlobalPos::Response> response)
+void DriverNode::handle_set_global_pos_service(
+    const std::shared_ptr<tl_ros2_interface::srv::SetGlobalPos::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::SetGlobalPos::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -1798,8 +1820,9 @@ void TL_Arm::handle_set_global_pos_service(const std::shared_ptr<tl_ros2_interfa
   response->message = response->success ? "Set global pos successfully" : "Failed to set global pos";
 }
 
-void TL_Arm::handle_get_global_pos_service(const std::shared_ptr<tl_ros2_interface::srv::GetGlobalPos::Request> request,
-                                           std::shared_ptr<tl_ros2_interface::srv::GetGlobalPos::Response> response)
+void DriverNode::handle_get_global_pos_service(
+    const std::shared_ptr<tl_ros2_interface::srv::GetGlobalPos::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::GetGlobalPos::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -1822,7 +1845,7 @@ void TL_Arm::handle_get_global_pos_service(const std::shared_ptr<tl_ros2_interfa
   response->pos = pos;
 }
 
-void TL_Arm::handle_set_current_mode_service(
+void DriverNode::handle_set_current_mode_service(
     const std::shared_ptr<tl_ros2_interface::srv::SetCurrentMode::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::SetCurrentMode::Response> response)
 {
@@ -1845,7 +1868,7 @@ void TL_Arm::handle_set_current_mode_service(
   response->message = response->success ? "Set current mode successfully" : "Failed to set current mode";
 }
 
-void TL_Arm::handle_get_current_mode_service(
+void DriverNode::handle_get_current_mode_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetCurrentMode::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetCurrentMode::Response> response)
 {
@@ -1864,8 +1887,8 @@ void TL_Arm::handle_get_current_mode_service(
   response->message = response->success ? "Get current mode successfully" : "Failed to get current mode";
 }
 
-void TL_Arm::handle_open_servoj_service(const std::shared_ptr<tl_ros2_interface::srv::OpenServoJ::Request> request,
-                                        std::shared_ptr<tl_ros2_interface::srv::OpenServoJ::Response> response)
+void DriverNode::handle_open_servoj_service(const std::shared_ptr<tl_ros2_interface::srv::OpenServoJ::Request> request,
+                                            std::shared_ptr<tl_ros2_interface::srv::OpenServoJ::Response> response)
 {
   if (!session_->is_connected())
   {
@@ -1883,8 +1906,8 @@ void TL_Arm::handle_open_servoj_service(const std::shared_ptr<tl_ros2_interface:
   response->message = response->success ? "ServoJ open successfully" : "Failed to open ServoJ";
 }
 
-void TL_Arm::handle_close_servoj_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                         std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+void DriverNode::handle_close_servoj_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                             std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
   if (!session_->is_connected())
@@ -1899,7 +1922,7 @@ void TL_Arm::handle_close_servoj_service(const std::shared_ptr<std_srvs::srv::Tr
   response->message = response->success ? "ServoJ close successfully" : "Failed to close ServoJ";
 }
 
-void TL_Arm::handle_queue_motion_set_status_service(
+void DriverNode::handle_queue_motion_set_status_service(
     const std::shared_ptr<tl_ros2_interface::srv::QueueMotionSetStatus::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::QueueMotionSetStatus::Response> response)
 {
@@ -1924,7 +1947,7 @@ void TL_Arm::handle_queue_motion_set_status_service(
   }
 }
 
-void TL_Arm::handle_queue_motion_movej_service(
+void DriverNode::handle_queue_motion_movej_service(
     const std::shared_ptr<tl_ros2_interface::srv::QueueMotionMoveJ::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::QueueMotionMoveJ::Response> response)
 {
@@ -1954,8 +1977,8 @@ void TL_Arm::handle_queue_motion_movej_service(
       response->success ? "Queue motion movej execute successfully" : "Failed to execute queue motion movej";
 }
 
-void TL_Arm::handle_queue_motion_stop_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                              std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+void DriverNode::handle_queue_motion_stop_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                                  std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
   if (!session_->is_connected())
@@ -1985,7 +2008,7 @@ void TL_Arm::handle_queue_motion_stop_service(const std::shared_ptr<std_srvs::sr
   response->message = response->success ? "Queue motion movej stop successfully" : "Failed to stop queue motion movej";
 }
 
-void TL_Arm::handle_get_current_motor_torque_service(
+void DriverNode::handle_get_current_motor_torque_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetCurrentMotorTorque::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetCurrentMotorTorque::Response> response)
 {
@@ -2015,7 +2038,7 @@ void TL_Arm::handle_get_current_motor_torque_service(
   }
 }
 
-void TL_Arm::handle_get_current_line_joint_speed_service(
+void DriverNode::handle_get_current_line_joint_speed_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetCurrentLineJointSpeed::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetCurrentLineJointSpeed::Response> response)
 {
@@ -2048,7 +2071,7 @@ void TL_Arm::handle_get_current_line_joint_speed_service(
   }
 }
 
-void TL_Arm::handle_movej_topic(const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
+void DriverNode::handle_movej_topic(const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
 {
   if (!session_->is_connected())
   {
@@ -2063,7 +2086,7 @@ void TL_Arm::handle_movej_topic(const tl_ros2_interface::msg::MoveCommand::Share
   RCLCPP_INFO(this->get_logger(), "[MoveJ]: result=%s", tl_driver::result_to_string(ret));
 }
 
-void TL_Arm::handle_movel_topic(const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
+void DriverNode::handle_movel_topic(const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
 {
   if (!session_->is_connected())
   {
@@ -2081,7 +2104,7 @@ void TL_Arm::handle_movel_topic(const tl_ros2_interface::msg::MoveCommand::Share
 /**
  * @brief 透传模式必须先使用open_servoJ开启跟踪模式
  */
-void TL_Arm::handle_set_servoj_pos_topic(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
+void DriverNode::handle_set_servoj_pos_topic(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
 {
   if (!session_->is_connected())
   {
@@ -2101,7 +2124,7 @@ void TL_Arm::handle_set_servoj_pos_topic(const std_msgs::msg::Float64MultiArray:
  * 前置条件：需先调用 open_servoj 开启关节跟踪模式
  * 收到目标笛卡尔位姿后，自动获取当前位姿，插值并 IK 转为关节角后通过 servoj 发送
  */
-void TL_Arm::handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMove::SharedPtr msg)
+void DriverNode::handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMove::SharedPtr msg)
 {
   if (!session_->is_connected())
   {
@@ -2205,16 +2228,4 @@ void TL_Arm::handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMov
   RCLCPP_INFO(this->get_logger(), "[ServoL] completed to [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f], %d points", tx, ty, tz,
               trx, try_, trz, N);
 }
-
-
-int main(int argc, char **argv)
-{
-  rclcpp::init(argc, argv);
-  auto thread_num = std::max(4u, std::thread::hardware_concurrency());
-  rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), thread_num, true);
-  auto node = std::make_shared<TL_Arm>();
-  executor.add_node(node);
-  executor.spin();
-  rclcpp::shutdown();
-  return EXIT_SUCCESS;
-}
+} // namespace tl_driver
