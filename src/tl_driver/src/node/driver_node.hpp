@@ -47,22 +47,6 @@ public:
     return ndof_;
   }
 
-  /// @brief 关节名列表（arm_joints 参数）。
-  /// @note 为与 V2 线形状对齐而保留，当前无调用方（publishers 直接收 arm_joints_）。
-  /// @return 关节名列表引用
-  const std::vector<std::string>& joint_names() const noexcept
-  {
-    return arm_joints_;
-  }
-
-  /// @brief 服务回调组，65 个服务共用（MutuallyExclusive，串行）。
-  /// @note 为与 V2 线形状对齐而保留，当前无调用方（create_service 内部直接用成员）。
-  /// @return 回调组句柄
-  rclcpp::CallbackGroup::SharedPtr service_group() const noexcept
-  {
-    return service_group_;
-  }
-
   /// @brief 创建服务并持有其生命周期，供各域 register_*_services 使用。
   /// @note 包装 `rclcpp::Node::create_service`（固定 `rmw_qos_profile_services_default` 与服务回调组），
   ///       并把服务存入 `services_` 保活——rclcpp Humble 只弱引用已创建的服务，不持有即注销。
