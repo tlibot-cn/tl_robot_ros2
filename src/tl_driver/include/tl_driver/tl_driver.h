@@ -84,10 +84,8 @@
 // lib
 #include "tl_types.h"
 
-enum MessageLists
-{
-  ROBOT_STATE = 7681
-};
+#include "arm_session.h"
+#include "node/publishers.h"
 
 class TL_Arm : public rclcpp::Node
 {
@@ -95,12 +93,6 @@ public:
   TL_Arm();
   ~TL_Arm();
 
-  bool connect();
-  bool disconnect();
-  bool power_on();
-  bool power_off();
-  bool is_connected();
-  bool is_powered();
   void init();
 
   // 服务
@@ -320,21 +312,14 @@ public:
 
   void handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMove::SharedPtr msg);
 
-  void publish_arm_state();
-  void publish_joint_pose(const std::vector<double>& joint_pose);
-  void publish_tcp_pose(const std::vector<double>& tcp_pose);
-  void publish_running_status();
-
 private:
+  std::unique_ptr<tl_driver::ArmSession> session_;
+  std::unique_ptr<tl_driver::Publishers> publishers_;
+
   std::string arm_ip_;
   std::string arm_port_;
   std::string arm_port_aux_;
   std::string arm_type_;
-
-  int socket_fd_{0};
-  int socket_fd_aux_{0};
-  bool is_connected_{false}; // 机械臂是否连接
-  bool is_powered_{false};   // 机械臂是否上电(示教模式)
 
   std::vector<std::string> arm_joints_;
   double publish_rate_{100.0};
@@ -409,10 +394,6 @@ private:
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr queue_motion_stop_service_;
   rclcpp::Service<tl_ros2_interface::srv::GetCurrentMotorTorque>::SharedPtr get_current_motor_torque_service_;
   rclcpp::Service<tl_ros2_interface::srv::GetCurrentLineJointSpeed>::SharedPtr get_current_line_joint_speed_service_;
-
-  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
-  rclcpp::Publisher<tl_ros2_interface::msg::CartesianPose>::SharedPtr tcp_pose_pub_;
-  rclcpp::Publisher<tl_ros2_interface::msg::ArmStatus>::SharedPtr running_status_pub_;
 
   rclcpp::Subscription<tl_ros2_interface::msg::MoveCommand>::SharedPtr movej_sub_;
   rclcpp::Subscription<tl_ros2_interface::msg::MoveCommand>::SharedPtr movel_sub_;

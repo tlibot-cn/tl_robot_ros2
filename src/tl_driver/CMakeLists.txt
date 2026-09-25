@@ -55,6 +55,8 @@ set_target_properties(tl_host_lib PROPERTIES
 
 add_executable(tl_driver
   src/tl_driver.cpp
+  src/arm_session.cpp
+  src/node/publishers.cpp
   src/math/quaternion.cpp
   src/convert/msg_convert.cpp
 )

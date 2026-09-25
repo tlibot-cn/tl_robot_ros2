@@ -5,49 +5,10 @@
 #include "tl_driver/version.hpp"
 
 #include "arm_sdk.hpp"
+#include "arm_session.h"
+#include "node/publishers.h"
 #include "convert/msg_convert.h"
 #include "math/quaternion.h"
-
-namespace
-{
-
-struct RobotStateMessageBuffer
-{
-  std::mutex mutex;
-  std::condition_variable cv;
-
-  int last_msg_id = -1;
-  std::string last_msg;
-  uint64_t seq = 0;
-};
-
-RobotStateMessageBuffer g_robot_state_msg_buffer;
-
-// 新 SDK：7000 端口机器人状态专用回调（robot_state_callback）
-void robot_state_callback_handler(const char *state)
-{
-  {
-    std::lock_guard<std::mutex> lock(g_robot_state_msg_buffer.mutex);
-
-    g_robot_state_msg_buffer.last_msg_id = MessageLists::ROBOT_STATE;
-    g_robot_state_msg_buffer.last_msg = state ? state : "";
-    ++g_robot_state_msg_buffer.seq;
-  }
-
-  g_robot_state_msg_buffer.cv.notify_all();
-
-  std::cout << "\033[32m"
-            << "robot_state = " << (state ? state : "") << "\033[0m" << std::endl;
-}
-
-void receive_error_or_warning_message_callback(int messageType, const char *message, int messageCode)
-{
-  std::cout << "\033[31m"
-            << "messageType = " << messageType << ", message = " << message << ", messageCode = " << messageCode
-            << "\033[0m" << std::endl;
-}
-
-} // namespace
 
 
 TL_Arm::TL_Arm() : rclcpp::Node("tl_driver")
@@ -65,6 +26,10 @@ TL_Arm::TL_Arm() : rclcpp::Node("tl_driver")
   arm_type_ = this->get_parameter("arm_type").as_string();
   arm_joints_ = this->get_parameter("arm_joints").as_string_array();
   ndof_ = arm_joints_.size();
+
+  // 会话与状态发布
+  session_ = std::make_unique<tl_driver::ArmSession>(this->get_logger(), arm_ip_, arm_port_, arm_port_aux_);
+  publishers_ = std::make_unique<tl_driver::Publishers>(*this, *session_, arm_joints_, ndof_);
 
   // 多线程
   service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -403,13 +368,6 @@ TL_Arm::TL_Arm() : rclcpp::Node("tl_driver")
                 std::placeholders::_2),
       rmw_qos_profile_services_default, service_group_);
 
-  // 话题pub
-  joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>("/joint_states", 10);
-
-  tcp_pose_pub_ = this->create_publisher<tl_ros2_interface::msg::CartesianPose>("/tcp_pose", 10);
-
-  running_status_pub_ = this->create_publisher<tl_ros2_interface::msg::ArmStatus>("/arm_status", 10);
-
   // 话题sub
   movej_sub_ = this->create_subscription<tl_ros2_interface::msg::MoveCommand>(
       "/tl_driver/moveJ", 10, std::bind(&TL_Arm::handle_movej_topic, this, std::placeholders::_1), topic_group_option);
@@ -428,7 +386,13 @@ TL_Arm::TL_Arm() : rclcpp::Node("tl_driver")
   auto period =
       std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::duration<double>(1.0 / publish_rate_));
 
-  state_publish_timer_ = this->create_wall_timer(period, std::bind(&TL_Arm::publish_arm_state, this), timer_group_);
+  state_publish_timer_ = this->create_wall_timer(
+      period,
+      [this]()
+      {
+        publishers_->publish_arm_state();
+      },
+      timer_group_);
 
   // 获取本包版本与sdk库版本
   RCLCPP_INFO(this->get_logger(), "Driver Version: %s", TL_DRIVER_VERSION);
@@ -441,10 +405,10 @@ TL_Arm::TL_Arm() : rclcpp::Node("tl_driver")
 
 TL_Arm::~TL_Arm()
 {
-  if (is_connected())
+  if (session_->is_connected())
   {
-    power_off();
-    disconnect();
+    session_->power_off();
+    session_->disconnect();
   }
 }
 
@@ -453,10 +417,10 @@ void TL_Arm::init()
   RCLCPP_INFO(this->get_logger(), "Trying to connect to %s:%s,%s", arm_ip_.c_str(), arm_port_.c_str(),
               arm_port_aux_.c_str());
 
-  if (connect())
+  if (session_->connect())
   {
     // 切换到示教模式
-    tl::Result ret = tl::set_current_mode(socket_fd_, tl::RobotMode::TEACH);
+    tl::Result ret = tl::set_current_mode(session_->fd(), tl::RobotMode::TEACH);
     if (ret != tl::Result::SUCCESS)
     {
       RCLCPP_ERROR(this->get_logger(), "[Init]: failed to set teach mode, result=%s", tl_driver::result_to_string(ret));
@@ -465,16 +429,16 @@ void TL_Arm::init()
     }
 
     // 清除控制器错误和报警
-    ret = tl::clear_error(socket_fd_);
+    ret = tl::clear_error(session_->fd());
     if (ret != tl::Result::SUCCESS)
     {
       RCLCPP_WARN(this->get_logger(), "[Init]: clear_error result=%s", tl_driver::result_to_string(ret));
     }
 
     // 清错后下电，释放控制器占用状态
-    power_off();
+    session_->power_off();
 
-    power_on();
+    session_->power_on();
     RCLCPP_INFO(this->get_logger(), "上电延时2s...");
     std::this_thread::sleep_for(std::chrono::seconds(2));
     RCLCPP_INFO(this->get_logger(), "上电延时完成");
@@ -486,159 +450,19 @@ void TL_Arm::init()
   }
 }
 
-bool TL_Arm::is_connected()
-{
-  return is_connected_ && socket_fd_ > 0 && socket_fd_aux_ > 0;
-}
-
-bool TL_Arm::is_powered()
-{
-  return is_powered_;
-}
-
-bool TL_Arm::power_on()
-{
-  tl::ServoState state = static_cast<tl::ServoState>(-1); // -1 哨兵值：查询失败时落入 default 分支
-  tl::get_servo_state(socket_fd_, state);
-
-  switch (state)
-  {
-    case tl::ServoState::STOP:
-      tl::set_servo_state(socket_fd_, tl::ServoState::READY);
-      RCLCPP_INFO(this->get_logger(), "[PowerOn]: waiting 2s for servo ready...");
-      std::this_thread::sleep_for(std::chrono::seconds(2));
-      tl::set_servo_poweron(socket_fd_);
-      break;
-    case tl::ServoState::READY:
-      tl::set_servo_poweron(socket_fd_);
-      break;
-    case tl::ServoState::ALARM:
-      RCLCPP_WARN(this->get_logger(), "[PowerOn]: servo alarm state (2), clearing error first");
-      tl::clear_error(socket_fd_);
-      tl::set_servo_state(socket_fd_, tl::ServoState::READY);
-      tl::set_servo_poweron(socket_fd_);
-      break;
-    case tl::ServoState::RUNNING:
-      RCLCPP_INFO(this->get_logger(), "[PowerOn]: servo_state=3, re-executing power on");
-      tl::set_servo_state(socket_fd_, tl::ServoState::READY);
-      tl::set_servo_poweron(socket_fd_);
-      break;
-
-    default:
-      RCLCPP_ERROR(this->get_logger(), "[PowerOn]: unknown servo state %d", static_cast<int>(state));
-      return false;
-  }
-
-  tl::get_servo_state(socket_fd_, state);
-  RCLCPP_INFO(this->get_logger(), "[PowerOn]: servo_state = %d", static_cast<int>(state));
-  if (state == tl::ServoState::RUNNING)
-  {
-    is_powered_ = true;
-    return true;
-  }
-  else
-  {
-    RCLCPP_ERROR(this->get_logger(), "[PowerOn]: failed to power on, servo_state = %d", static_cast<int>(state));
-    return false;
-  }
-}
-
-bool TL_Arm::power_off()
-{
-  tl::ServoState state = static_cast<tl::ServoState>(-1); // -1 哨兵值：查询失败时落入 default 分支
-  tl::get_servo_state(socket_fd_, state);
-  switch (state)
-  {
-    case tl::ServoState::STOP:
-    case tl::ServoState::ALARM:
-      break;
-    case tl::ServoState::READY:
-      RCLCPP_INFO(this->get_logger(), "[PowerOff]: already power off");
-      return true;
-    case tl::ServoState::RUNNING:
-      tl::set_servo_poweroff(socket_fd_);
-      tl::get_servo_state(socket_fd_, state);
-      RCLCPP_INFO(this->get_logger(), "[PowerOff]: successfully power off, servo_state = %d", static_cast<int>(state));
-      is_powered_ = false;
-      return true;
-  }
-  RCLCPP_INFO(this->get_logger(), "[PowerOff]: fail to power off, servo_state = %d", static_cast<int>(state));
-  return false;
-}
-
-bool TL_Arm::connect()
-{
-  if (is_connected_)
-  {
-    RCLCPP_INFO(this->get_logger(), "[Connect]: arm already connected");
-    return true;
-  }
-
-  socket_fd_ = tl::connect_robot(arm_ip_, arm_port_);
-  socket_fd_aux_ = tl::connect_robot(arm_ip_, arm_port_aux_);
-
-  if (socket_fd_ <= 0)
-  {
-    RCLCPP_ERROR(this->get_logger(), "[Connect]: failed to connect to %s:%s", arm_ip_.c_str(), arm_port_.c_str());
-    socket_fd_ = 0;
-    is_connected_ = false;
-    return false;
-  }
-
-  if (socket_fd_aux_ <= 0)
-  {
-    RCLCPP_ERROR(this->get_logger(), "[Connect]: failed to connect to %s:%s", arm_ip_.c_str(), arm_port_aux_.c_str());
-    socket_fd_aux_ = 0;
-    is_connected_ = false;
-    return false;
-  }
-
-  is_connected_ = true;
-
-  tl::set_receive_error_or_warnning_message_callback(socket_fd_, receive_error_or_warning_message_callback);
-
-  tl::set_receive_error_or_warnning_message_callback(socket_fd_aux_, receive_error_or_warning_message_callback);
-
-  // 新 SDK：机器人状态通过 robot_state_callback（7000 端口）接收，不再使用旧的 recv_message 机制
-  tl::robot_state_callback(socket_fd_aux_, robot_state_callback_handler);
-
-  RCLCPP_INFO(this->get_logger(), "[Connect]: successfully connected to arm at %s:%s,%s", arm_ip_.c_str(),
-              arm_port_.c_str(), arm_port_aux_.c_str());
-
-  return true;
-}
-
-bool TL_Arm::disconnect()
-{
-  if (!is_connected_)
-  {
-    RCLCPP_INFO(this->get_logger(), "[Disconnect]: arm already disconnected");
-    return true;
-  }
-
-  is_connected_ = false;
-
-  tl::disconnect_robot(socket_fd_);
-  tl::disconnect_robot(socket_fd_aux_);
-
-  socket_fd_ = 0;
-  socket_fd_aux_ = 0;
-
-  return true;
-}
 
 void TL_Arm::handle_connect_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
                                     std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
-  if (is_connected())
+  if (session_->is_connected())
   {
     response->success = true; // shc 26.5.19 修改：连接了就响应true
     response->message = "Arm already connected";
     return;
   }
 
-  response->success = connect();
+  response->success = session_->connect();
   response->message = response->success ? "Arm connected successfully" : "Failed to connect arm";
 }
 
@@ -646,14 +470,14 @@ void TL_Arm::handle_disconnect_service(const std::shared_ptr<std_srvs::srv::Trig
                                        std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
 
-  response->success = disconnect();
+  response->success = session_->disconnect();
   response->message = response->success ? "Arm disconnected successfully" : "Failed to disconnect arm";
 }
 
@@ -661,14 +485,14 @@ void TL_Arm::handle_poweron_service(const std::shared_ptr<std_srvs::srv::Trigger
                                     std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
 
-  response->success = power_on();
+  response->success = session_->power_on();
   response->message = response->success ? "Arm power on successfully" : "Failed to power on arm";
 }
 
@@ -676,21 +500,21 @@ void TL_Arm::handle_poweroff_service(const std::shared_ptr<std_srvs::srv::Trigge
                                      std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
 
-  if (!is_powered_)
+  if (!session_->is_powered())
   {
     response->success = true;
     response->message = "Arm already power off";
     return;
   }
 
-  response->success = power_off();
+  response->success = session_->power_off();
   response->message = response->success ? "Arm power off successfully" : "Failed to power off arm";
 }
 
@@ -698,14 +522,14 @@ void TL_Arm::handle_clear_error_service(const std::shared_ptr<std_srvs::srv::Tri
                                         std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
 
-  tl::Result ret = tl::clear_error(socket_fd_);
+  tl::Result ret = tl::clear_error(session_->fd());
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Clear error successfully"
                                         : std::string("Clear error failed: ") + tl_driver::result_to_string(ret);
@@ -714,7 +538,7 @@ void TL_Arm::handle_clear_error_service(const std::shared_ptr<std_srvs::srv::Tri
 void TL_Arm::handle_set_speed_service(const std::shared_ptr<tl_ros2_interface::srv::SetSpeed::Request> request,
                                       std::shared_ptr<tl_ros2_interface::srv::SetSpeed::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -728,7 +552,7 @@ void TL_Arm::handle_set_speed_service(const std::shared_ptr<tl_ros2_interface::s
     return;
   }
 
-  tl::Result ret = tl::set_speed(socket_fd_, request->speed);
+  tl::Result ret = tl::set_speed(session_->fd(), request->speed);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Set speed successfully" : "Failed to set speed";
 }
@@ -737,7 +561,7 @@ void TL_Arm::handle_get_speed_service(const std::shared_ptr<tl_ros2_interface::s
                                       std::shared_ptr<tl_ros2_interface::srv::GetSpeed::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -745,7 +569,7 @@ void TL_Arm::handle_get_speed_service(const std::shared_ptr<tl_ros2_interface::s
   }
 
   int speed;
-  tl::Result ret = tl::get_speed(socket_fd_, speed);
+  tl::Result ret = tl::get_speed(session_->fd(), speed);
   if (ret != tl::Result::SUCCESS)
   {
     response->success = false;
@@ -761,7 +585,7 @@ void TL_Arm::handle_get_quat2rpy_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -776,7 +600,7 @@ void TL_Arm::handle_get_quat2rpy_service(
   }
 
   std::vector<double> rpy;
-  tl::Result ret = tl::get_quat2rpy(socket_fd_, request->input, rpy);
+  tl::Result ret = tl::get_quat2rpy(session_->fd(), request->input, rpy);
   if (ret == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -794,7 +618,7 @@ void TL_Arm::handle_get_rpy2quat_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -809,7 +633,7 @@ void TL_Arm::handle_get_rpy2quat_service(
   }
 
   std::vector<double> quat;
-  tl::Result ret = tl::get_rpy2quat(socket_fd_, request->input, quat);
+  tl::Result ret = tl::get_rpy2quat(session_->fd(), request->input, quat);
   if (ret == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -826,7 +650,7 @@ void TL_Arm::handle_get_rpy2quat_service(
 void TL_Arm::handle_get_rpy2r_service(const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
                                       std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -841,7 +665,7 @@ void TL_Arm::handle_get_rpy2r_service(const std::shared_ptr<tl_ros2_interface::s
   }
 
   std::vector<double> rot;
-  tl::Result ret = tl::get_rpy2r(socket_fd_, request->input, rot);
+  tl::Result ret = tl::get_rpy2r(session_->fd(), request->input, rot);
   if (ret == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -858,7 +682,7 @@ void TL_Arm::handle_get_rpy2r_service(const std::shared_ptr<tl_ros2_interface::s
 void TL_Arm::handle_get_tr2r_service(const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
                                      std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -873,7 +697,7 @@ void TL_Arm::handle_get_tr2r_service(const std::shared_ptr<tl_ros2_interface::sr
   }
 
   std::vector<double> rot;
-  tl::Result ret = tl::get_tr2r(socket_fd_, request->input, rot);
+  tl::Result ret = tl::get_tr2r(session_->fd(), request->input, rot);
   if (ret == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -890,7 +714,7 @@ void TL_Arm::handle_get_tr2r_service(const std::shared_ptr<tl_ros2_interface::sr
 void TL_Arm::handle_get_r2tr_service(const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
                                      std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -905,7 +729,7 @@ void TL_Arm::handle_get_r2tr_service(const std::shared_ptr<tl_ros2_interface::sr
   }
 
   std::vector<double> tr_matrix;
-  tl::Result ret = tl::get_r2tr(socket_fd_, request->input, tr_matrix);
+  tl::Result ret = tl::get_r2tr(session_->fd(), request->input, tr_matrix);
   if (ret == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -923,14 +747,14 @@ void TL_Arm::handle_set_controller_ip_service(
     const std::shared_ptr<tl_ros2_interface::srv::SetControllerIP::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::SetControllerIP::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
 
-  tl::Result ret = tl::set_controller_ip(socket_fd_, request->name, request->addr, request->gateway, request->dns);
+  tl::Result ret = tl::set_controller_ip(session_->fd(), request->name, request->addr, request->gateway, request->dns);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Set controller IP successfully" : "Failed to set controller IP";
 }
@@ -939,7 +763,7 @@ void TL_Arm::handle_get_controller_id_service(const std::shared_ptr<std_srvs::sr
                                               std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -947,7 +771,7 @@ void TL_Arm::handle_get_controller_id_service(const std::shared_ptr<std_srvs::sr
   }
 
   std::string id{};
-  tl::Result ret = tl::get_controller_id(socket_fd_, id);
+  tl::Result ret = tl::get_controller_id(session_->fd(), id);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? id : "Failed to get controller id, ret=" + std::to_string(ret);
 }
@@ -955,7 +779,7 @@ void TL_Arm::handle_get_controller_id_service(const std::shared_ptr<std_srvs::sr
 void TL_Arm::handle_start_jogging_service(const std::shared_ptr<tl_ros2_interface::srv::Jogging::Request> request,
                                           std::shared_ptr<tl_ros2_interface::srv::Jogging::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -969,7 +793,7 @@ void TL_Arm::handle_start_jogging_service(const std::shared_ptr<tl_ros2_interfac
     return;
   }
 
-  tl::Result ret = tl::robot_start_jogging(socket_fd_, request->axis, request->direction);
+  tl::Result ret = tl::robot_start_jogging(session_->fd(), request->axis, request->direction);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Start jogging successfully" : "Failed to start jogging";
 }
@@ -977,7 +801,7 @@ void TL_Arm::handle_start_jogging_service(const std::shared_ptr<tl_ros2_interfac
 void TL_Arm::handle_stop_jogging_service(const std::shared_ptr<tl_ros2_interface::srv::Jogging::Request> request,
                                          std::shared_ptr<tl_ros2_interface::srv::Jogging::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -991,7 +815,7 @@ void TL_Arm::handle_stop_jogging_service(const std::shared_ptr<tl_ros2_interface
     return;
   }
 
-  tl::Result ret = tl::robot_stop_jogging(socket_fd_, request->axis);
+  tl::Result ret = tl::robot_stop_jogging(session_->fd(), request->axis);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Stop jogging successfully" : "Failed to stop jogging";
 }
@@ -1000,7 +824,7 @@ void TL_Arm::handle_get_robot_state_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetRobotState::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetRobotState::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1026,14 +850,10 @@ void TL_Arm::handle_get_robot_state_service(
     param.ioState = false;
   }
 
-  uint64_t start_seq = 0;
-  {
-    std::lock_guard<std::mutex> lock(g_robot_state_msg_buffer.mutex);
-    start_seq = g_robot_state_msg_buffer.seq;
-  }
+  const uint64_t start_seq = tl_driver::ArmSession::robot_state_seq();
 
-  // get_robot_state 需使用 7000 端口（socket_fd_aux_），回调亦注册在 7000 端口
-  tl::Result ret = tl::get_robot_state(socket_fd_aux_, param);
+  // get_robot_state 需使用 7000 端口（session_->fd_aux()），回调亦注册在 7000 端口
+  tl::Result ret = tl::get_robot_state(session_->fd_aux(), param);
   if (ret != tl::Result::SUCCESS)
   {
     response->success = false;
@@ -1041,17 +861,8 @@ void TL_Arm::handle_get_robot_state_service(
     return;
   }
 
-  std::unique_lock<std::mutex> lock(g_robot_state_msg_buffer.mutex);
-
-  bool received =
-      g_robot_state_msg_buffer.cv.wait_for(lock, std::chrono::seconds(5),
-                                           [start_seq]()
-                                           {
-                                             return g_robot_state_msg_buffer.seq > start_seq &&
-                                                    g_robot_state_msg_buffer.last_msg_id == MessageLists::ROBOT_STATE;
-                                           });
-
-  if (!received)
+  std::string state_message;
+  if (!tl_driver::ArmSession::wait_robot_state(start_seq, std::chrono::seconds(5), state_message))
   {
     response->success = false;
     response->message = "Timeout waiting for robot state";
@@ -1059,14 +870,14 @@ void TL_Arm::handle_get_robot_state_service(
   }
 
   response->success = true;
-  response->message = g_robot_state_msg_buffer.last_msg;
+  response->message = state_message;
 }
 
 void TL_Arm::handle_get_library_version_service(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
                                                 std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1083,7 +894,7 @@ void TL_Arm::handle_get_robot_joint_param_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetRobotJointParam::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetRobotJointParam::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1098,7 +909,7 @@ void TL_Arm::handle_get_robot_joint_param_service(
   }
 
   tl::RobotJointParam param{};
-  tl::Result ret = tl::get_robot_joint_param(socket_fd_, request->id, param);
+  tl::Result ret = tl::get_robot_joint_param(session_->fd(), request->id, param);
   if (ret == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -1125,7 +936,7 @@ void TL_Arm::handle_set_robot_joint_param_service(
     const std::shared_ptr<tl_ros2_interface::srv::SetRobotJointParam::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::SetRobotJointParam::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1151,13 +962,13 @@ void TL_Arm::handle_set_robot_joint_param_service(
   param.axisDirection = request->param.direction;
   // 新 SDK 无 rated_derot_speed / max_derot_speed / rated_vel / rated_devel 对应字段，忽略
 
-  tl::Result ret = tl::set_robot_joint_param(socket_fd_, request->id, param);
+  tl::Result ret = tl::set_robot_joint_param(session_->fd(), request->id, param);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Set robot joint param successfully" : "Falied to set robot joint param";
 
   // 设置参数后机械臂会下电
-  power_off();
-  power_on();
+  session_->power_off();
+  session_->power_on();
 }
 
 void TL_Arm::handle_get_joint_temperature_service(
@@ -1165,7 +976,7 @@ void TL_Arm::handle_get_joint_temperature_service(
     std::shared_ptr<tl_ros2_interface::srv::GetJointTemperature::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1173,7 +984,7 @@ void TL_Arm::handle_get_joint_temperature_service(
   }
 
   std::vector<double> temperatures;
-  tl::Result ret = tl::get_joint_temperature(socket_fd_, temperatures);
+  tl::Result ret = tl::get_joint_temperature(session_->fd(), temperatures);
   if (ret == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -1192,7 +1003,7 @@ void TL_Arm::handle_get_joint_voltage_service(
     std::shared_ptr<tl_ros2_interface::srv::GetJointVoltage::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1201,7 +1012,7 @@ void TL_Arm::handle_get_joint_voltage_service(
 
   std::vector<double> joint_voltage;
   std::vector<double> positioner_voltage;
-  tl::Result ret = tl::get_joint_voltage(socket_fd_, joint_voltage, positioner_voltage);
+  tl::Result ret = tl::get_joint_voltage(session_->fd(), joint_voltage, positioner_voltage);
   if (ret == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -1221,7 +1032,7 @@ void TL_Arm::handle_get_motor_current_service(
     std::shared_ptr<tl_ros2_interface::srv::GetMotorCurrent::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1230,7 +1041,7 @@ void TL_Arm::handle_get_motor_current_service(
 
   std::vector<double> motor_current{};
   std::vector<double> motor_current_sync{};
-  tl::Result ret = tl::get_current_motor_current(socket_fd_, motor_current, motor_current_sync);
+  tl::Result ret = tl::get_current_motor_current(session_->fd(), motor_current, motor_current_sync);
   if (ret == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -1248,7 +1059,7 @@ void TL_Arm::handle_get_joint_software_version_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetJointSoftwareVersion::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetJointSoftwareVersion::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1263,7 +1074,7 @@ void TL_Arm::handle_get_joint_software_version_service(
   }
 
   std::string version;
-  tl::Result ret = tl::query_joint_software_version(socket_fd_, request->axis_num, version);
+  tl::Result ret = tl::query_joint_software_version(session_->fd(), request->axis_num, version);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? version : "Failed to get joint software version";
 }
@@ -1272,7 +1083,7 @@ void TL_Arm::handle_get_nexmotion_lib_version_service(const std::shared_ptr<std_
                                                       std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1280,7 +1091,7 @@ void TL_Arm::handle_get_nexmotion_lib_version_service(const std::shared_ptr<std_
   }
 
   std::string version;
-  tl::Result ret = tl::get_nexmotion_lib_version(socket_fd_, version);
+  tl::Result ret = tl::get_nexmotion_lib_version(session_->fd(), version);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? version : "Failed to get nexmotion lib version, ret=" + std::to_string(ret);
 }
@@ -1289,14 +1100,14 @@ void TL_Arm::handle_restore_default_dh_param_service(
     const std::shared_ptr<tl_ros2_interface::srv::RestoreDefaultDHParam::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::RestoreDefaultDHParam::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
 
-  tl::Result ret = tl::restore_default_param_DH(socket_fd_, request->robot_num);
+  tl::Result ret = tl::restore_default_param_DH(session_->fd(), request->robot_num);
   response->success = (ret == tl::Result::SUCCESS);
   response->message =
       response->success ? "Restore default DH param successfully" : "Failed to restore default DH param";
@@ -1306,14 +1117,14 @@ void TL_Arm::handle_set_default_cartesian_param_service(const std::shared_ptr<st
                                                         std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
 
-  tl::Result ret = tl::set_default_cartesian_params(socket_fd_);
+  tl::Result ret = tl::set_default_cartesian_params(session_->fd());
   response->success = (ret == tl::Result::SUCCESS);
   response->message =
       response->success ? "Set default cartesian param successfully" : "Failed to set default cartesian param";
@@ -1322,14 +1133,14 @@ void TL_Arm::handle_set_default_cartesian_param_service(const std::shared_ptr<st
 void TL_Arm::handle_log_download_service(const std::shared_ptr<tl_ros2_interface::srv::LogDownload::Request> request,
                                          std::shared_ptr<tl_ros2_interface::srv::LogDownload::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
 
-  tl::Result ret = tl::log_download_by_quantity(socket_fd_, request->count, request->directory_path);
+  tl::Result ret = tl::log_download_by_quantity(session_->fd(), request->count, request->directory_path);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Log download successfully" : "Failed to download log";
 }
@@ -1337,7 +1148,7 @@ void TL_Arm::handle_log_download_service(const std::shared_ptr<tl_ros2_interface
 void TL_Arm::handle_set_drag_mode_service(const std::shared_ptr<tl_ros2_interface::srv::SetDragMode::Request> request,
                                           std::shared_ptr<tl_ros2_interface::srv::SetDragMode::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1351,7 +1162,7 @@ void TL_Arm::handle_set_drag_mode_service(const std::shared_ptr<tl_ros2_interfac
     return;
   }
 
-  tl::Result ret = tl::set_darg_mode(socket_fd_, static_cast<tl::DragMode>(request->mode));
+  tl::Result ret = tl::set_darg_mode(session_->fd(), static_cast<tl::DragMode>(request->mode));
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Set drag mode successfully" : "Failed to set drag mode";
 }
@@ -1360,7 +1171,7 @@ void TL_Arm::handle_get_drag_status_service(const std::shared_ptr<std_srvs::srv:
                                             std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1368,7 +1179,7 @@ void TL_Arm::handle_get_drag_status_service(const std::shared_ptr<std_srvs::srv:
   }
 
   bool endFlag = false;
-  tl::Result ret = tl::get_drag_thread_is_end(socket_fd_, endFlag);
+  tl::Result ret = tl::get_drag_thread_is_end(session_->fd(), endFlag);
   if (ret == tl::Result::SUCCESS)
   {
     response->success = endFlag;
@@ -1384,14 +1195,14 @@ void TL_Arm::handle_get_drag_status_service(const std::shared_ptr<std_srvs::srv:
 void TL_Arm::handle_track_save_service(const std::shared_ptr<tl_ros2_interface::srv::TrackSave::Request> request,
                                        std::shared_ptr<tl_ros2_interface::srv::TrackSave::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
 
-  tl::Result ret = tl::track_record_save(socket_fd_, request->traj_name);
+  tl::Result ret = tl::track_record_save(session_->fd(), request->traj_name);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Track save successfully" : "Failed to save track";
 }
@@ -1400,14 +1211,14 @@ void TL_Arm::handle_track_playback_service(
     const std::shared_ptr<tl_ros2_interface::srv::TrackPlayback::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::TrackPlayback::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
 
-  tl::Result ret = tl::track_record_playback(socket_fd_, request->vel);
+  tl::Result ret = tl::track_record_playback(session_->fd(), request->vel);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Track playback successfully" : "Failed to playback track";
 }
@@ -1415,7 +1226,7 @@ void TL_Arm::handle_track_playback_service(
 void TL_Arm::handle_set_tool_param_service(const std::shared_ptr<tl_ros2_interface::srv::SetToolParam::Request> request,
                                            std::shared_ptr<tl_ros2_interface::srv::SetToolParam::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1435,7 +1246,7 @@ void TL_Arm::handle_set_tool_param_service(const std::shared_ptr<tl_ros2_interfa
   param.payloadMassCenter_Y = request->param.payload_mass_center_y;
   param.payloadMassCenter_Z = request->param.payload_mass_center_z;
 
-  tl::Result ret = tl::set_tool_hand_param(socket_fd_, request->tool_num, param);
+  tl::Result ret = tl::set_tool_hand_param(session_->fd(), request->tool_num, param);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Set tool hand param successfully" : "Failed to set tool hand param";
 }
@@ -1443,7 +1254,7 @@ void TL_Arm::handle_set_tool_param_service(const std::shared_ptr<tl_ros2_interfa
 void TL_Arm::handle_set_user_coord_service(const std::shared_ptr<tl_ros2_interface::srv::SetUserCoord::Request> request,
                                            std::shared_ptr<tl_ros2_interface::srv::SetUserCoord::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1460,7 +1271,7 @@ void TL_Arm::handle_set_user_coord_service(const std::shared_ptr<tl_ros2_interfa
   param.position[4] = request->pos.rpy.y;
   param.position[5] = request->pos.rpy.z;
 
-  tl::Result ret = tl::set_user_coordinate_data(socket_fd_, request->user_num, param);
+  tl::Result ret = tl::set_user_coordinate_data(session_->fd(), request->user_num, param);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Set user coordinate successfully" : "Failed to set user coordinate";
 }
@@ -1469,14 +1280,14 @@ void TL_Arm::handle_set_axis_zero_pos_service(
     const std::shared_ptr<tl_ros2_interface::srv::SetAxisZeroPos::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::SetAxisZeroPos::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
 
-  tl::Result ret = tl::set_axis_zero_position(socket_fd_, request->axis);
+  tl::Result ret = tl::set_axis_zero_position(session_->fd(), request->axis);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Set user coordinate successfully" : "Failed to set user coordinate";
 }
@@ -1485,14 +1296,14 @@ void TL_Arm::handle_set_current_coord_service(
     const std::shared_ptr<tl_ros2_interface::srv::SetCurrentCoord::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::SetCurrentCoord::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
 
-  tl::Result ret = tl::set_current_coord(socket_fd_, static_cast<tl::Coord>(request->coord));
+  tl::Result ret = tl::set_current_coord(session_->fd(), static_cast<tl::Coord>(request->coord));
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Set current coordinate successfully" : "Failed to set current coordinate";
 }
@@ -1502,7 +1313,7 @@ void TL_Arm::handle_get_current_coord_service(
     std::shared_ptr<tl_ros2_interface::srv::GetCurrentCoord::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1510,7 +1321,7 @@ void TL_Arm::handle_get_current_coord_service(
   }
 
   tl::Coord coord = tl::Coord::JOINT;
-  tl::Result ret = tl::get_current_coord(socket_fd_, coord);
+  tl::Result ret = tl::get_current_coord(session_->fd(), coord);
   if (ret == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -1527,15 +1338,15 @@ void TL_Arm::handle_get_current_coord_service(
 void TL_Arm::handle_set_coord_num_service(const std::shared_ptr<tl_ros2_interface::srv::SetCoordNum::Request> request,
                                           std::shared_ptr<tl_ros2_interface::srv::SetCoordNum::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
 
-  tl::Result ret = tl::set_tool_hand_number(socket_fd_, request->tool_num);
-  tl::Result ret1 = tl::set_user_coord_number(socket_fd_, request->user_num);
+  tl::Result ret = tl::set_tool_hand_number(session_->fd(), request->tool_num);
+  tl::Result ret1 = tl::set_user_coord_number(session_->fd(), request->user_num);
   if (ret == tl::Result::SUCCESS && ret1 == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -1552,7 +1363,7 @@ void TL_Arm::handle_get_coord_num_service(const std::shared_ptr<tl_ros2_interfac
                                           std::shared_ptr<tl_ros2_interface::srv::GetCoordNum::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1560,8 +1371,8 @@ void TL_Arm::handle_get_coord_num_service(const std::shared_ptr<tl_ros2_interfac
   }
 
   int toolNum = -1, userNum = -1;
-  tl::Result ret = tl::get_tool_hand_number(socket_fd_, toolNum);
-  tl::Result ret1 = tl::get_user_coord_number(socket_fd_, userNum);
+  tl::Result ret = tl::get_tool_hand_number(session_->fd(), toolNum);
+  tl::Result ret1 = tl::get_user_coord_number(session_->fd(), userNum);
   if (ret == tl::Result::SUCCESS && ret1 == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -1580,7 +1391,7 @@ void TL_Arm::handle_set_digital_output_service(
     const std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1594,7 +1405,7 @@ void TL_Arm::handle_set_digital_output_service(
     return;
   }
 
-  tl::Result ret = tl::set_digital_output(socket_fd_, request->port, static_cast<tl::IoLevel>(request->value));
+  tl::Result ret = tl::set_digital_output(session_->fd(), request->port, static_cast<tl::IoLevel>(request->value));
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Set digital output successfully" : "Failed to set digital output";
 }
@@ -1604,7 +1415,7 @@ void TL_Arm::handle_get_digital_input_output_service(
     std::shared_ptr<tl_ros2_interface::srv::GetDigitalInputOutput::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1613,8 +1424,8 @@ void TL_Arm::handle_get_digital_input_output_service(
 
   std::vector<int> digitalInput;
   std::vector<int> digitalOutput;
-  tl::Result ret = tl::get_digital_input(socket_fd_, digitalInput);
-  tl::Result ret1 = tl::get_digital_output(socket_fd_, digitalOutput);
+  tl::Result ret = tl::get_digital_input(session_->fd(), digitalInput);
+  tl::Result ret1 = tl::get_digital_output(session_->fd(), digitalOutput);
   if (ret == tl::Result::SUCCESS && ret1 == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -1632,7 +1443,7 @@ void TL_Arm::handle_get_digital_input_output_service(
 void TL_Arm::handle_modbus_write_service(const std::shared_ptr<tl_ros2_interface::srv::ModbusWrite::Request> request,
                                          std::shared_ptr<tl_ros2_interface::srv::ModbusWrite::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1647,7 +1458,7 @@ void TL_Arm::handle_modbus_write_service(const std::shared_ptr<tl_ros2_interface
     return;
   }
 
-  tl::Result ret = tl::modbus_set_master_parameter(socket_fd_, request->master_id, master_param);
+  tl::Result ret = tl::modbus_set_master_parameter(session_->fd(), request->master_id, master_param);
   if (ret != tl::Result::SUCCESS)
   {
     response->success = false;
@@ -1655,7 +1466,7 @@ void TL_Arm::handle_modbus_write_service(const std::shared_ptr<tl_ros2_interface
     return;
   }
 
-  ret = tl::modbus_open_master(socket_fd_, request->master_id);
+  ret = tl::modbus_open_master(session_->fd(), request->master_id);
   if (ret != tl::Result::SUCCESS)
   {
     response->success = false;
@@ -1664,7 +1475,7 @@ void TL_Arm::handle_modbus_write_service(const std::shared_ptr<tl_ros2_interface
   }
 
   std::vector<int> data = request->data;
-  ret = tl::modbus_write_multiple_holding_registers(socket_fd_, request->master_id, request->addr, data);
+  ret = tl::modbus_write_multiple_holding_registers(session_->fd(), request->master_id, request->addr, data);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Modbus write successfully" : "Failed to write Modbus";
 }
@@ -1672,7 +1483,7 @@ void TL_Arm::handle_modbus_write_service(const std::shared_ptr<tl_ros2_interface
 void TL_Arm::handle_modbus_read_service(const std::shared_ptr<tl_ros2_interface::srv::ModbusRead::Request> request,
                                         std::shared_ptr<tl_ros2_interface::srv::ModbusRead::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1687,7 +1498,7 @@ void TL_Arm::handle_modbus_read_service(const std::shared_ptr<tl_ros2_interface:
     return;
   }
 
-  tl::Result ret = tl::modbus_set_master_parameter(socket_fd_, request->master_id, master_param);
+  tl::Result ret = tl::modbus_set_master_parameter(session_->fd(), request->master_id, master_param);
   if (ret != tl::Result::SUCCESS)
   {
     response->success = false;
@@ -1695,7 +1506,7 @@ void TL_Arm::handle_modbus_read_service(const std::shared_ptr<tl_ros2_interface:
     return;
   }
 
-  ret = tl::modbus_open_master(socket_fd_, request->master_id);
+  ret = tl::modbus_open_master(session_->fd(), request->master_id);
   if (ret != tl::Result::SUCCESS)
   {
     response->success = false;
@@ -1704,7 +1515,7 @@ void TL_Arm::handle_modbus_read_service(const std::shared_ptr<tl_ros2_interface:
   }
 
   std::vector<int> data{};
-  ret = tl::modbus_read_holding_registers(socket_fd_, request->master_id, request->addr, request->quantity, data);
+  ret = tl::modbus_read_holding_registers(session_->fd(), request->master_id, request->addr, request->quantity, data);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Modbus read successfully" : "Failed to read Modbus";
   response->data = data;
@@ -1714,7 +1525,7 @@ void TL_Arm::handle_coord_transform_service(
     const std::shared_ptr<tl_ros2_interface::srv::CoordTransform::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::CoordTransform::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1739,7 +1550,7 @@ void TL_Arm::handle_coord_transform_service(
   std::vector<double> referencePos = request->reference_pos;
   std::vector<double> targetPos;
 
-  tl::Result ret = tl::get_origin_coord_to_target_coord(socket_fd_, static_cast<tl::Coord>(request->origin_coord),
+  tl::Result ret = tl::get_origin_coord_to_target_coord(session_->fd(), static_cast<tl::Coord>(request->origin_coord),
                                                         originPos, static_cast<tl::Coord>(request->target_coord),
                                                         targetPos, request->form, referencePos);
   response->success = (ret == tl::Result::SUCCESS);
@@ -1751,7 +1562,7 @@ void TL_Arm::handle_get_pos_reachable_service(
     const std::shared_ptr<tl_ros2_interface::srv::GetPosReachable::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::GetPosReachable::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1768,7 +1579,7 @@ void TL_Arm::handle_get_pos_reachable_service(
   std::vector<double> queryPos = request->pos;
 
   bool result = false;
-  tl::Result ret = tl::get_pos_reachable(socket_fd_, queryPos, request->move_type, result);
+  tl::Result ret = tl::get_pos_reachable(session_->fd(), queryPos, request->move_type, result);
   if (ret == tl::Result::SUCCESS)
   {
     response->success = result;
@@ -1784,7 +1595,7 @@ void TL_Arm::handle_get_pos_reachable_service(
 void TL_Arm::handle_set_dh_param_service(const std::shared_ptr<tl_ros2_interface::srv::SetDHParam::Request> request,
                                          std::shared_ptr<tl_ros2_interface::srv::SetDHParam::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1794,7 +1605,7 @@ void TL_Arm::handle_set_dh_param_service(const std::shared_ptr<tl_ros2_interface
   // 新 SDK: 标准DH参数 alpha/a/theta/d，逐字段映射到 SDK 的 tl::RobotDHParam
   tl::RobotDHParam dh = tl_driver::convert::to_dh_param(request->param);
 
-  tl::Result ret = tl::set_robot_dh_param(socket_fd_, dh);
+  tl::Result ret = tl::set_robot_dh_param(session_->fd(), dh);
   if (ret == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -1811,7 +1622,7 @@ void TL_Arm::handle_get_dh_param_service(const std::shared_ptr<tl_ros2_interface
                                          std::shared_ptr<tl_ros2_interface::srv::GetDHParam::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1820,7 +1631,7 @@ void TL_Arm::handle_get_dh_param_service(const std::shared_ptr<tl_ros2_interface
 
   // 新 SDK: 标准DH参数 alpha/a/theta/d，逐字段映射到 ROS2 消息
   tl::RobotDHParam dh{};
-  tl::Result ret = tl::get_robot_dh_param(socket_fd_, dh);
+  tl::Result ret = tl::get_robot_dh_param(session_->fd(), dh);
   if (ret == tl::Result::SUCCESS)
   {
     tl_driver::convert::from_dh_param(dh, response->param);
@@ -1839,7 +1650,7 @@ void TL_Arm::handle_get_all_job_filename_service(
     std::shared_ptr<tl_ros2_interface::srv::GetAllJobFileName::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1847,7 +1658,7 @@ void TL_Arm::handle_get_all_job_filename_service(
   }
 
   std::vector<std::vector<std::string>> robotsFile;
-  tl::Result ret = tl::job_get_all_jobfile_name(socket_fd_, robotsFile);
+  tl::Result ret = tl::job_get_all_jobfile_name(session_->fd(), robotsFile);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Get all job filename successfully" : "Failed to get all job filename";
   response->robots_file.clear();
@@ -1862,33 +1673,33 @@ void TL_Arm::handle_get_all_job_filename_service(
 void TL_Arm::handle_job_run_service(const std::shared_ptr<tl_ros2_interface::srv::JobRun::Request> request,
                                     std::shared_ptr<tl_ros2_interface::srv::JobRun::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
 
-  tl::Result ret = tl::job_run(socket_fd_, request->job_name);
+  tl::Result ret = tl::job_run(session_->fd(), request->job_name);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Job run successfully" : "Failed to run job";
 
   // // 运行完成后会自动下电
-  // power_off();
-  // power_on();
+  // session_->power_off();
+  // session_->power_on();
 }
 
 void TL_Arm::handle_job_delete_service(const std::shared_ptr<tl_ros2_interface::srv::JobRun::Request> request,
                                        std::shared_ptr<tl_ros2_interface::srv::JobRun::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
 
-  tl::Result ret = tl::job_delete(socket_fd_, request->job_name);
+  tl::Result ret = tl::job_delete(session_->fd(), request->job_name);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Job delete successfully" : "Failed to delete job";
 }
@@ -1897,7 +1708,7 @@ void TL_Arm::handle_job_insert_movej_service(
     const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1906,7 +1717,7 @@ void TL_Arm::handle_job_insert_movej_service(
 
   tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(request->cmd);
 
-  tl::Result ret = tl::job_insert_moveJ(socket_fd_, request->line, cmd);
+  tl::Result ret = tl::job_insert_moveJ(session_->fd(), request->line, cmd);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Job insert movej successfully" : "Failed to insert job movej";
 }
@@ -1915,7 +1726,7 @@ void TL_Arm::handle_job_insert_movel_service(
     const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1924,7 +1735,7 @@ void TL_Arm::handle_job_insert_movel_service(
 
   tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(request->cmd);
 
-  tl::Result ret = tl::job_insert_moveL(socket_fd_, request->line, cmd);
+  tl::Result ret = tl::job_insert_moveL(session_->fd(), request->line, cmd);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Job insert movel successfully" : "Failed to insert job movel";
 }
@@ -1933,7 +1744,7 @@ void TL_Arm::handle_job_insert_imove_service(
     const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1942,7 +1753,7 @@ void TL_Arm::handle_job_insert_imove_service(
 
   tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(request->cmd);
 
-  tl::Result ret = tl::job_insert_imove(socket_fd_, request->line, cmd);
+  tl::Result ret = tl::job_insert_imove(session_->fd(), request->line, cmd);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Job insert imove successfully" : "Failed to insert job imove";
 }
@@ -1951,7 +1762,7 @@ void TL_Arm::handle_job_insert_movec_service(
     const std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::JobInsertMove::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1960,7 +1771,7 @@ void TL_Arm::handle_job_insert_movec_service(
 
   tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(request->cmd);
 
-  tl::Result ret = tl::job_insert_moveC(socket_fd_, request->line, cmd);
+  tl::Result ret = tl::job_insert_moveC(session_->fd(), request->line, cmd);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Job insert movec successfully" : "Failed to insert job movec";
 }
@@ -1968,7 +1779,7 @@ void TL_Arm::handle_job_insert_movec_service(
 void TL_Arm::handle_set_global_pos_service(const std::shared_ptr<tl_ros2_interface::srv::SetGlobalPos::Request> request,
                                            std::shared_ptr<tl_ros2_interface::srv::SetGlobalPos::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -1982,7 +1793,7 @@ void TL_Arm::handle_set_global_pos_service(const std::shared_ptr<tl_ros2_interfa
     return;
   }
 
-  tl::Result ret = tl::set_global_position(socket_fd_, request->pos_name, request->pos_info);
+  tl::Result ret = tl::set_global_position(session_->fd(), request->pos_name, request->pos_info);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Set global pos successfully" : "Failed to set global pos";
 }
@@ -1990,7 +1801,7 @@ void TL_Arm::handle_set_global_pos_service(const std::shared_ptr<tl_ros2_interfa
 void TL_Arm::handle_get_global_pos_service(const std::shared_ptr<tl_ros2_interface::srv::GetGlobalPos::Request> request,
                                            std::shared_ptr<tl_ros2_interface::srv::GetGlobalPos::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -2005,7 +1816,7 @@ void TL_Arm::handle_get_global_pos_service(const std::shared_ptr<tl_ros2_interfa
   }
 
   std::vector<double> pos;
-  tl::Result ret = tl::get_global_position(socket_fd_, request->pos_name, pos);
+  tl::Result ret = tl::get_global_position(session_->fd(), request->pos_name, pos);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Get global pos successfully" : "Failed to get global pos";
   response->pos = pos;
@@ -2015,7 +1826,7 @@ void TL_Arm::handle_set_current_mode_service(
     const std::shared_ptr<tl_ros2_interface::srv::SetCurrentMode::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::SetCurrentMode::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -2029,7 +1840,7 @@ void TL_Arm::handle_set_current_mode_service(
     return;
   }
 
-  tl::Result ret = tl::set_current_mode(socket_fd_, static_cast<tl::RobotMode>(request->mode));
+  tl::Result ret = tl::set_current_mode(session_->fd(), static_cast<tl::RobotMode>(request->mode));
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Set current mode successfully" : "Failed to set current mode";
 }
@@ -2039,7 +1850,7 @@ void TL_Arm::handle_get_current_mode_service(
     std::shared_ptr<tl_ros2_interface::srv::GetCurrentMode::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -2047,7 +1858,7 @@ void TL_Arm::handle_get_current_mode_service(
   }
 
   tl::RobotMode mode = static_cast<tl::RobotMode>(-1); // -1 哨兵值：查询失败时 response->mode 保持 -1
-  tl::Result ret = tl::get_current_mode(socket_fd_, mode);
+  tl::Result ret = tl::get_current_mode(session_->fd(), mode);
   response->mode = static_cast<int>(mode);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Get current mode successfully" : "Failed to get current mode";
@@ -2056,7 +1867,7 @@ void TL_Arm::handle_get_current_mode_service(
 void TL_Arm::handle_open_servoj_service(const std::shared_ptr<tl_ros2_interface::srv::OpenServoJ::Request> request,
                                         std::shared_ptr<tl_ros2_interface::srv::OpenServoJ::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -2067,7 +1878,7 @@ void TL_Arm::handle_open_servoj_service(const std::shared_ptr<tl_ros2_interface:
   std::vector<double> amax = request->amax;
   std::vector<double> jmax = request->jmax;
 
-  tl::Result ret = tl::open_servoJ(socket_fd_aux_, vmax, amax, jmax);
+  tl::Result ret = tl::open_servoJ(session_->fd_aux(), vmax, amax, jmax);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "ServoJ open successfully" : "Failed to open ServoJ";
 }
@@ -2076,14 +1887,14 @@ void TL_Arm::handle_close_servoj_service(const std::shared_ptr<std_srvs::srv::Tr
                                          std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
 
-  tl::Result ret = tl::close_servoJ(socket_fd_aux_);
+  tl::Result ret = tl::close_servoJ(session_->fd_aux());
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "ServoJ close successfully" : "Failed to close ServoJ";
 }
@@ -2092,23 +1903,23 @@ void TL_Arm::handle_queue_motion_set_status_service(
     const std::shared_ptr<tl_ros2_interface::srv::QueueMotionSetStatus::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::QueueMotionSetStatus::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
     return;
   }
 
-  tl::Result ret = tl::queue_motion_set_status(socket_fd_, request->status);
+  tl::Result ret = tl::queue_motion_set_status(session_->fd(), request->status);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Set queue motion status successfully" : "Failed to set queue motion status";
 
   // 关闭连续运动模式后设置为示教模式
   if (!request->status)
   {
-    if (tl::set_current_mode(socket_fd_, tl::RobotMode::TEACH) == tl::Result::SUCCESS)
+    if (tl::set_current_mode(session_->fd(), tl::RobotMode::TEACH) == tl::Result::SUCCESS)
     {
-      power_off();
+      session_->power_off();
     }
   }
 }
@@ -2117,7 +1928,7 @@ void TL_Arm::handle_queue_motion_movej_service(
     const std::shared_ptr<tl_ros2_interface::srv::QueueMotionMoveJ::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::QueueMotionMoveJ::Response> response)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -2126,7 +1937,7 @@ void TL_Arm::handle_queue_motion_movej_service(
 
   tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(request->cmd);
 
-  tl::Result ret = tl::queue_motion_push_back_moveJ(socket_fd_, cmd);
+  tl::Result ret = tl::queue_motion_push_back_moveJ(session_->fd(), cmd);
   if (ret != tl::Result::SUCCESS)
   {
     response->success = false;
@@ -2137,7 +1948,7 @@ void TL_Arm::handle_queue_motion_movej_service(
   // 新 SDK 签名: queue_motion_send_to_controller(socketFd, int size, bool isContinue = false)
   //   size=0 表示发送全部队列指令；isContinue=true 继续排队不运动，false 立即执行
   // 旧写法把 bool 传给了 size 参数，导致 is_continue=true 时只发送第 1 条，已修正
-  ret = tl::queue_motion_send_to_controller(socket_fd_, 0, request->is_continue);
+  ret = tl::queue_motion_send_to_controller(session_->fd(), 0, request->is_continue);
   response->success = (ret == tl::Result::SUCCESS);
   response->message =
       response->success ? "Queue motion movej execute successfully" : "Failed to execute queue motion movej";
@@ -2147,7 +1958,7 @@ void TL_Arm::handle_queue_motion_stop_service(const std::shared_ptr<std_srvs::sr
                                               std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
   (void)request;
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -2155,7 +1966,7 @@ void TL_Arm::handle_queue_motion_stop_service(const std::shared_ptr<std_srvs::sr
   }
 
   bool status = false;
-  tl::Result ret = tl::queue_motion_get_status(socket_fd_, status);
+  tl::Result ret = tl::queue_motion_get_status(session_->fd(), status);
   if (ret != tl::Result::SUCCESS)
   {
     response->success = false;
@@ -2169,7 +1980,7 @@ void TL_Arm::handle_queue_motion_stop_service(const std::shared_ptr<std_srvs::sr
     return;
   }
 
-  ret = tl::queue_motion_stop_not_power_off(socket_fd_);
+  ret = tl::queue_motion_stop_not_power_off(session_->fd());
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Queue motion movej stop successfully" : "Failed to stop queue motion movej";
 }
@@ -2180,7 +1991,7 @@ void TL_Arm::handle_get_current_motor_torque_service(
 {
   (void)request;
 
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -2189,7 +2000,7 @@ void TL_Arm::handle_get_current_motor_torque_service(
 
   std::vector<int> motor_torque{};
   std::vector<int> motor_torque_sync{};
-  tl::Result ret = tl::get_current_motor_torque(socket_fd_, motor_torque, motor_torque_sync);
+  tl::Result ret = tl::get_current_motor_torque(session_->fd(), motor_torque, motor_torque_sync);
   if (ret == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -2210,7 +2021,7 @@ void TL_Arm::handle_get_current_line_joint_speed_service(
 {
   (void)request;
 
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     response->success = false;
     response->message = "Arm is not connected";
@@ -2220,7 +2031,8 @@ void TL_Arm::handle_get_current_line_joint_speed_service(
   double line_speed = 0.0;
   std::vector<double> joint_speed{};
   std::vector<double> joint_speed_sync{};
-  tl::Result ret = tl::get_current_line_speed_and_joint_speed(socket_fd_, line_speed, joint_speed, joint_speed_sync);
+  tl::Result ret =
+      tl::get_current_line_speed_and_joint_speed(session_->fd(), line_speed, joint_speed, joint_speed_sync);
   if (ret == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -2238,7 +2050,7 @@ void TL_Arm::handle_get_current_line_joint_speed_service(
 
 void TL_Arm::handle_movej_topic(const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     RCLCPP_WARN(this->get_logger(), "[MoveJ]: arm is not connected");
     return;
@@ -2246,14 +2058,14 @@ void TL_Arm::handle_movej_topic(const tl_ros2_interface::msg::MoveCommand::Share
 
   tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(*msg);
 
-  tl::Result ret = tl::robot_movej(socket_fd_, cmd);
+  tl::Result ret = tl::robot_movej(session_->fd(), cmd);
 
   RCLCPP_INFO(this->get_logger(), "[MoveJ]: result=%s", tl_driver::result_to_string(ret));
 }
 
 void TL_Arm::handle_movel_topic(const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     RCLCPP_WARN(this->get_logger(), "[MoveL]: arm is not connected");
     return;
@@ -2261,7 +2073,7 @@ void TL_Arm::handle_movel_topic(const tl_ros2_interface::msg::MoveCommand::Share
 
   tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(*msg);
 
-  tl::Result ret = tl::robot_movel(socket_fd_, cmd);
+  tl::Result ret = tl::robot_movel(session_->fd(), cmd);
 
   RCLCPP_INFO(this->get_logger(), "[MoveL]: result=%s", tl_driver::result_to_string(ret));
 }
@@ -2271,14 +2083,14 @@ void TL_Arm::handle_movel_topic(const tl_ros2_interface::msg::MoveCommand::Share
  */
 void TL_Arm::handle_set_servoj_pos_topic(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     RCLCPP_WARN(this->get_logger(), "[ServoJ]: arm is not connected");
     return;
   }
 
   std::vector<double> pos = msg->data;
-  tl::Result ret = tl::set_servoJ_pos(socket_fd_aux_, pos);
+  tl::Result ret = tl::set_servoJ_pos(session_->fd_aux(), pos);
   RCLCPP_INFO(this->get_logger(), "[ServoJ]: result=%s", tl_driver::result_to_string(ret));
 }
 
@@ -2291,7 +2103,7 @@ void TL_Arm::handle_set_servoj_pos_topic(const std_msgs::msg::Float64MultiArray:
  */
 void TL_Arm::handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMove::SharedPtr msg)
 {
-  if (!is_connected())
+  if (!session_->is_connected())
   {
     RCLCPP_WARN(this->get_logger(), "[ServoL]: arm is not connected");
     return;
@@ -2305,7 +2117,7 @@ void TL_Arm::handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMov
   }
 
   std::vector<double> current_pos;
-  tl::Result ret = tl::get_current_position(socket_fd_, static_cast<tl::Coord>(coord), current_pos);
+  tl::Result ret = tl::get_current_position(session_->fd(), static_cast<tl::Coord>(coord), current_pos);
   if (ret != tl::Result::SUCCESS || current_pos.size() < 6)
   {
     RCLCPP_ERROR(this->get_logger(), "[ServoL]: Failed to get current position");
@@ -2367,8 +2179,8 @@ void TL_Arm::handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMov
 
     // IK: 笛卡尔(coord) -> 关节(0)
     std::vector<double> joint_pos;
-    ret = tl::get_origin_coord_to_target_coord(socket_fd_, static_cast<tl::Coord>(coord), interp_pos, tl::Coord::JOINT,
-                                               joint_pos, 0, ref_pos);
+    ret = tl::get_origin_coord_to_target_coord(session_->fd(), static_cast<tl::Coord>(coord), interp_pos,
+                                               tl::Coord::JOINT, joint_pos, 0, ref_pos);
 
     if (ret != tl::Result::SUCCESS)
     {
@@ -2378,7 +2190,7 @@ void TL_Arm::handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMov
     }
 
     // 通过 servoj 发送关节角
-    ret = tl::set_servoJ_pos(socket_fd_aux_, joint_pos);
+    ret = tl::set_servoJ_pos(session_->fd_aux(), joint_pos);
     if (ret != tl::Result::SUCCESS)
     {
       RCLCPP_WARN(this->get_logger(), "[ServoL] set_servoJ_pos failed at point %d/%d, ret=%d", i, N,
@@ -2394,118 +2206,6 @@ void TL_Arm::handle_set_servol_pos_topic(const tl_ros2_interface::msg::ServolMov
               trx, try_, trz, N);
 }
 
-void TL_Arm::publish_arm_state()
-{
-  if (!is_connected())
-  {
-    RCLCPP_WARN(this->get_logger(), "[Pub]: arm is not connected");
-    return;
-  }
-
-  publish_running_status();
-
-  std::vector<double> joint_pose;
-  std::vector<double> tcp_pose;
-
-  joint_pose.clear();
-  tcp_pose.clear();
-
-  if (tl::get_current_position(socket_fd_, tl::Coord::JOINT, joint_pose) == tl::Result::SUCCESS)
-  {
-    // 将角度转换为弧度(批量转换)
-    const double deg_to_rad = M_PI / 180.0;
-    std::transform(joint_pose.begin(), joint_pose.end(), joint_pose.begin(),
-                   [deg_to_rad](double deg)
-                   {
-                     return deg * deg_to_rad;
-                   });
-
-    publish_joint_pose(joint_pose);
-  }
-
-  if (tl::get_current_position(socket_fd_, tl::Coord::BASE, tcp_pose) == tl::Result::SUCCESS)
-  {
-    publish_tcp_pose(tcp_pose);
-  }
-}
-
-void TL_Arm::publish_joint_pose(const std::vector<double>& joint_pose)
-{
-  sensor_msgs::msg::JointState msg;
-  msg.header.stamp = this->now();
-  msg.name = arm_joints_;
-  switch (ndof_)
-  {
-    case 6:
-      msg.position.assign(joint_pose.begin(), joint_pose.end() - 1);
-      break;
-    case 7:
-      msg.position.assign(joint_pose.begin(), joint_pose.end());
-      break;
-  }
-
-  joint_state_pub_->publish(msg);
-}
-
-void TL_Arm::publish_tcp_pose(const std::vector<double>& tcp_pose)
-{
-  // SDK 返回：位置 mm、欧拉角弧度（rad）→ 统一转换为 ROS 标准单位：m 和 rad
-  constexpr double kMmToM = 1.0 / 1000.0;
-
-  tl_ros2_interface::msg::CartesianPose msg;
-  msg.header.stamp = this->now();
-  msg.header.frame_id = "base_link";
-
-  msg.position.x = tcp_pose[0] * kMmToM;
-  msg.position.y = tcp_pose[1] * kMmToM;
-  msg.position.z = tcp_pose[2] * kMmToM;
-
-  msg.rpy.x = tcp_pose[3];
-  msg.rpy.y = tcp_pose[4];
-  msg.rpy.z = tcp_pose[5];
-
-  switch (ndof_)
-  {
-    case 6:
-      msg.arm_angle = 0;
-      break;
-    case 7:
-      msg.arm_angle = tcp_pose[6];
-      break;
-  }
-
-  tcp_pose_pub_->publish(msg);
-}
-
-void TL_Arm::publish_running_status()
-{
-  tl::RunState running_status = tl::RunState::STOP;
-  tl::Result ret = tl::get_robot_running_state(socket_fd_, running_status);
-  if (ret != tl::Result::SUCCESS)
-  {
-    RCLCPP_INFO(this->get_logger(), "[Read Running Status]: failed to read running status, result=%s",
-                tl_driver::result_to_string(ret));
-    return;
-  }
-
-  tl_ros2_interface::msg::ArmStatus msg;
-
-  msg.stamp = this->now();
-  switch (running_status)
-  {
-    case tl::RunState::STOP:
-      msg.run_state = "STOP";
-      break;
-    case tl::RunState::PAUSE:
-      msg.run_state = "PAUSE";
-      break;
-    case tl::RunState::RUNNING:
-      msg.run_state = "RUNNING";
-      break;
-  }
-
-  running_status_pub_->publish(msg);
-}
 
 int main(int argc, char **argv)
 {

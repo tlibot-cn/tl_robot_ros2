@@ -1,5 +1,5 @@
-#ifndef TL_DRIVER__MATH_QUATERNION_H_
-#define TL_DRIVER__MATH_QUATERNION_H_
+#ifndef TL_DRIVER__QUATERNION_H_
+#define TL_DRIVER__QUATERNION_H_
 
 /// @file quaternion.h
 /// @brief 欧拉角与四元数互转、四元数球面插值（纯函数，无 ROS / SDK 依赖）。
@@ -33,4 +33,4 @@ Rpy quat_to_rpy(const Quat& q) noexcept;
 Quat quat_slerp(const Quat& q1, const Quat& q2, double t) noexcept;
 } // namespace tl_driver::math
 
-#endif // TL_DRIVER__MATH_QUATERNION_H_
+#endif // TL_DRIVER__QUATERNION_H_
