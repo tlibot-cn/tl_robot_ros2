@@ -102,6 +102,21 @@ install(FILES
   DESTINATION lib/${PROJECT_NAME}
 )
 
+# 纯逻辑层单元测试（不依赖机械臂与 SDK 动态库）
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(test_quaternion test/test_quaternion.cpp src/math/quaternion.cpp)
+  target_include_directories(test_quaternion PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
+  ament_add_gtest(test_msg_convert test/test_msg_convert.cpp src/convert/msg_convert.cpp)
+  target_include_directories(test_msg_convert PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/lib/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  ament_target_dependencies(test_msg_convert tl_ros2_interface)
+endif()
+
 # 创建 libnrc_host.so 符号链接，兼容旧版 SONAME 引用
 install(CODE "
   execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
