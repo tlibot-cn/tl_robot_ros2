@@ -1,8 +1,8 @@
 #include <thread>
 
-#include "tl_driver/arm_client.hpp"
-#include "tl_driver/arm_sdk.hpp"
-#include "tl_driver/arm_session.hpp"
+#include "arm_client.hpp"
+#include "arm_sdk.hpp"
+#include "arm_session.hpp"
 
 /**
  * @brief 机械臂会话状态与生命周期实现。

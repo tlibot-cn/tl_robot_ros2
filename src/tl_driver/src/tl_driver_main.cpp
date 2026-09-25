@@ -5,7 +5,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include "tl_driver/tl_driver.h"
+#include "node/driver_node.hpp"
 
 /**
  * @brief tl_driver 进程入口：多线程执行器装配与节点生命周期。

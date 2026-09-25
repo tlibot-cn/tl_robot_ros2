@@ -1,9 +1,9 @@
 #include <algorithm>
 #include <cmath>
 
-#include "tl_driver/arm_client.hpp"
-#include "tl_driver/arm_sdk.hpp"
-#include "tl_driver/node/publishers.hpp"
+#include "arm_client.hpp"
+#include "arm_sdk.hpp"
+#include "node/publishers.hpp"
 
 /**
  * @brief 状态发布实现（joint_states / tcp_pose / arm_status）。

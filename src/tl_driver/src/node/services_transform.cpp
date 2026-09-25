@@ -4,9 +4,9 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include "tl_driver/arm_sdk.hpp"
-#include "tl_driver/node/registrars.hpp"
-#include "tl_driver/tl_driver.h"
+#include "arm_sdk.hpp"
+#include "node/registrars.hpp"
+#include "node/driver_node.hpp"
 
 #include "tl_ros2_interface/srv/coord_transform.hpp"
 #include "tl_ros2_interface/srv/get_pos_reachable.hpp"

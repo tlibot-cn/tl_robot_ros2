@@ -3,7 +3,7 @@
 #include <cmath>
 #include <vector>
 
-#include "tl_driver/math/quaternion.hpp"
+#include "math/quaternion.hpp"
 
 /**
  * @brief 四元数/欧拉角转换与球面插值的单元测试（纯函数，无需机械臂）。

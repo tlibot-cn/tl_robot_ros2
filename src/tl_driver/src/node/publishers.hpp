@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "tl_driver/arm_session.hpp"
+#include "arm_session.hpp"
 #include "tl_ros2_interface/msg/arm_status.hpp"
 #include "tl_ros2_interface/msg/cartesian_pose.hpp"
 

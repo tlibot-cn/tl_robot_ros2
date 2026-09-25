@@ -1,7 +1,7 @@
 #ifndef TL_DRIVER__CONVERT__MSG_CONVERT_HPP_
 #define TL_DRIVER__CONVERT__MSG_CONVERT_HPP_
 
-#include "tl_driver/arm_sdk.hpp"
+#include "arm_sdk.hpp"
 
 #include "tl_ros2_interface/msg/modbus_master_param.hpp"
 #include "tl_ros2_interface/msg/move_command.hpp"

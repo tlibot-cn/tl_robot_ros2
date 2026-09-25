@@ -17,7 +17,7 @@
 | 包 | 作用 | 关键入口 |
 | --- | --- | --- |
 | `tl_ros2_interface` | 全部自定义接口（12 个 `.msg`、45 个 `.srv`，字段带单位注释；msg 中 4 个是话题载荷、7 个仅作 srv 嵌套参数、1 个未接线——**`msg/` 目录不是话题清单**，每个 `.msg` 头部标了用途） | `msg/`、`srv/`；**必须最先构建** |
-| `tl_driver` | 机械臂驱动，TCP 连控制器（65 服务 / 4 订阅 / 3 发布） | `src/node/driver_node.cpp`（节点装配与按域注册）、`src/node/services_*.cpp`、`src/node/topics.cpp`、`include/tl_driver/tl_driver.h`（`tl_driver::DriverNode`） |
+| `tl_driver` | 机械臂驱动，TCP 连控制器（65 服务 / 4 订阅 / 3 发布）；**头文件与实现同放 `src/`，本包不导出/不安装头文件** | `src/node/driver_node.cpp`（节点装配与按域注册）、`src/node/driver_node.hpp`（`tl_driver::DriverNode`）、`src/node/services_*.cpp`、`src/node/topics.cpp` |
 | `tl_teleop` | VR 遥操作（PXREA Robot SDK，100 Hz 控制循环） | `src/tl_teleop.cpp` |
 | `tl_teleop_f710` | F710 手柄遥操作（250 Hz）+ Gazebo 仿真桥接 | `src/tl_teleop_f710_node.cpp`、`src/tl_teleop_f710_sim_bridge.cpp` |
 | `tl_hardware` | ros2_control 硬件插件，接 `joint_trajectory_controller` ↔ `tl_driver` | `src/tl_hardware_interface.cpp`（`tl_hardware::TLHardwareInterface`） |

@@ -4,10 +4,10 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include "tl_driver/arm_client.hpp"
-#include "tl_driver/arm_sdk.hpp"
-#include "tl_driver/node/registrars.hpp"
-#include "tl_driver/tl_driver.h"
+#include "arm_client.hpp"
+#include "arm_sdk.hpp"
+#include "node/registrars.hpp"
+#include "node/driver_node.hpp"
 
 #include "std_srvs/srv/trigger.hpp"
 

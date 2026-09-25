@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <string>
 
-#include "tl_driver/arm_sdk.hpp"
+#include "arm_sdk.hpp"
 
 namespace tl_driver::arm_client
 {

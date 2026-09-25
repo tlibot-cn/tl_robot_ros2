@@ -6,12 +6,12 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include "tl_driver/arm_client.hpp"
-#include "tl_driver/arm_sdk.hpp"
-#include "tl_driver/convert/msg_convert.hpp"
-#include "tl_driver/math/quaternion.hpp"
-#include "tl_driver/node/registrars.hpp"
-#include "tl_driver/tl_driver.h"
+#include "arm_client.hpp"
+#include "arm_sdk.hpp"
+#include "convert/msg_convert.hpp"
+#include "math/quaternion.hpp"
+#include "node/registrars.hpp"
+#include "node/driver_node.hpp"
 
 #include "std_msgs/msg/float64_multi_array.hpp"
 #include "tl_ros2_interface/msg/move_command.hpp"

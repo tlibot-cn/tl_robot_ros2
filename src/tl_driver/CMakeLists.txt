@@ -17,7 +17,7 @@ if(NOT TL_PACKAGE_VERSION_MATCH)
 endif()
 set(TL_DRIVER_VERSION "${CMAKE_MATCH_1}")
 configure_file(
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/tl_driver/version.hpp.in"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/version.hpp.in"
   "${CMAKE_CURRENT_BINARY_DIR}/include/tl_driver/version.hpp"
   @ONLY
 )
@@ -69,7 +69,7 @@ add_executable(tl_driver
 )
 
 target_include_directories(tl_driver PRIVATE
-  "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
   "${CMAKE_CURRENT_BINARY_DIR}/include"
   "${CMAKE_CURRENT_SOURCE_DIR}/lib/include"
 )
@@ -139,12 +139,12 @@ if(BUILD_TESTING)
   # 纯逻辑单元测试：不需要机械臂，可在 CI 与容器内运行
   ament_add_gtest(test_quaternion test/test_quaternion.cpp src/math/quaternion.cpp)
   target_include_directories(test_quaternion PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )
 
   ament_add_gtest(test_msg_convert test/test_msg_convert.cpp src/convert/msg_convert.cpp)
   target_include_directories(test_msg_convert PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/lib/include"
   )
   ament_target_dependencies(test_msg_convert

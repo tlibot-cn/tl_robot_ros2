@@ -1,7 +1,7 @@
 #include <algorithm>
 #include <cmath>
 
-#include "tl_driver/math/quaternion.hpp"
+#include "math/quaternion.hpp"
 
 /**
  * @brief 四元数与欧拉角转换、球面插值的纯函数实现。

@@ -5,10 +5,10 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include "tl_driver/arm_sdk.hpp"
-#include "tl_driver/convert/msg_convert.hpp"
-#include "tl_driver/node/registrars.hpp"
-#include "tl_driver/tl_driver.h"
+#include "arm_sdk.hpp"
+#include "convert/msg_convert.hpp"
+#include "node/registrars.hpp"
+#include "node/driver_node.hpp"
 
 #include "std_srvs/srv/trigger.hpp"
 #include "tl_ros2_interface/srv/get_coord_num.hpp"

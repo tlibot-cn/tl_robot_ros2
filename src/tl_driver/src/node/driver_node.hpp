@@ -1,5 +1,5 @@
-#ifndef TL_DRIVER__TL_DRIVER_H_
-#define TL_DRIVER__TL_DRIVER_H_
+#ifndef TL_DRIVER__DRIVER_NODE_HPP_
+#define TL_DRIVER__DRIVER_NODE_HPP_
 
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/float64_multi_array.hpp>
@@ -10,8 +10,8 @@
 #include <utility>
 #include <vector>
 
-#include "tl_driver/arm_session.hpp"
-#include "tl_driver/node/publishers.hpp"
+#include "arm_session.hpp"
+#include "node/publishers.hpp"
 #include "tl_ros2_interface/msg/move_command.hpp"
 #include "tl_ros2_interface/msg/servol_move.hpp"
 
@@ -149,4 +149,4 @@ private:
 
 } // namespace tl_driver
 
-#endif // TL_DRIVER__TL_DRIVER_H_
+#endif // TL_DRIVER__DRIVER_NODE_HPP_
