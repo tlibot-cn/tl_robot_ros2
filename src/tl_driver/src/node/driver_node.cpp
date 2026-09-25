@@ -155,17 +155,4 @@ void DriverNode::init()
     exit(0);
   }
 }
-
-
-/**
- * @brief 透传模式必须先使用open_servoJ开启跟踪模式
- */
-
-// ================ ServoL 笛卡尔空间直线伺服 ================
-
-/**
- * @brief ServoL 笛卡尔空间直线伺服运动
- * 前置条件：需先调用 open_servoj 开启关节跟踪模式
- * 收到目标笛卡尔位姿后，自动获取当前位姿，插值并 IK 转为关节角后通过 servoj 发送
- */
-} // namespace tl_driver
+}  // namespace tl_driver
