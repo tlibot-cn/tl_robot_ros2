@@ -1,7 +1,7 @@
 #ifndef TL_DRIVER__PUBLISHERS_HPP_
 #define TL_DRIVER__PUBLISHERS_HPP_
 
-/// @file publishers.h
+/// @file publishers.hpp
 /// @brief 状态发布：/joint_states、/tcp_pose、/arm_status。
 /// @note 拆分阶段为纯搬移，字段裁剪与日志行为与拆分前一致
 ///       （switch 未覆盖、尺寸裁剪、日志节流见架构评审 P1-4 / P1-6，另行修复）。

@@ -1,7 +1,7 @@
 #ifndef TL_DRIVER__MSG_CONVERT_HPP_
 #define TL_DRIVER__MSG_CONVERT_HPP_
 
-/// @file msg_convert.h
+/// @file msg_convert.hpp
 /// @brief ROS 消息 / 服务与 SDK 结构之间的转换（含全局点位名校验）。
 /// @note SDK 类型（`tl::`）经 arm_sdk.hpp 引入；本模块只做字段搬运，不发 SDK 请求。
 

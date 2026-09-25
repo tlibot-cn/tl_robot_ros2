@@ -48,6 +48,7 @@ public:
   }
 
   /// @brief 关节名列表（arm_joints 参数）。
+  /// @note 为与 V2 线形状对齐而保留，当前无调用方（publishers 直接收 arm_joints_）。
   /// @return 关节名列表引用
   const std::vector<std::string>& joint_names() const noexcept
   {
@@ -55,6 +56,7 @@ public:
   }
 
   /// @brief 服务回调组，65 个服务共用（MutuallyExclusive，串行）。
+  /// @note 为与 V2 线形状对齐而保留，当前无调用方（create_service 内部直接用成员）。
   /// @return 回调组句柄
   rclcpp::CallbackGroup::SharedPtr service_group() const noexcept
   {

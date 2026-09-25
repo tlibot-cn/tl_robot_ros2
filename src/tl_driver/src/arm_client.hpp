@@ -3,7 +3,9 @@
 
 /// @file arm_client.hpp
 /// @brief SDK 侧薄封装：返回值文本化与异步推送回调注册。
-/// @note 仅包装 SDK 调用，不持有会话状态（fd 由调用方传入），故不引入额外的生命周期约束。
+/// @note 仅包装 SDK 调用，不持有会话状态（fd 由调用方传入）；但拥有进程级状态帧缓冲（见 @attention）。
+/// @attention 状态帧缓冲为进程级单例（文件内全局对象 + 无锁读写），一个进程只支持一个会话实例，
+///            重复 start_robot_state_channel 会复用同一缓冲（与拆分前一致，P1-5 待修）。
 
 #include <chrono>
 #include <cstdint>

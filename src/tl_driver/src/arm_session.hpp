@@ -1,7 +1,7 @@
 #ifndef TL_DRIVER__ARM_SESSION_HPP_
 #define TL_DRIVER__ARM_SESSION_HPP_
 
-/// @file arm_session.h
+/// @file arm_session.hpp
 /// @brief 机械臂会话：6001/7000 双端口连接、上下电。
 /// @note 拆分阶段为纯搬移，会话状态语义与拆分前的成员实现一致，未引入同步原语与状态机
 ///       （并发缺陷与掉线自愈见架构评审 P0-2 / P0-4，另行修复）。

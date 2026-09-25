@@ -1,7 +1,7 @@
 #ifndef TL_DRIVER__QUATERNION_HPP_
 #define TL_DRIVER__QUATERNION_HPP_
 
-/// @file quaternion.h
+/// @file quaternion.hpp
 /// @brief 欧拉角与四元数互转、四元数球面插值（纯函数，无 ROS / SDK 依赖）。
 /// @note 欧拉角约定为 XYZ 内旋，单位 rad。
 
