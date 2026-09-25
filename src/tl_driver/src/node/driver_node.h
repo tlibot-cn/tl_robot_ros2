@@ -10,11 +10,6 @@
 // ROS2
 #include <rmw/qos_profiles.h>
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/float64_multi_array.hpp>
-
-// msg
-#include "tl_ros2_interface/msg/move_command.hpp"
-#include "tl_ros2_interface/msg/servol_move.hpp"
 
 #include "arm_session.h"
 #include "node/publishers.h"
@@ -71,7 +66,24 @@ public:
     services_.push_back(service);
   }
 
-  // 服务
+  /// @brief 创建订阅并持有其生命周期（回调组为话题组）。
+  /// @note 存入 `subscriptions_` 保活——rclcpp Humble 只弱引用已创建的订阅，不持有即注销；
+  ///       订阅选项取自 `topic_options_`（构造期已绑定话题回调组）。
+  /// @tparam MessageT 消息类型
+  /// @tparam CallbackT 回调类型
+  /// @param[in] name 话题名（含 `/tl_driver/` 前缀）
+  /// @param[in] qos 队列深度
+  /// @param[in] callback 话题回调
+  /// @return 订阅句柄
+  template <typename MessageT, typename CallbackT>
+  typename rclcpp::Subscription<MessageT>::SharedPtr create_subscription(const std::string& name, const size_t qos,
+                                                                         CallbackT&& callback)
+  {
+    auto subscription =
+        rclcpp::Node::create_subscription<MessageT>(name, qos, std::forward<CallbackT>(callback), topic_options_);
+    subscriptions_.push_back(subscription);
+    return subscription;
+  }
 
 private:
   std::vector<rclcpp::ServiceBase::SharedPtr> services_;
@@ -91,11 +103,11 @@ private:
   rclcpp::CallbackGroup::SharedPtr service_group_;
   rclcpp::CallbackGroup::SharedPtr topic_group_;
   rclcpp::CallbackGroup::SharedPtr timer_group_;
+  rclcpp::SubscriptionOptions topic_options_;
 
-  rclcpp::Subscription<tl_ros2_interface::msg::MoveCommand>::SharedPtr movej_sub_;
-  rclcpp::Subscription<tl_ros2_interface::msg::MoveCommand>::SharedPtr movel_sub_;
-  rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr set_servoj_pos_sub_;
-  rclcpp::Subscription<tl_ros2_interface::msg::ServolMove>::SharedPtr set_servol_pos_sub_;
+  // 节点需持有服务/订阅对象，否则对象析构即注销
+  std::vector<rclcpp::SubscriptionBase::SharedPtr> subscriptions_;
+
 
   rclcpp::TimerBase::SharedPtr state_publish_timer_;
 };

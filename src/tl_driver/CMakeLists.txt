@@ -60,6 +60,7 @@ add_executable(tl_driver
   src/node/services_motion.cpp
   src/node/services_transform.cpp
   src/node/services_config.cpp
+  src/node/topics.cpp
   src/node/services_state.cpp
   src/arm_client.cpp
   src/arm_session.cpp

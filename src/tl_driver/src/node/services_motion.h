@@ -79,18 +79,6 @@ void handle_queue_motion_movej_service(DriverNode& node,
 void handle_queue_motion_stop_service(DriverNode& node, const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
                                       std::shared_ptr<std_srvs::srv::Trigger::Response> response);
 
-/// @brief 处理话题 /tl_driver/moveJ。
-void handle_movej_topic(DriverNode& node, const tl_ros2_interface::msg::MoveCommand::SharedPtr msg);
-
-/// @brief 处理话题 /tl_driver/moveL。
-void handle_movel_topic(DriverNode& node, const tl_ros2_interface::msg::MoveCommand::SharedPtr msg);
-
-/// @brief 处理话题 /tl_driver/set_servoj_pos。
-void handle_set_servoj_pos_topic(DriverNode& node, const std_msgs::msg::Float64MultiArray::SharedPtr msg);
-
-/// @brief 处理话题 /tl_driver/set_servol_pos。
-void handle_set_servol_pos_topic(DriverNode& node, const tl_ros2_interface::msg::ServolMove::SharedPtr msg);
-
 /// @brief 注册本域服务。
 /// @param[in] node 节点
 /// @param[in] group 回调组

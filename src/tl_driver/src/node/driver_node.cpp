@@ -2,6 +2,7 @@
 #include <thread>
 
 #include "node/driver_node.h"
+#include "node/registrars.hpp"
 #include "node/services_state.h"
 #include "node/services_config.h"
 #include "node/services_transform.h"
@@ -42,8 +43,7 @@ DriverNode::DriverNode() : rclcpp::Node("tl_driver"), session_(this->get_logger(
   service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   topic_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  auto topic_group_option = rclcpp::SubscriptionOptions();
-  topic_group_option.callback_group = topic_group_;
+  topic_options_.callback_group = topic_group_;
 
   timer_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
@@ -57,37 +57,7 @@ DriverNode::DriverNode() : rclcpp::Node("tl_driver"), session_(this->get_logger(
 
 
   // 话题sub
-  movej_sub_ = this->create_subscription<tl_ros2_interface::msg::MoveCommand>(
-      "/tl_driver/moveJ", 10,
-      [this](const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
-      {
-        services::handle_movej_topic(*this, msg);
-      },
-      topic_group_option);
-
-  movel_sub_ = this->create_subscription<tl_ros2_interface::msg::MoveCommand>(
-      "/tl_driver/moveL", 10,
-      [this](const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
-      {
-        services::handle_movel_topic(*this, msg);
-      },
-      topic_group_option);
-
-  set_servoj_pos_sub_ = this->create_subscription<std_msgs::msg::Float64MultiArray>(
-      "/tl_driver/set_servoj_pos", 10,
-      [this](const std_msgs::msg::Float64MultiArray::SharedPtr msg)
-      {
-        services::handle_set_servoj_pos_topic(*this, msg);
-      },
-      topic_group_option);
-
-  set_servol_pos_sub_ = this->create_subscription<tl_ros2_interface::msg::ServolMove>(
-      "/tl_driver/set_servol_pos", 10,
-      [this](const tl_ros2_interface::msg::ServolMove::SharedPtr msg)
-      {
-        services::handle_set_servol_pos_topic(*this, msg);
-      },
-      topic_group_option);
+  register_topics(*this);
 
   auto period =
       std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::duration<double>(1.0 / publish_rate_));
