@@ -1,5 +1,7 @@
 # 位姿转换（四元数 / 欧拉角 / 旋转矩阵互转）
 # 本接口不含长度量：输入输出均为姿态量，欧拉角 单位: rad，四元数与旋转矩阵分量为无量纲。
+# rad 的依据：SDK 该族函数（quat2rpy / rpy2quat / rpy2r / r2tr / tr2r）未标注单位，
+#   依 coord_transform 的「第 3-6 位 [-3.1416,3.1416] rad」口径与 servo_movel 的 (mm, rad) 推断。
 float64[] input                # 输入姿态量：欧拉角 单位: rad；四元数/旋转矩阵分量 无量纲
 ---
 bool success

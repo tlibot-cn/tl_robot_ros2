@@ -2,5 +2,5 @@
 ---
 bool success
 string message
-float64[] joint_voltage
-float64[] positioner_voltage
+float64[] joint_voltage        # 单位: V（SDK 头未标注单位）
+float64[] positioner_voltage   # 单位: V（SDK 头未标注单位）

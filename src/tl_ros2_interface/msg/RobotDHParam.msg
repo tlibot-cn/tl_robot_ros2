@@ -1,6 +1,6 @@
 # 机器人DH参数
 # 用途：仅作 srv 嵌套参数（GetDHParam.param、SetDHParam.param），不发布话题。
-# 单位约定：l1..l20、pitch、sliding_lead_value、uplift_lead_value、spray_distance、sp[3]/tl[3] 为 mm；
+# 单位约定：l1..l20、pitch、sliding_lead_value、uplift_lead_value、spray_distance、sp[3]/tl[3] 为 mm（SDK 头未标注单位，依控制器手册 / 现场核对）；
 # couple_coe_*、*convertion_ratio*、amplification_ratio、upside_down 无量纲；
 # 其余字段 SDK 头未标注单位，以控制器手册 / 现场核对为准。
 float64 l1        # 单位: mm（DH / 连杆长度参数）

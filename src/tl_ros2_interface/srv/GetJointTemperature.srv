@@ -2,4 +2,4 @@
 ---
 bool success
 string message
-float64[] temperatures
+float64[] temperatures         # 单位: ℃（SDK 头未标注单位），数组长度 = 关节数
