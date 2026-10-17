@@ -1,8 +1,8 @@
 # 配置控制器有线网口IP
-string name 
-string addr
-string gateway
-string dns
+string name       # 网口名称（如 "eth0"）
+string addr       # IP 地址
+string gateway    # 网关地址
+string dns        # DNS 地址
 ---
 bool success
 string message

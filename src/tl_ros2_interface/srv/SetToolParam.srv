@@ -1,6 +1,6 @@
 # 设置工具参数
-int32 tool_num
-tl_ros2_interface/ToolParam param
+int32 tool_num    # 工具手编号
+tl_ros2_interface/ToolParam param   # 工具参数（位置 mm、旋转 度、质量 kg，见 ToolParam.msg）
 ---
 bool success
 string message

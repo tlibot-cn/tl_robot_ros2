@@ -1,5 +1,5 @@
 # 轨迹保存
-string traj_name
+string traj_name   # 轨迹名称
 ---
 bool success
 string message

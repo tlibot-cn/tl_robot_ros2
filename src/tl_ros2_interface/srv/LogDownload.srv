@@ -1,6 +1,6 @@
 # 日志下载
-int32 count
-string directory_path
+int32 count              # 要下载的日志条数
+string directory_path    # 保存目录的绝对路径
 ---
 bool success
 string message

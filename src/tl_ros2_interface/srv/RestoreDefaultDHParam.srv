@@ -1,5 +1,5 @@
 # 恢复默认DH参数
-int32 robot_num
+int32 robot_num   # 机器人编号（通常为 1）
 ---
 bool success
 string message

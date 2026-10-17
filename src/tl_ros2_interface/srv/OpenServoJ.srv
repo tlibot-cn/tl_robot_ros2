@@ -1,7 +1,9 @@
 # 打开ServoJ
-float64[] vmax
-float64[] amax
-float64[] jmax
+# 三个约束向量必须固定 7 元素：6 轴机器人在第 7 元素补 0，7 轴机器人第 7 元素为真实 J7 约束值。
+# 传 6 元素会导致控制器协议解析错乱并断开 7000 端口连接（SDK 警告）。
+float64[] vmax    # 各轴最大速度，固定 7 元素，单位：°/s
+float64[] amax    # 各轴最大加速度，固定 7 元素，单位：°/s²
+float64[] jmax    # 各轴最大加加速度，固定 7 元素，单位：°/s³
 ---
 bool success
 string message

@@ -1,6 +1,6 @@
 # MoveJ队列运动模式
-bool is_continue
-tl_ros2_interface/MoveCommand cmd
+bool is_continue          # false=新队列立即执行；true=继续排队不运动
+tl_ros2_interface/MoveCommand cmd   # 运动指令（单位与布局见 MoveCommand.msg，velocity 同 MOVJ 口径 %）
 ---
 bool success
 string message

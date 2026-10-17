@@ -2,4 +2,4 @@
 ---
 bool success
 string message
-int32 coord
+int32 coord   # 当前坐标系：0=关节 1=基坐标 2=工具 3=用户

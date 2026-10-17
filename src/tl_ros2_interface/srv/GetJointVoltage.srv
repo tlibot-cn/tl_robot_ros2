@@ -1,6 +1,7 @@
 # 获取关节电压
+# 单位：V（SDK 头未标注，按控制器手册口径）。
 ---
 bool success
 string message
-float64[] joint_voltage
-float64[] positioner_voltage
+float64[] joint_voltage        # 本体各关节电压，单位：V
+float64[] positioner_voltage   # 外部轴各关节电压，单位：V

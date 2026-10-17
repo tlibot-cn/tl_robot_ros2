@@ -1,6 +1,6 @@
 # 获取全局位置点
-string pos_name
+string pos_name   # 全局点位名，如 "GP0001"
 ---
 bool success
 string message
-float64[] pos
+float64[] pos     # 长度 14：[0]坐标系 [1]单位制(0=度,1=弧度) [2]形态 [3]工具序号 [4]用户序号 [5][6]备用 [7-13]点位信息（位置 mm、姿态 rad）

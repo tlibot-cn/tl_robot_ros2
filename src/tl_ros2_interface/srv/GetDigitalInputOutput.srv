@@ -2,5 +2,5 @@
 ---
 bool success
 string message
-int32[] input
-int32[] output
+int32[] input    # 数字输入状态（0=低，1=高）
+int32[] output   # 数字输出状态（0=低，1=高）

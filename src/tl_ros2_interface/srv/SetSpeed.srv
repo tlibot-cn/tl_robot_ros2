@@ -1,5 +1,5 @@
 # 设置速度
-float64 speed
+float64 speed   # 全局运行速度，单位：%（0<speed≤100）
 ---
 bool success
 string message

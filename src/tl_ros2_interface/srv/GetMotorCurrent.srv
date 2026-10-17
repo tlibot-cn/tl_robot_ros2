@@ -1,5 +1,6 @@
-# 获取独立轴当前电机电流
+# 获取机器人本体 7 轴电机电流（外部轴同步电流未暴露）
+# 单位：A。SDK 头标「‰」与实际不符，此处按维护者定案采用 A；现场若读数相差 1000 倍需回溯。
 ---
 bool success
 string message
-float64[] motor_current
+float64[] motor_current   # 本体 7 轴电机电流，单位：A

@@ -1,6 +1,8 @@
 # 位姿转换
-float64[] input
+# 单位：欧拉角 rad（SDK 未标注；依 coord_transform 的 ±3.1416 rad 与 servo_movel 的 mm+rad 推断）。
+# input/output 的具体含义随服务：四元数、欧拉角、旋转矩阵或齐次矩阵。
+float64[] input     # 输入数组
 ---
 bool success
 string message
-float64[] output
+float64[] output    # 输出数组

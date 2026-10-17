@@ -1,5 +1,5 @@
 # 作业运行
-string job_name
+string job_name   # 作业文件名
 ---
 bool success
 string message

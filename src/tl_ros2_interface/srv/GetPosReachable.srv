@@ -1,6 +1,6 @@
 # 目标是否可达
-float64[] pos
-string move_type 
+float64[] pos       # 长度 14，布局同全局点位：[0]坐标系 [1]单位制 [2]形态 [3]工具 [4]用户 [5][6]备用 [7-13]点位（位置 mm、姿态 rad）
+string move_type    # 运动类型："MOVJ" 或 "MOVL"
 ---
 bool success
 string message

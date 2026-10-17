@@ -1,6 +1,7 @@
 # 当前电机力矩
+# 单位（对齐 SDK）：额定扭矩百分比 %；数组长度 7 / 5。
 ---
 bool success
 string message
-int32[] motor_torque
-int32[] motor_torque_sync
+int32[] motor_torque        # 本体电机扭矩，数组长度 7，单位：%
+int32[] motor_torque_sync   # 外部轴电机扭矩，数组长度 5，单位：%

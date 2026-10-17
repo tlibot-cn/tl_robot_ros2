@@ -1,7 +1,8 @@
 # 当前线速度和关节速度
+# 单位（对齐 SDK）：line_speed mm/s；joint_speed / joint_speed_sync 度/s；数组长度 7 / 5。
 ---
 bool success
 string message
-float64 line_speed
-float64[] joint_speed
-float64[] joint_speed_sync
+float64 line_speed          # 末端线速度，单位：mm/s
+float64[] joint_speed       # 本体关节速度，数组长度 7，单位：度/s
+float64[] joint_speed_sync  # 外部轴关节速度，数组长度 5，单位：度/s

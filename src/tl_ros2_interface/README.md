@@ -42,7 +42,7 @@ TL 系列机械臂 ROS2 接口说明
 * 5.8 [关节软件版本号GetJointSoftwareVersion_srv](#关节软件版本号GetJointSoftwareVersion_srv)
 * 5.9 [关节温度GetJointTemperature_srv](#关节温度GetJointTemperature_srv)
 * 5.10 [关节电压GetJointVoltage_srv](#关节电压GetJointVoltage_srv)
-* 5.11 [电机温度GetMotorCurrent_srv](#电机温度GetMotorCurrent_srv)
+* 5.11 [电机电流GetMotorCurrent_srv](#电机电流GetMotorCurrent_srv)
 * 5.12 [目标位姿可达状态GetPosReachable_srv](#目标位姿可达状态GetPosReachable_srv)
 * 5.13 [位姿转换GetPosTransform_srv](#位姿转换GetPosTransform_srv)
 * 5.14 [关节参数GetRobotJointParam_srv](#关节参数GetRobotJointParam_srv)
@@ -181,9 +181,9 @@ float64 arm_angle
 ```
 __msg成员__
 - header: 标准消息头
-- position: x,y,z 位置（米）
-- rpy: 姿态欧拉角（弧度）
-- arm_angle: 机械臂额外角度（弧度）
+- position: x,y,z 位置。`/tcp_pose` 发布时为 **m**；作为 `SetUserCoord.pos` 输入时为 **mm**（控制器 mm 体系，注意与 `/tcp_pose` 不同）
+- rpy: 姿态欧拉角（弧度，XYZ 内旋）
+- arm_angle: 冗余臂角（弧度；6 轴为 0，`SetUserCoord` 未使用）
 
 ### 作业文件名JobFileName_msg
 ```
@@ -251,14 +251,19 @@ int32 spin
 bool para_sync
 ```
 __msg成员__
-- target_pos_value: 目标位置数值数组（关节或笛卡尔）
-- target_pos_name: 目标位置名称
-- target_pos_type: 位置类型标识
-- coord: 坐标系编号
-- velocity/velocity_sync/acc/dec: 速度与加减速参数
-- pl/time: 轨迹/时间相关参数
+- target_pos_value: 14 维目标点位。前 7 位本体、后 7 位外部轴；`coord=0` 时 [0..6] 为关节角（度）；`coord=1/2/3` 时位置 mm、姿态 rad，[7..13] 外部轴按 SDK 原值透传
+- target_pos_name: 内置点位名（如 `"GP0001"`，`target_pos_type=5/6` 时使用）
+- target_pos_type: PosType：0=自定义数组 1=P 2=E 3=RP 4=AP 5=系统内置GP 6=含外部轴的GE
+- coord: 0=关节（度）1=直角 2=工具 3=用户（1/2/3 时位置 mm、姿态 rad）
+- velocity/velocity_sync: MOVJ 为 %（0<v≤100）；MOVL 为 mm/s（0<v≤1000）；队列接口同此口径
+- acc/dec: 加速度/减速度百分比，(0,100]
+- pl: 平滑过渡等级 0～5，非百分比
+- time: 提前执行时间（SDK 头未标注单位）
 - tool_num/user_num: 工具/用户坐标编号
-- posidtype/configuration/spin/para_sync: 其他标志位或配置
+- posidtype: 0=一级(P/GP) 1=二级(P[I001]/GP[I001])
+- configuration: 形态
+- spin: MOVCA 使用：0=姿态不变 1=六轴不转 2=六轴旋转
+- para_sync: 外部轴是否同步
 
 ### 目标检测结果ObjectInfo_msg
 ```
@@ -306,16 +311,16 @@ int32 direction
 __msg成员__
 - reduction_ratio: 减速比
 - encoder_resolution: 编码器位数
-- pos_sw_limit: 轴正限位
-- neg_sw_limit: 轴反限位
-- rated_rot_speed: 电机额定正转速
-- rated_derot_speed: 电机额定反转速
-- max_rot_speed: 电机最大正转速
-- max_derot_speed: 电机最大反转速
-- rated_vel: 额定正速度
-- rated_devel: 额定反速度
-- max_acc: 最大加速度
-- max_dec: 最大减速度
+- pos_sw_limit: 轴正限位（度）
+- neg_sw_limit: 轴反限位（度）
+- rated_rot_speed: 电机额定正转速（rpm）
+- rated_derot_speed: 电机额定反转速（rpm；新 SDK 无对应字段，当前恒为 0）
+- max_rot_speed: 电机最大正转速（rpm）
+- max_derot_speed: 电机最大反转速（rpm；新 SDK 无对应字段，当前恒为 0）
+- rated_vel: 额定正速度（度/s；新 SDK 无对应字段，当前恒为 0）
+- rated_devel: 额定反速度（度/s；新 SDK 无对应字段，当前恒为 0）
+- max_acc: 最大加速度（度/s²）
+- max_dec: 最大减速度（度/s²）
 - direction: 模型方向，1：正向，-1：反向
 
 ### 工具参数ToolParam_msg
@@ -333,17 +338,17 @@ float64 payload_mass_center_y
 float64 payload_mass_center_z
 ```
 __msg成员__
-- x: X轴偏移方向
-- y: Y轴偏移方向
-- z: Z轴偏移方向
-- a: 绕A轴旋转
-- b: 绕B轴旋转
-- c: 绕C轴旋转
-- payload_mass: 负载质量
-- payload_inertia: 负载惯性
-- payload_mass_center_x: 负载质心X
-- payload_mass_center_y: 负载质心Y
-- payload_mass_center_z: 负载质心Z
+- x: X 轴偏移（mm）
+- y: Y 轴偏移（mm）
+- z: Z 轴偏移（mm）
+- a: 绕 A 轴旋转（度）
+- b: 绕 B 轴旋转（度）
+- c: 绕 C 轴旋转（度）
+- payload_mass: 负载质量（kg）
+- payload_inertia: 负载惯量（SDK 未标注单位）
+- payload_mass_center_x: 负载质心 X（mm）
+- payload_mass_center_y: 负载质心 Y（mm）
+- payload_mass_center_z: 负载质心 Z（mm）
 
 ### ServoL直线伺服ServolMove_msg
 ```
@@ -352,7 +357,7 @@ float64 step_size         # 插值步长 (mm)，相邻插值点之间的最大�
 int32 coord               # 坐标系：1=基座标系(Base) 2=工具坐标系(Tool) 3=用户坐标系(User)
 ```
 __msg成员__
-- target_pose: 目标笛卡尔位姿 [x, y, z, rx, ry, rz]
+- target_pose: 目标笛卡尔位姿 [x, y, z, rx, ry, rz]，位置 mm、姿态 rad
 - step_size: 插值步长（mm），默认 2.0
 - coord: 坐标系编号（1=基座标系，2=工具坐标系，3=用户坐标系）
 
@@ -373,10 +378,10 @@ bool success
 string message
 float64[] target_pos
 ```
-- origin_coord/target_coord: 源/目标坐标系编号
-- form: 转换模式
-- origin_pos/reference_pos: 输入位置与参考位置
-- 返回: success/message/target_pos
+- origin_coord/target_coord: 源/目标坐标系编号（0=关节 1=基坐标 2=工具 3=用户）
+- form: 形态
+- origin_pos/reference_pos: 输入坐标与逆解参考点。关节坐标为度；直角/工具/用户坐标为位置 mm + 姿态 rad
+- 返回: success/message/target_pos（转换结果，单位同上）
 
 ### 所有作业文件名GetAllJobFileName_srv
 ```
@@ -440,7 +445,7 @@ float64[] pos
 ```
 - 输入 pos_name，返回对应全局路点
 - pos_name: 全局位置点名称
-- 返回: success/message/pos（位置坐标数组）
+- 返回: success/message/pos（长度 14：[0]坐标系 [1]单位制 [2]形态 [3]工具 [4]用户 [5][6]备用 [7-13]点位信息；位置 mm、姿态 rad）
 
 ### 关节软件版本号GetJointSoftwareVersion_srv
 ```
@@ -461,7 +466,7 @@ string message
 float64[] temperatures
 ```
 - 返回各关节温度数组
-- 返回: success/message/temperatures（各关节温度数组）
+- 返回: success/message/temperatures（各关节温度，单位 ℃；SDK 头未标注）
 
 ### 关节电压GetJointVoltage_srv
 ```
@@ -472,17 +477,18 @@ float64[] joint_voltage
 float64[] positioner_voltage
 ```
 - 返回关节电压数组
-- 返回: success/message/joint_voltage（关节电压数组）/positioner_voltage（定位器电压数组）
+- 返回: success/message/joint_voltage（本体关节电压，单位 V）/positioner_voltage（外部轴关节电压，单位 V）
 
-### 电机温度GetMotorCurrent_srv
+### 电机电流GetMotorCurrent_srv
 ```
 ---
 bool success
 string message
 float64[] motor_current
 ```
-- 返回电机电流数组
-- 返回: success/message/motor_current（电机电流数组）
+- 返回机器人本体 7 轴电机电流（外部轴同步电流未暴露）
+- 单位：A（SDK 头标 ‰，与实际不符，按维护者定案采用 A）
+- 返回: success/message/motor_current（本体 7 轴电机电流数组，单位 A）
 
 ### 目标位姿可达状态GetPosReachable_srv
 ```
@@ -493,8 +499,8 @@ bool success
 string message
 ```
 - 输入目标位姿，返回是否可达
-- pos: 目标位姿数组
-- move_type: 运动类型（如关节运动、直线运动等）
+- pos: 长度 14，布局同全局点位（位置 mm、姿态 rad）
+- move_type: 运动类型："MOVJ" 或 "MOVL"
 - 返回: success/message
 
 ### 位姿转换GetPosTransform_srv
@@ -506,8 +512,9 @@ string message
 float64[] output
 ```
 - 输入位姿，返回转换后的位姿
-- input: 输入位姿数组
-- 返回: success/message/output（转换后的位姿数组）
+- input: 输入数组（四元数 / 欧拉角 / 旋转矩阵 / 齐次矩阵，随具体服务）
+- 单位：欧拉角 rad（SDK 未标注，依 coord_transform 的 ±3.1416 rad 与 servo_movel 的 mm+rad 推断）
+- 返回: success/message/output（转换后的数组，单位同上）
 
 ### 关节参数GetRobotJointParam_srv
 ```
@@ -541,7 +548,7 @@ string message
 - channel: 通道号
 - stop: 是否停止
 - mode: 模式
-- interval: 查询间隔
+- interval: 持续回复间隔，单位 ms（范围 [10,60000]，仅 mode=1 有效）
 - io_state: 是否返回 IO 状态
 - position: 位置类型
 - detail_motion_pos: 是否返回详细运动位置
@@ -557,7 +564,7 @@ bool success
 string message
 float64 speed
 ```
-- 返回当前全局速度设置
+- 返回当前全局速度设置（单位 %，0<speed≤100）
 
 ### 插入运动指令JobInsertMove_srv
 ```
@@ -654,9 +661,10 @@ bool success
 string message
 ```
 - 设置并打开关节伺服的最大速度/加速度
-- vmax: 最大速度数组
-- amax: 最大加速度数组
-- jmax: 最大加加速度数组
+- vmax: 最大速度数组，固定 7 元素（6 轴末位补 0；7 轴第 7 位为真实 J7），单位 °/s
+- amax: 最大加速度数组，固定 7 元素，单位 °/s²
+- jmax: 最大加加速度数组，固定 7 元素，单位 °/s³
+- 注意：传 6 元素会导致控制器协议解析错乱并断开 7000 端口连接（SDK 警告）
 - 返回: success/message
 
 ### MoveJ队列运动QueueMotionMoveJ_srv
@@ -743,7 +751,7 @@ bool success
 string message
 ```
 - 设置当前坐标系
-- coord: 坐标系编号
+- coord: 0=关节 1=基坐标 2=工具 3=用户
 - 返回: success/message
 
 ### 设置当前运行模式SetCurrentMode_srv
@@ -789,7 +797,7 @@ bool success
 string message
 ```
 - 设置拖拽（示教）模式
-- mode: 拖拽模式（0 关闭，1 开启）
+- mode: 0=无 1=3D鼠标 2=力矩模式 3=位置模式
 - 返回: success/message
 
 ### 设置全局位点SetGlobalPos_srv
@@ -802,7 +810,7 @@ string message
 ```
 - 设置/保存全局位置点
 - pos_name: 位置点名称
-- pos_info: 位置坐标数组
+- pos_info: 长度 14：[0]坐标系 [1]单位制 [2]形态 [3]工具 [4]用户 [5][6]备用 [7-13]点位信息；位置 mm、姿态 rad
 - 返回: success/message
 
 ### 设置关节参数SetRobotJointParam_srv
@@ -826,7 +834,7 @@ bool success
 string message
 ```
 - 设置全局速度
-- speed: 速度值（百分比或比例）
+- speed: 全局运行速度百分比，单位 %（0<speed≤100）
 - 返回: success/message
 
 ### 设置工具手参数SetToolParam_srv
@@ -852,7 +860,7 @@ string message
 ```
 - 设置用户坐标系的笛卡尔位姿
 - user_num: 用户坐标系编号
-- pos: 笛卡尔位姿
+- pos: 笛卡尔位姿（position mm、rpy rad；注意与 `/tcp_pose` 的 m 口径不同，arm_angle 未使用）
 - 返回: success/message
 
 ### 工具手参数标定ToolHandCalib_srv
@@ -876,7 +884,7 @@ bool success
 string message
 ```
 - 回放轨迹
-- vel: 回放速度
+- vel: 回放速度百分比（1～100；SDK 未标注单位）
 - 返回: success/message
 
 ### TrackSave_srv
@@ -900,7 +908,7 @@ int32[] motor_torque
 int32[] motor_torque_sync
 ```
 - 查询当前电机力矩
-- 返回: success/message/motor_torque（当前电机力矩）/motor_torque_sync（同步轴电机力矩）
+- 返回: success/message/motor_torque（本体电机扭矩，长度 7，单位 %）/motor_torque_sync（外部轴电机扭矩，长度 5，单位 %）
 
 ### 当前线速度和关节速度GetCurrentLineJointSpeed_srv
 ```
@@ -913,7 +921,7 @@ float64[] joint_speed
 float64[] joint_speed_sync
 ```
 - 查询当前线速度和关节速度
-- 返回: success/message/line_speed（当前线速度）/joint_speed（关节速度）/joint_speed_sync（同步轴关节速度）
+- 返回: success/message/line_speed（末端线速度，mm/s）/joint_speed（本体关节速度，长度 7，度/s）/joint_speed_sync（外部轴关节速度，长度 5，度/s）
 
 ### 查询当前运行模式GetCurrentMode_srv
 ```

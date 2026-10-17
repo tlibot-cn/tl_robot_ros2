@@ -1,6 +1,6 @@
 # 插入运动指令
-int32 line
-MoveCommand cmd
+int32 line          # 插入行序号（从 1 开始）
+MoveCommand cmd     # 运动指令（单位与布局见 MoveCommand.msg）
 ---
 bool success
 string message

@@ -1,5 +1,5 @@
 # 是否打开MoveJ队列运动模式
-bool status
+bool status   # true=打开队列模式，false=关闭
 ---
 bool success
 string message

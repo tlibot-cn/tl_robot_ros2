@@ -13,6 +13,7 @@
 |V1.4 | 2026-5-29 | 修订（新增 [查询当前电机力矩](#查询当前电机力矩)、[查询当前线速度和关节速度](#查询当前线速度和关节速度) 服务）|
 |V1.5 | 2026-6-8  | 修订（详细化全部接口的输入输出参数说明，补全单位、范围、注意事项；优化参数表格式；修复锚点链接）|
 |V1.6 | 2026-6-23 | 新增[15.4 发送跟踪笛卡尔位姿](#154-发送跟踪笛卡尔位姿) |
+|V1.7 | 2026-10-17 | 单位对齐 SDK 修正：扭矩 %、用户坐标 mm、`MoveCommand` 布局/`pl`/`spin`/MoveL 速度、ServoJ 固定 7 元素、电机电流口径说明 |
 
 </div>
 
@@ -112,7 +113,7 @@
 ### 1.1 坐标系编号
 | 编号 | 含义 | 说明 |
 | :---: | :--- | :--- |
-| 0 | 关节坐标系（Joint） | 以各关节角度表示位置，单位：度（°）或弧度（rad） |
+| 0 | 关节坐标系（Joint） | 以各关节角度表示位置，单位：度（°）；仅全局点位容器另带单位制标志 |
 | 1 | 直角坐标系（Cartesian/Base） | 以基座为原点，位置(X,Y,Z)单位mm，姿态(RX,RY,RZ)单位rad |
 | 2 | 工具坐标系（Tool） | 以工具末端为参考的坐标系 |
 | 3 | 用户坐标系（User） | 用户自定义的坐标系 |
@@ -131,9 +132,22 @@
 - 对于 `std_srvs::srv::Trigger` 类型的服务，`success` 字段直接承载上述含义
 
 ### 1.4 单位制约定
-- `target_pos_type` 字段中携带单位制信息：`1` = 角度制（度），`2` = 弧度制（rad）
-- ROS标准消息（如 `sensor_msgs/JointState`、`CartesianPose`）中的角度/位置遵循ROS标准单位制
-- SDK底层API中 `get_current_position` 等接口返回的角度单位为度（°）
+> 本线（dev）与 SDK 的单位对应关系如下；接口注释、本节与 SDK 头冲突时，以 SDK 头为准并回溯本文档。
+
+| 物理量 | 单位 | 说明 |
+| :--- | :--- | :--- |
+| 关节角 | 度（°） | 服务与指令原值透传；驱动内仅 `/joint_states.position` 转为 rad |
+| 笛卡尔位置（服务 / 运动指令） | mm | SDK `coord=1/2/3` 的原生口径，驱动不做换算 |
+| 笛卡尔位置（`/tcp_pose`） | m | 驱动发布时 mm→m；注意与指令侧的 mm 不同 |
+| 姿态 / 欧拉角 | rad | XYZ 内旋 |
+| 线速度 | mm/s | `get_current_line_joint_speed` 与 MOVL 指令 |
+| 关节速度 | 度/s | `get_current_line_joint_speed` |
+| 电机转速 | rpm | `RobotJointParam.*_rot_speed` |
+| 百分比量 | % | 速度、加速度、扭矩（额定值百分比，取值见各接口） |
+| 温度 / 电压 / 电流 | ℃ / V / A | SDK 头未标注温度、电压；电流 SDK 头标 ‰，与本仓 A 口径不符 |
+
+- `target_pos_type` 是点位类型（PosType），**不携带单位制**；全局点位容器的单位制标志见对应服务的 `pos` / `pos_info` 说明。
+- `CartesianPose` 在两处口径不同：`/tcp_pose` 为 m，`SetUserCoord.pos` 为 mm。
 
 ---
 ## 2 连接管理接口
@@ -470,7 +484,7 @@ ros2 service call /tl_driver/get_joint_temperature tl_ros2_interface/srv/GetJoin
 ros2 service call /tl_driver/get_joint_voltage tl_ros2_interface/srv/GetJointVoltage "{}"
 ```
 ### 4.10 查询电机电流
-| 功能描述 | 查询独立轴当前电机电流 |
+| 功能描述 | 查询机器人本体 7 轴电机电流（外部轴同步电流未暴露） |
 | :---: | :---- |
 | 通信机制 | ROS2服务 |
 | 服务名 | `/tl_driver/get_motor_current` |
@@ -484,7 +498,7 @@ ros2 service call /tl_driver/get_joint_voltage tl_ros2_interface/srv/GetJointVol
 |--------|------|------|------|
 | success | bool | — | `true` = 查询成功，`false` = 查询失败 |
 | message | string | — | 失败时包含错误描述 |
-| motor_current | float64[] | A | 机械臂独立轴电机电流 |
+| motor_current | float64[] | A | 机器人本体 7 轴电机电流（SDK 头标 ‰，与实际不符，此处按 A 口径） |
 #### 命令示例
 ```
 ros2 service call /tl_driver/get_motor_current tl_ros2_interface/srv/GetMotorCurrent "{}"
@@ -671,8 +685,8 @@ ros2 topic echo /arm_status
 |--------|------|------|------|
 | success | bool | — | `true` = 查询成功，`false` = 查询失败 |
 | message | string | — | 失败时包含错误描述 |
-| motor_torque | int32[] | Nm | 机械臂本体当前各电机力矩 |
-| motor_torque_sync | int32[] | Nm | 同步轴当前各电机力矩 |
+| motor_torque | int32[] | % | 机械臂本体当前各电机力矩（额定扭矩百分比，数组长度 7） |
+| motor_torque_sync | int32[] | % | 同步轴当前各电机力矩（数组长度 5） |
 #### 命令示例
 ```
 ros2 service call /tl_driver/get_current_motor_torque tl_ros2_interface/srv/GetCurrentMotorTorque "{}"
@@ -693,8 +707,8 @@ ros2 service call /tl_driver/get_current_motor_torque tl_ros2_interface/srv/GetC
 | success | bool | — | `true` = 查询成功，`false` = 查询失败 |
 | message | string | — | 失败时包含错误描述 |
 | line_speed | float64 | mm/s | 当前末端线速度 |
-| joint_speed | float64[] | °/s | 机械臂本体当前各关节速度 |
-| joint_speed_sync | float64[] | °/s | 同步轴当前各关节速度 |
+| joint_speed | float64[] | °/s | 机械臂本体当前各关节速度，数组长度 7 |
+| joint_speed_sync | float64[] | °/s | 同步轴当前各关节速度，数组长度 5 |
 #### 命令示例
 ```
 ros2 service call /tl_driver/get_current_line_joint_speed tl_ros2_interface/srv/GetCurrentLineJointSpeed "{}"
@@ -913,21 +927,21 @@ ros2 service call /tl_driver/set_dh_param tl_ros2_interface/srv/SetDHParam \
 
 | 字段名 | 类型 | 单位 | 范围 | 说明 |
 |--------|------|------|------|------|
-| target_pos_value | float64[] | — | — | 14维位置数组：[0]坐标系 [1]单位制(0=度,1=弧度) [2]形态 [3]工具序号 [4]用户序号 [5][6]备用 [7~13]点位信息 |
-| target_pos_name | string | — | — | 目标位姿变量名，如 `"P0001"`（target_pos_type=1时使用） |
-| target_pos_type | int32 | — | 1 或 2 | 位姿类型：`1` = 自定义数组，`2` = 变量模式（使用target_pos_name） |
-| coord | int32 | — | 0～3 | 坐标系：0=关节，1=直角，2=工具，3=用户 |
-| velocity | float64 | % | 1～100 | 运动速度百分比 |
-| velocity_sync | float64 | % | 1～100 | 同步轴速度百分比 |
-| acc | float64 | % | 1～100 | 加速度百分比 |
-| dec | float64 | % | 1～100 | 减速度百分比 |
-| pl | int32 | — | ≥0 | 平滑度（过渡等级），0=精确到达 |
-| time | int32 | — | — | 提前执行时间 |
+| target_pos_value | float64[] | mm / rad / 度 | — | 14 维（与 SDK `MoveCmd::targetPosValue` 一致）：前 7 位本体、后 7 位外部轴。`coord=0` 时 [0..6] 为关节角（度）；`coord=1/2/3` 时 [0]X(mm) [1]Y(mm) [2]Z(mm) [3]RX(rad) [4]RY(rad) [5]RZ(rad) [6]冗余臂角(rad)；[7..13] 外部轴按 SDK 原值透传 |
+| target_pos_name | string | — | — | 内置点位名，如 `"GP0001"`（`target_pos_type=5/6` 时使用） |
+| target_pos_type | int32 | — | 0～6 | 点位类型 PosType：0=自定义数组 1=P 2=E 3=RP 4=AP 5=系统内置GP 6=含外部轴的GE |
+| coord | int32 | — | 0～3 | 坐标系：0=关节（度），1=直角，2=工具，3=用户（1/2/3 时位置 mm、姿态 rad） |
+| velocity | float64 | % / mm/s | — | MOVJ 为 %（0<v≤100）；MOVL 为 mm/s（0<v≤1000）；队列接口同此口径（SDK 队列头注释的「度/s」有误） |
+| velocity_sync | float64 | % / mm/s | — | 外部轴同步速度：与 velocity 同口径（MOVJ %；MOVL mm/s） |
+| acc | float64 | % | (0,100] | 加速度百分比 |
+| dec | float64 | % | (0,100] | 减速度百分比 |
+| pl | int32 | — | 0～5 | 平滑过渡等级：0=精确到达，非百分比 |
+| time | int32 | — | — | 提前执行时间（SDK 头未标注单位） |
 | tool_num | int32 | — | — | 工具坐标系编号 |
 | user_num | int32 | — | — | 用户坐标系编号 |
-| posidtype | int32 | — | — | 变量类型 |
+| posidtype | int32 | — | — | 变量类型：0=一级(P/GP) 1=二级(P[I001]/GP[I001]) |
 | configuration | int32 | — | — | 形态配置 |
-| spin | int32 | — | 1～3 | 仅MOVCA指令使用：1=姿态不变，2=六轴不转，3=六轴旋转 |
+| spin | int32 | — | 0～2 | 仅MOVCA指令使用：0=姿态不变，1=六轴不转，2=六轴旋转 |
 | para_sync | bool | — | — | `true` = 外部轴同步，`false` = 不同步 |
 
 ### 6.1 向作业文件插入一条moveJ关节运动
@@ -1190,13 +1204,13 @@ ros2 service call /tl_driver/job_delete tl_ros2_interface/srv/JobRun "{job_name:
 | velocity_sync | float64 | % | 1～100 | 同步轴速度百分比 |
 | acc | float64 | % | 1～100 | 加速度百分比 |
 | dec | float64 | % | 1～100 | 减速度百分比 |
-| pl | int32 | — | ≥0 | 平滑度，0=精确到达 |
-| time | int32 | — | — | 提前执行时间 |
+| pl | int32 | — | 0～5 | 平滑过渡等级，0=精确到达，非百分比 |
+| time | int32 | — | — | 提前执行时间（SDK 头未标注单位） |
 | tool_num | int32 | — | — | 工具坐标系编号 |
 | user_num | int32 | — | — | 用户坐标系编号 |
 | posidtype | int32 | — | — | 变量类型 |
 | configuration | int32 | — | — | 形态配置 |
-| spin | int32 | — | 1～3 | 1=姿态不变，2=六轴不转，3=六轴旋转 |
+| spin | int32 | — | 0～2 | 0=姿态不变，1=六轴不转，2=六轴旋转 |
 | para_sync | bool | — | — | 外部轴是否同步 |
 
 **输出/返回值**
@@ -1237,6 +1251,7 @@ ros2 topic pub --once /tl_driver/moveJ tl_ros2_interface/msg/MoveCommand \
 |--------|------|------|------|------|
 | coord | int32 | — | 1 | 坐标系（固定为直角坐标系） |
 | target_pos_value | float64[] | mm, rad | — | [X(mm), Y(mm), Z(mm), RX(rad), RY(rad), RZ(rad), 0]（7维） |
+| velocity | float64 | mm/s | 0<v≤1000 | 直线运动速度（与 MOVJ 的百分比口径不同） |
 
 其余参数同 [MoveJ运动控制](#movej运动控制)。
 
@@ -1327,9 +1342,9 @@ ros2 service call /tl_driver/set_tool_param tl_ros2_interface/srv/SetToolParam \
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
 | user_num | int32 | — | 用户坐标系编号（1～N） |
-| pos.position.x | float64 | m | X方向偏移（ROS标准单位） |
-| pos.position.y | float64 | m | Y方向偏移 |
-| pos.position.z | float64 | m | Z方向偏移 |
+| pos.position.x | float64 | mm | X方向偏移（控制器 mm 体系；注意与 `/tcp_pose` 的 m 口径不同） |
+| pos.position.y | float64 | mm | Y方向偏移 |
+| pos.position.z | float64 | mm | Z方向偏移 |
 | pos.rpy.x | float64 | rad | 绕X轴旋转（欧拉角） |
 | pos.rpy.y | float64 | rad | 绕Y轴旋转（欧拉角） |
 | pos.rpy.z | float64 | rad | 绕Z轴旋转（欧拉角） |
@@ -1846,6 +1861,8 @@ ros2 service call /tl_driver/queue_motion_set_status tl_ros2_interface/srv/Queue
 | is_continue | bool | `false` = 新队列运动，`true` = 从断点继续执行 |
 | cmd | MoveCommand | 运动指令（参见 [MoveCommand消息类型说明](#movecommand消息类型说明)） |
 
+> **速度口径**：队列接口的 `velocity` 与 `MoveCommand` 同口径（MOVJ 为 %、MOVL 为 mm/s）。SDK 队列头注释写作「度/s」有误，不要照抄。
+
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
@@ -1895,9 +1912,11 @@ ros2 service call /tl_driver/queue_motion_stop std_srvs/srv/Trigger "{}"
 **输入参数**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| vmax | float64[] | °/s | 各轴最大速度，数组长度 ≥ 关节数 |
-| amax | float64[] | °/s² | 各轴最大加速度 |
-| jmax | float64[] | °/s³ | 各轴最大加加速度 |
+| vmax | float64[] | °/s | 各轴最大速度，**固定 7 元素**（6 轴末位补 0；7 轴第 7 位为真实 J7） |
+| amax | float64[] | °/s² | 各轴最大加速度，**固定 7 元素** |
+| jmax | float64[] | °/s³ | 各轴最大加加速度，**固定 7 元素** |
+
+> **注意**：三个约束向量必须固定 7 元素。传 6 元素会导致控制器协议解析错乱并断开 7000 端口连接（SDK 警告）。
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
@@ -1945,7 +1964,7 @@ ros2 service call /tl_driver/close_servoj std_srvs/srv/Trigger "{}"
 **输入参数**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| data | float64[] | ° | 目标关节角度数组（7维，前6轴角度，第7轴补0） |
+| data | float64[] | ° | 目标关节角度数组，**固定 7 元素**：6 轴机器人在第 7 元素补 0；7 轴机器人第 7 元素为真实 J7 关节角 |
 
 **输出/返回值**
 无返回值（话题发布单向通信）。

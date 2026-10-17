@@ -1,6 +1,6 @@
 # 查询机械臂关节参数
-int32 id
+int32 id    # 关节轴序号（从 1 开始）
 ---
 bool success
 string message
-tl_ros2_interface/RobotJointParam param
+tl_ros2_interface/RobotJointParam param   # 关节参数（单位见 RobotJointParam.msg）
