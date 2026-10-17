@@ -54,7 +54,7 @@ struct TeleopTiming
   {
     VR_GET = 0,
     TCP_POSE,
-    SDK_QUAT,
+    RPY2QUAT,
     ORIENT,
     IK,
     INTERP,
@@ -64,7 +64,7 @@ struct TeleopTiming
   };
 
   static constexpr int REPORT_INTERVAL = 100;
-  static constexpr const char *NAMES[] = {"vr_get", "tcp_pose", "sdk_quat", "orient", "ik", "interp", "servo", "total"};
+  static constexpr const char *NAMES[] = {"vr_get", "tcp_pose", "rpy2quat", "orient", "ik", "interp", "servo", "total"};
 
   Slot slots[SECTION_COUNT]{};
   int counter{0};
@@ -181,7 +181,6 @@ TL_Teleop::TL_Teleop() : Node("tl_teleop_node")
   open_servoj_client_ = create_client<tl_ros2_interface::srv::OpenServoJ>("/tl_driver/open_servoj");
   close_servoj_client_ = create_client<std_srvs::srv::Trigger>("/tl_driver/close_servoj");
   coord_transform_client_ = create_client<tl_ros2_interface::srv::CoordTransform>("/tl_driver/coord_transform");
-  get_rpy2quat_client_ = create_client<tl_ros2_interface::srv::GetPosTransform>("/tl_driver/get_rpy2quat");
 
   servoj_pos_pub_ = create_publisher<std_msgs::msg::Float64MultiArray>("/tl_driver/set_servoj_pos", 10);
 
@@ -408,25 +407,22 @@ std::vector<double> TL_Teleop::get_inverse_kinematics(double x, double y, double
   return resp->target_pos;
 }
 
-std::array<double, 4> TL_Teleop::get_rpy2quat_sdk(double rx, double ry, double rz)
+// RPY 欧拉角 → 四元数，返回顺序：[w, x, y, z]
+// 旋转序与控制器位姿一致：R = Rx(rx)·Ry(ry)·Rz(rz)（见 tl_interface.h 的 rpy2quat）
+std::array<double, 4> TL_Teleop::rpy2quat(double rx, double ry, double rz)
 {
-  auto req = std::make_shared<tl_ros2_interface::srv::GetPosTransform::Request>();
-  req->input = {rx, ry, rz};
-
-  auto future = get_rpy2quat_client_->async_send_request(req);
-  if (future.wait_for(std::chrono::seconds(5)) == std::future_status::timeout)
-  {
-    RCLCPP_WARN(get_logger(), "get_rpy2quat timeout");
-    return {1.0, 0.0, 0.0, 0.0};
-  }
-  auto resp = future.get();
-  if (!resp->success || resp->output.size() < 4)
-  {
-    RCLCPP_WARN(get_logger(), "get_rpy2quat failed");
-    return {1.0, 0.0, 0.0, 0.0};
-  }
-  // get_rpy2quat 返回值顺序: [w, x, y, z]
-  return {resp->output[0], resp->output[1], resp->output[2], resp->output[3]};
+  const double cr = std::cos(rx * 0.5);
+  const double sr = std::sin(rx * 0.5);
+  const double cp = std::cos(ry * 0.5);
+  const double sp = std::sin(ry * 0.5);
+  const double cy = std::cos(rz * 0.5);
+  const double sy = std::sin(rz * 0.5);
+  return {
+      cr * cp * cy - sr * sp * sy,
+      sr * cp * cy + cr * sp * sy,
+      cr * sp * cy - sr * cp * sy,
+      cr * cp * sy + sr * sp * cy,
+  };
 }
 
 // 将关节角度裁剪到限位范围内，防止运动超出机械臂物理限制
@@ -559,10 +555,10 @@ void TL_Teleop::control_loop()
           base_y = cart[1];
           base_z = cart[2];
           double base_rx = cart[3], base_ry = cart[4], base_rz = cart[5];
-          // 将当前位姿的 RPY 通过 SDK 转为四元数，作为角度基准
+          // 将当前位姿的 RPY 本地转为四元数，作为角度基准
           auto t_section = std::chrono::steady_clock::now();
-          auto arm_quat = get_rpy2quat_sdk(base_rx, base_ry, base_rz);
-          prof.slots[TeleopTiming::SDK_QUAT].record(std::chrono::steady_clock::now() - t_section);
+          auto arm_quat = rpy2quat(base_rx, base_ry, base_rz);
+          prof.slots[TeleopTiming::RPY2QUAT].record(std::chrono::steady_clock::now() - t_section);
           // VR 手柄当前姿态（qx,qy,qz,qw 顺序）
           std::array<double, 4> current_vr_quat = {qx, qy, qz, qw};
           {

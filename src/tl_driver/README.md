@@ -178,14 +178,13 @@ tl_driver:
 │   ├── arm_session.{hpp,cpp}  # 会话：双端口连接、上下电
 │   ├── node                     # 节点层
 │   │   ├── driver_node.{hpp,cpp}  # DriverNode：参数、回调组、实体创建与服务/话题注册
-│   │   ├── registrars.hpp       # 8 个注册函数声明（7 个服务域 + 话题）
+│   │   ├── registrars.hpp       # 7 个注册函数声明（6 个服务域 + 话题）
 │   │   ├── services_session.cpp # 会话类服务（连接/上下电/清错）
 │   │   ├── services_state.cpp   # 状态类服务（机器人状态/版本/温度/电压/电流/力矩/模式）
-│   │   ├── services_config.cpp  # 配置类服务（DH/关节参数/工具/坐标系/全局点位）
-│   │   ├── services_transform.cpp # 位姿换算与坐标系服务（rpy↔四元数、r↔tr）
+│   │   ├── services_config.cpp  # 配置类服务（DH 查询/关节参数/工具/坐标系/可达性）
+│   │   ├── services_transform.cpp # 坐标系服务（坐标系变换、当前坐标系读写）
 │   │   ├── services_motion.cpp  # 运动类服务（速度/点动/轨迹/队列/ServoJ 开关）
-│   │   ├── services_io.cpp      # IO 类服务（数字 IO、Modbus、日志下载）
-│   │   ├── services_job.cpp     # 作业类服务（作业运行/删除/插入运动）
+│   │   ├── services_io.cpp      # IO 类服务（数字 IO、Modbus）
 │   │   ├── topics.cpp           # 话题订阅（moveJ/moveL/servoJ/servoL）
 │   │   └── publishers.{hpp,cpp} # StatePublishers：/joint_states、/tcp_pose、/arm_status 发布
 │   ├── convert/msg_convert.{hpp,cpp} # ROS 消息 ↔ SDK 结构转换与参数校验

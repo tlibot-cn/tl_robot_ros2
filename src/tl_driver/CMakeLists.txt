@@ -61,7 +61,6 @@ add_executable(tl_driver
   src/node/publishers.cpp
   src/node/services_config.cpp
   src/node/services_io.cpp
-  src/node/services_job.cpp
   src/node/services_motion.cpp
   src/node/services_session.cpp
   src/node/services_state.cpp

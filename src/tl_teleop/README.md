@@ -45,7 +45,6 @@ tl_teleop 运行时依赖 **tl_driver** 功能包提供以下服务：
 | `/tl_driver/open_servoj` | 服务 | 开启 ServoJ 模式 |
 | `/tl_driver/close_servoj` | 服务 | 关闭 ServoJ 模式 |
 | `/tl_driver/coord_transform` | 服务 | 逆运动学求解（笛卡尔 → 关节） |
-| `/tl_driver/get_rpy2quat` | 服务 | RPY → 四元数转换 |
 | `/tcp_pose` | 话题 | 获取当前末端位姿 |
 | `/tl_driver/set_servoj_pos` | 话题 | 发送目标关节位置 |
 
@@ -252,10 +251,9 @@ tl_teleop 作为客户端节点，主要使用（消费）tl_driver 提供的话
     /tl_driver/open_servoj: tl_ros2_interface/srv/OpenServoJ
     /tl_driver/close_servoj: std_srvs/srv/Trigger
     /tl_driver/coord_transform: tl_ros2_interface/srv/CoordTransform
-    /tl_driver/get_rpy2quat: tl_ros2_interface/srv/GetPosTransform
 ```
 
-以上 **6 个服务**均为调用 tl_driver 提供的接口，tl_teleop 本身不提供服务端。
+以上 **5 个服务**均为调用 tl_driver 提供的接口，tl_teleop 本身不提供服务端。
 
 ### 控制逻辑说明
 

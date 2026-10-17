@@ -1,5 +1,5 @@
 /// @file services_io.cpp
-/// @brief IO 类服务：数字输出、数字输入输出、Modbus 读写、日志下载的实现（由 driver_node.cpp 按域搬移，行为不变）。
+/// @brief IO 类服务：数字输出、数字输入输出、Modbus 读写的实现（由 driver_node.cpp 按域搬移，行为不变）。
 
 #include "convert/msg_convert.hpp"
 #include <functional>
@@ -13,7 +13,6 @@
 #include "node/driver_node.hpp"
 
 #include "tl_ros2_interface/srv/get_digital_input_output.hpp"
-#include "tl_ros2_interface/srv/log_download.hpp"
 #include "tl_ros2_interface/srv/modbus_read.hpp"
 #include "tl_ros2_interface/srv/modbus_write.hpp"
 #include "tl_ros2_interface/srv/set_digital_output.hpp"
@@ -22,22 +21,6 @@ namespace tl_driver
 {
 namespace
 {
-void handle_log_download_service(DriverNode& node,
-                                 const std::shared_ptr<tl_ros2_interface::srv::LogDownload::Request> request,
-                                 std::shared_ptr<tl_ros2_interface::srv::LogDownload::Response> response)
-{
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::Result ret = tl::log_download_by_quantity(node.session().fd(), request->count, request->directory_path);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Log download successfully" : "Failed to download log";
-}
-
 void handle_set_digital_output_service(DriverNode& node,
                                        const std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Request> request,
                                        std::shared_ptr<tl_ros2_interface::srv::SetDigitalOutput::Response> response)
@@ -191,8 +174,5 @@ void register_io_services(DriverNode& node)
   node.create_service<tl_ros2_interface::srv::ModbusRead>(
       "/tl_driver/modbus_read",
       std::bind(&handle_modbus_read_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
-  node.create_service<tl_ros2_interface::srv::LogDownload>(
-      "/tl_driver/log_download",
-      std::bind(&handle_log_download_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
 }
 } // namespace tl_driver

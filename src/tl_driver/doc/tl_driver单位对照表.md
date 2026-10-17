@@ -32,15 +32,12 @@
 | `set_user_coord` | `position` m；`rpy` rad | 驱动内换算 mm |
 | `open_servoj` | `vmax` / `amax` / `jmax` | rad/s、rad/s²、rad/s³（固定 7 元素） |
 | `get_current_line_joint_speed` | `line_speed` m/s；`joint_speed` rad/s | 驱动内换算 mm/s、度/s |
-| `get_dh_param` / `set_dh_param` | `alpha/theta/mounting_angle` rad；`a/d` m | 驱动内换算 度 / mm |
-| `get_pos_transform` | 欧拉角 rad、位置 m | 无换算 |
+| `get_dh_param` | `alpha/theta/mounting_angle` rad；`a/d` m | 驱动内换算 度 / mm |
 
 ## 协议包例外（不换算）
 
 以下接口的数组是控制器协议包，自带单位制标志位，保留 mm + 标志位口径：
 
-- `set_global_pos.pos_info`
-- `get_global_pos.pos`
 - `get_pos_reachable.pos`
 
 ## 配置参数

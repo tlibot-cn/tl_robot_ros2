@@ -1,6 +1,5 @@
 /// @file services_transform.cpp
-/// @brief 位姿换算与坐标系服务：rpy↔四元数、r↔tr、坐标系变换、当前坐标系读写的实现（由 driver_node.cpp
-/// 按域搬移，行为不变）。
+/// @brief 坐标系服务：坐标系变换、当前坐标系读写的实现（由 driver_node.cpp 按域搬移，行为不变）。
 
 #include <functional>
 #include <memory>
@@ -15,178 +14,12 @@
 
 #include "tl_ros2_interface/srv/coord_transform.hpp"
 #include "tl_ros2_interface/srv/get_current_coord.hpp"
-#include "tl_ros2_interface/srv/get_pos_transform.hpp"
 #include "tl_ros2_interface/srv/set_current_coord.hpp"
 
 namespace tl_driver
 {
 namespace
 {
-void handle_get_quat2rpy_service(DriverNode& node,
-                                 const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-                                 std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
-{
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (request->input.size() < 4)
-  {
-    response->success = false;
-    response->message = "Invalid quat input";
-    return;
-  }
-
-  std::vector<double> rpy;
-  tl::Result ret = tl::get_quat2rpy(node.session().fd(), request->input, rpy);
-  if (ret == tl::Result::SUCCESS)
-  {
-    response->success = true;
-    response->message = "Get quat2rpy successfully";
-    response->output = rpy;
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Failed to get quat2rpy";
-  }
-}
-
-void handle_get_rpy2quat_service(DriverNode& node,
-                                 const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-                                 std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
-{
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (request->input.size() < 3)
-  {
-    response->success = false;
-    response->message = "Invalid rpy input";
-    return;
-  }
-
-  std::vector<double> quat;
-  tl::Result ret = tl::get_rpy2quat(node.session().fd(), request->input, quat);
-  if (ret == tl::Result::SUCCESS)
-  {
-    response->success = true;
-    response->message = "Get rpy2quat successfully";
-    response->output = quat;
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Failed to get rpy2quat";
-  }
-}
-
-void handle_get_rpy2r_service(DriverNode& node,
-                              const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-                              std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
-{
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (request->input.size() < 3)
-  {
-    response->success = false;
-    response->message = "Invalid rpy input";
-    return;
-  }
-
-  std::vector<double> rot;
-  tl::Result ret = tl::get_rpy2r(node.session().fd(), request->input, rot);
-  if (ret == tl::Result::SUCCESS)
-  {
-    response->success = true;
-    response->message = "Get rpy2r successfully";
-    response->output = rot;
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Failed to get rpy2r";
-  }
-}
-
-void handle_get_tr2r_service(DriverNode& node,
-                             const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-                             std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
-{
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (request->input.size() < 16)
-  {
-    response->success = false;
-    response->message = "Invalid tr input";
-    return;
-  }
-
-  std::vector<double> rot;
-  tl::Result ret = tl::get_tr2r(node.session().fd(), request->input, rot);
-  if (ret == tl::Result::SUCCESS)
-  {
-    response->success = true;
-    response->message = "Get tr2r successfully";
-    response->output = rot;
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Failed to get tr2r";
-  }
-}
-
-void handle_get_r2tr_service(DriverNode& node,
-                             const std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Request> request,
-                             std::shared_ptr<tl_ros2_interface::srv::GetPosTransform::Response> response)
-{
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (request->input.size() < 9)
-  {
-    response->success = false;
-    response->message = "Invalid tr matrix input";
-    return;
-  }
-
-  std::vector<double> tr_matrix;
-  tl::Result ret = tl::get_r2tr(node.session().fd(), request->input, tr_matrix);
-  if (ret == tl::Result::SUCCESS)
-  {
-    response->success = true;
-    response->message = "Get r2tr successfully";
-    response->output = tr_matrix;
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Failed to get r2tr";
-  }
-}
-
 void handle_set_current_coord_service(DriverNode& node,
                                       const std::shared_ptr<tl_ros2_interface::srv::SetCurrentCoord::Request> request,
                                       std::shared_ptr<tl_ros2_interface::srv::SetCurrentCoord::Response> response)
@@ -295,21 +128,6 @@ void handle_coord_transform_service(DriverNode& node,
 
 void register_transform_services(DriverNode& node)
 {
-  node.create_service<tl_ros2_interface::srv::GetPosTransform>(
-      "/tl_driver/get_quat2rpy",
-      std::bind(&handle_get_quat2rpy_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
-  node.create_service<tl_ros2_interface::srv::GetPosTransform>(
-      "/tl_driver/get_rpy2quat",
-      std::bind(&handle_get_rpy2quat_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
-  node.create_service<tl_ros2_interface::srv::GetPosTransform>(
-      "/tl_driver/get_rpy2r",
-      std::bind(&handle_get_rpy2r_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
-  node.create_service<tl_ros2_interface::srv::GetPosTransform>(
-      "/tl_driver/get_tr2r",
-      std::bind(&handle_get_tr2r_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
-  node.create_service<tl_ros2_interface::srv::GetPosTransform>(
-      "/tl_driver/get_r2tr",
-      std::bind(&handle_get_r2tr_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
   node.create_service<tl_ros2_interface::srv::CoordTransform>(
       "/tl_driver/coord_transform",
       std::bind(&handle_coord_transform_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));

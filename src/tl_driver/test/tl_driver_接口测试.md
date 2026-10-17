@@ -23,11 +23,10 @@
 | 5 | `/tl_driver/clear_error` | `std_srvs/srv/Trigger` | 清除报警/错误 |
 | 6 | `/tl_driver/get_controller_id` | `std_srvs/srv/Trigger` | 获取控制器序列号 |
 | 7 | `/tl_driver/get_library_version` | `std_srvs/srv/Trigger` | 获取 SDK 库版本 |
-| 8 | `/tl_driver/get_nexmotion_lib_version` | `std_srvs/srv/Trigger` | 获取算法库版本 |
-| 9 | `/tl_driver/set_default_cartesian_param` | `std_srvs/srv/Trigger` | 恢复默认笛卡尔参数 |
-| 10 | `/tl_driver/close_servoj` | `std_srvs/srv/Trigger` | 关闭关节跟踪模式 |
-| 11 | `/tl_driver/queue_motion_stop` | `std_srvs/srv/Trigger` | 队列运动停止 |
-| 12 | `/tl_driver/get_drag_status` | `std_srvs/srv/Trigger` | ⚠️ 获取拖拽状态（源码标注"用不了"） |
+| 8 | `/tl_driver/set_default_cartesian_param` | `std_srvs/srv/Trigger` | 恢复默认笛卡尔参数 |
+| 9 | `/tl_driver/close_servoj` | `std_srvs/srv/Trigger` | 关闭关节跟踪模式 |
+| 10 | `/tl_driver/queue_motion_stop` | `std_srvs/srv/Trigger` | 队列运动停止 |
+| 11 | `/tl_driver/get_drag_status` | `std_srvs/srv/Trigger` | ⚠️ 获取拖拽状态（源码标注"用不了"） |
 
 **测试指令（无参数服务通用格式）：**
 ```bash
@@ -37,7 +36,6 @@ ros2 service call /tl_driver/power_off std_srvs/srv/Trigger "{}"
 ros2 service call /tl_driver/clear_error std_srvs/srv/Trigger "{}"
 ros2 service call /tl_driver/get_library_version std_srvs/srv/Trigger "{}"
 ros2 service call /tl_driver/get_controller_id std_srvs/srv/Trigger "{}"
-ros2 service call /tl_driver/get_nexmotion_lib_version std_srvs/srv/Trigger "{}"
 ros2 service call /tl_driver/disconnect_arm std_srvs/srv/Trigger "{}"
 ```
 
@@ -187,26 +185,6 @@ ros2 service call /tl_driver/coord_transform tl_ros2_interface/srv/CoordTransfor
 }"
 ```
 
-### 位姿转换 5 个服务（均用 `GetPosTransform`，请求 `float64[] input`）
-
-| # | 接口名 | 说明 |
-|---|--------|------|
-| 1 | `/tl_driver/get_quat2rpy` | 四元数→欧拉角 |
-| 2 | `/tl_driver/get_rpy2quat` | 欧拉角→四元数 |
-| 3 | `/tl_driver/get_rpy2r` | 欧拉角→旋转矩阵 |
-| 4 | `/tl_driver/get_tr2r` | 位姿矩阵→旋转矩阵 |
-| 5 | `/tl_driver/get_r2tr` | 旋转矩阵→位姿矩阵 |
-
-```bash
-ros2 service call /tl_driver/get_quat2rpy tl_ros2_interface/srv/GetPosTransform "{input: [0.0, 0.0, 0.0, 1.0]}"
-ros2 service call /tl_driver/get_rpy2quat tl_ros2_interface/srv/GetPosTransform "{input: [0.0, 0.0, 0.0]}"
-ros2 service call /tl_driver/get_rpy2r tl_ros2_interface/srv/GetPosTransform "{input: [0.0, 0.0, 0.0]}"
-ros2 service call /tl_driver/get_tr2r tl_ros2_interface/srv/GetPosTransform "{input: [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]}"
-ros2 service call /tl_driver/get_r2tr tl_ros2_interface/srv/GetPosTransform "{input: [1,0,0, 0,1,0, 0,0,1]}"
-```
-
----
-
 ## 六、状态查询
 
 | # | 接口名 | 类型 | 请求参数 | 说明 |
@@ -239,21 +217,18 @@ ros2 service call /tl_driver/get_pos_reachable tl_ros2_interface/srv/GetPosReach
 | # | 接口名 | 类型 | 说明 |
 |---|--------|------|------|
 | 1 | `/tl_driver/get_dh_param` | `GetDHParam` | 获取 DH 参数 |
-| 2 | `/tl_driver/set_dh_param` | `SetDHParam`（`RobotDHParam param`） | 设置 DH 参数 |
-| 3 | `/tl_driver/restore_default_dh_param` | `RestoreDefaultDHParam`（`robot_num`） | 恢复默认 DH |
-| 4 | `/tl_driver/get_robot_joint_param` | `GetRobotJointParam`（`id`） | 获取关节参数 |
-| 5 | `/tl_driver/set_robot_joint_param` | `SetRobotJointParam`（`id`+`RobotJointParam`） | 设置关节参数 |
-| 6 | `/tl_driver/set_controller_ip` | `SetControllerIP` | 配置控制器网口 IP |
+| 2 | `/tl_driver/get_robot_joint_param` | `GetRobotJointParam`（`id`） | 获取关节参数 |
+| 3 | `/tl_driver/set_robot_joint_param` | `SetRobotJointParam`（`id`+`RobotJointParam`） | 设置关节参数 |
+| 4 | `/tl_driver/set_controller_ip` | `SetControllerIP` | 配置控制器网口 IP |
 
 **测试指令：**
 ```bash
 ros2 service call /tl_driver/get_dh_param tl_ros2_interface/srv/GetDHParam "{}"
-ros2 service call /tl_driver/restore_default_dh_param tl_ros2_interface/srv/RestoreDefaultDHParam "{robot_num: 1}"
 ros2 service call /tl_driver/get_robot_joint_param tl_ros2_interface/srv/GetRobotJointParam "{id: 1}"
 ros2 service call /tl_driver/set_controller_ip tl_ros2_interface/srv/SetControllerIP "{name: 'eth0', addr: '192.168.1.13', gateway: '192.168.1.1', dns: '8.8.8.8'}"
 ```
 
-> ⚠️ `set_dh_param` / `set_robot_joint_param` 涉及结构体参数，改动有风险，测试请谨慎（先 `get` 备份原值）。
+> ⚠️ `set_robot_joint_param` 涉及结构体参数，改动有风险，测试请谨慎（先 `get` 备份原值）。
 
 ---
 
@@ -281,38 +256,7 @@ ros2 service call /tl_driver/modbus_write tl_ros2_interface/srv/ModbusWrite "{ma
 
 ---
 
-## 九、作业文件
-
-| # | 接口名 | 类型 | 说明 |
-|---|--------|------|------|
-| 1 | `/tl_driver/get_all_job_filename` | `GetAllJobFileName` | 获取所有作业文件名 |
-| 2 | `/tl_driver/job_run` | `JobRun`（`job_name`） | 运行作业 |
-| 3 | `/tl_driver/job_delete` | `JobRun`（`job_name`） | 删除作业 |
-| 4 | `/tl_driver/job_insert_moveJ` | `JobInsertMove` | 插入 MoveJ 指令 |
-| 5 | `/tl_driver/job_insert_moveL` | `JobInsertMove` | 插入 MoveL 指令 |
-| 6 | `/tl_driver/job_insert_moveC` | `JobInsertMove` | 插入 MoveC 指令 |
-| 7 | `/tl_driver/job_insert_imove` | `JobInsertMove` | 插入 iMove 指令 |
-
-**测试指令：**
-```bash
-ros2 service call /tl_driver/get_all_job_filename tl_ros2_interface/srv/GetAllJobFileName "{}"
-ros2 service call /tl_driver/job_run tl_ros2_interface/srv/JobRun "{job_name: 'test.job'}"
-ros2 service call /tl_driver/job_delete tl_ros2_interface/srv/JobRun "{job_name: 'test.job'}"
-```
-
----
-
-## 十、全局点位 / 工具 / 用户坐标 / 零位
-
-### `/tl_driver/set_global_pos` — `SetGlobalPos`（pos_name/pos_info）
-```bash
-ros2 service call /tl_driver/set_global_pos tl_ros2_interface/srv/SetGlobalPos "{pos_name: 'GP0001', pos_info: [1,0,0,1,1,0,0, 300.0,0.0,200.0,3.14,0.0,0.0,0.0]}"
-```
-
-### `/tl_driver/get_global_pos` — `GetGlobalPos`（pos_name）
-```bash
-ros2 service call /tl_driver/get_global_pos tl_ros2_interface/srv/GetGlobalPos "{pos_name: 'GP0001'}"
-```
+## 十、工具 / 用户坐标 / 零位
 
 ### `/tl_driver/set_tool_param` — `SetToolParam`（tool_num + ToolParam）
 ```bash
@@ -377,15 +321,6 @@ ros2 service call /tl_driver/queue_motion_stop std_srvs/srv/Trigger "{}"
 
 ---
 
-## 十三、日志下载
-
-### `/tl_driver/log_download` — `LogDownload`（count/directory_path）
-```bash
-ros2 service call /tl_driver/log_download tl_ros2_interface/srv/LogDownload "{count: 100, directory_path: '/tmp'}"
-```
-
----
-
 ## 附：常用检查命令
 
 ```bash
@@ -406,4 +341,4 @@ ros2 interface show tl_ros2_interface/srv/SetSpeed
 2. **状态类**：`get_joint_temperature` / `get_joint_voltage` / `get_motor_current` / `get_current_motor_torque` / `get_current_line_joint_speed`（只读，安全）
 3. **配置类**：`set_speed` / `set_current_mode` / `set_current_coord` / `set_drag_mode`
 4. **运动类**（⚠️ 先确认周围安全、上电后）：`power_on` → `moveJ`/`moveL` 话题 → `power_off`
-5. **IO/Modbus/作业/轨迹**：按需单独测试
+5. **IO/Modbus/轨迹**：按需单独测试

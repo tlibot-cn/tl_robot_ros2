@@ -29,10 +29,6 @@ void register_config_services(DriverNode& node);
 /// @param[in] node 驱动节点
 void register_io_services(DriverNode& node);
 
-/// @brief 注册作业文件类服务（job 运行/删除/插入、文件列表）。
-/// @param[in] node 驱动节点
-void register_job_services(DriverNode& node);
-
 /// @brief 注册状态查询类服务（机器人状态、关节参数与温度/电压/电流、力矩、版本、拖拽）。
 /// @param[in] node 驱动节点
 void register_state_services(DriverNode& node);

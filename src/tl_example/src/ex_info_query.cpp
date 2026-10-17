@@ -16,11 +16,9 @@
  *   [4.9]  get_joint_voltage            查询关节电压
  *   [4.10] get_motor_current            查询电机电流
  *   [4.11] get_joint_software_version   查询关节软件版本号
- *   [4.12] get_nexmotion_lib_version    查询算法库版本
  *   [4.13] get_current_coord            查询当前坐标系
  *   [4.14] get_coord_num                查询坐标系编号
  *   [4.15] get_dh_param                 查询机械臂DH参数
- *   [4.16] get_all_job_filename         查询所有作业文件名称
  *   [4.17] get_pos_reachable            查询目标位姿可达状态（关节+直角两坐标系，打印目标位姿）
  *   [4.18] /arm_status 话题             查询机械臂运行状态
  *   [4.19] get_current_motor_torque     查询当前电机力矩
@@ -50,7 +48,6 @@
 #include "tl_ros2_interface/msg/arm_status.hpp"
 #include "tl_ros2_interface/msg/cartesian_pose.hpp"
 
-#include "tl_ros2_interface/srv/get_all_job_file_name.hpp"
 #include "tl_ros2_interface/srv/get_coord_num.hpp"
 #include "tl_ros2_interface/srv/get_current_coord.hpp"
 #include "tl_ros2_interface/srv/get_current_line_joint_speed.hpp"
@@ -93,7 +90,6 @@ public:
     // ── Trigger 类查询服务 ──
     trig_clis_["get_controller_id"] = create_client<Trigger>("/tl_driver/get_controller_id");
     trig_clis_["get_library_version"] = create_client<Trigger>("/tl_driver/get_library_version");
-    trig_clis_["get_nexmotion_lib_version"] = create_client<Trigger>("/tl_driver/get_nexmotion_lib_version");
 
     // ── 连接管理（获取真实数据需要先连接）──
     trig_clis_["connect"] = create_client<Trigger>("/tl_driver/connect_arm");
@@ -113,7 +109,6 @@ public:
     get_current_coord_cli_ = create_client<tl_ros2_interface::srv::GetCurrentCoord>("/tl_driver/get_current_coord");
     get_coord_num_cli_ = create_client<tl_ros2_interface::srv::GetCoordNum>("/tl_driver/get_coord_num");
     get_dh_param_cli_ = create_client<tl_ros2_interface::srv::GetDHParam>("/tl_driver/get_dh_param");
-    get_all_job_cli_ = create_client<tl_ros2_interface::srv::GetAllJobFileName>("/tl_driver/get_all_job_filename");
     get_pos_reachable_cli_ = create_client<tl_ros2_interface::srv::GetPosReachable>("/tl_driver/get_pos_reachable");
     get_motor_torque_cli_ =
         create_client<tl_ros2_interface::srv::GetCurrentMotorTorque>("/tl_driver/get_current_motor_torque");
@@ -149,7 +144,6 @@ private:
   rclcpp::Client<tl_ros2_interface::srv::GetCurrentCoord>::SharedPtr get_current_coord_cli_;
   rclcpp::Client<tl_ros2_interface::srv::GetCoordNum>::SharedPtr get_coord_num_cli_;
   rclcpp::Client<tl_ros2_interface::srv::GetDHParam>::SharedPtr get_dh_param_cli_;
-  rclcpp::Client<tl_ros2_interface::srv::GetAllJobFileName>::SharedPtr get_all_job_cli_;
   rclcpp::Client<tl_ros2_interface::srv::GetPosReachable>::SharedPtr get_pos_reachable_cli_;
   rclcpp::Client<tl_ros2_interface::srv::GetCurrentMotorTorque>::SharedPtr get_motor_torque_cli_;
   rclcpp::Client<tl_ros2_interface::srv::GetCurrentLineJointSpeed>::SharedPtr get_line_speed_cli_;
@@ -459,10 +453,6 @@ void tl_example::InfoQueryDemo::testInfoQuery()
       RCLCPP_INFO(this->get_logger(), "      版本: %s", resp->message.c_str());
   }
 
-  // [4.12] 查询算法库版本
-  RCLCPP_INFO(this->get_logger(), "  --- [4.12] 查询算法库版本 get_nexmotion_lib_version ---");
-  callTrigger("get_nexmotion_lib_version", "get_nexmotion_lib_version");
-
   // [4.13] 查询当前坐标系
   RCLCPP_INFO(this->get_logger(), "  --- [4.13] 查询当前坐标系 get_current_coord ---");
   {
@@ -494,22 +484,6 @@ void tl_example::InfoQueryDemo::testInfoQuery()
       printArray(resp->param.d, "      d(m) ");
       RCLCPP_INFO(this->get_logger(), "      euler_angle=%d mounting_angle=%.3f", resp->param.euler_angle,
                   resp->param.mounting_angle);
-    }
-  }
-
-  // [4.16] 查询所有作业文件名称
-  RCLCPP_INFO(this->get_logger(), "  --- [4.16] 查询所有作业文件 get_all_job_filename ---");
-  {
-    auto req = std::make_shared<tl_ros2_interface::srv::GetAllJobFileName::Request>();
-    auto resp = callService<tl_ros2_interface::srv::GetAllJobFileName>(get_all_job_cli_, req, "get_all_job_filename");
-    if (resp && resp->success)
-    {
-      int idx = 0;
-      for (const auto& group : resp->robots_file)
-      {
-        for (const auto& name : group.file_name)
-          RCLCPP_INFO(this->get_logger(), "      作业[%d]: %s", ++idx, name.c_str());
-      }
     }
   }
 

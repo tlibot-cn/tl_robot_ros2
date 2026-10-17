@@ -14,7 +14,8 @@
 |V1.5 | 2026-6-8  | 修订（详细化全部接口的输入输出参数说明，补全单位、范围、注意事项；优化参数表格式；修复锚点链接）|
 |V1.6 | 2026-6-23 | 新增[15.4 发送跟踪笛卡尔位姿](#154-发送跟踪笛卡尔位姿) |
 |V1.7 | 2026-10-17 | 单位对齐 SDK 修正：扭矩 %、用户坐标 mm、`MoveCommand` 布局/`pl`/`spin`/MoveL 速度、ServoJ 固定 7 元素、电机电流口径说明 |
-|V1.8 | 2026-10-17 | ROS 接口统一 REP 103：关节 rad、笛卡尔 m、线速度 m/s；控制器 mm/度在驱动边界换算；协议包接口（全局点位、可达性）保留单位制标志 |
+|V1.8 | 2026-10-17 | ROS 接口统一 REP 103：关节 rad、笛卡尔 m、线速度 m/s；控制器 mm/度在驱动边界换算；协议包接口（可达性）保留单位制标志 |
+|V1.9 | 2026-10-17 | 移除 18 个服务：纯数学变换（5）、作业文件（7）、全局路点（2）、`get_nexmotion_lib_version`、`set_dh_param`、`restore_default_dh_param`、`log_download`；对应章节已删除，章节号保留不复位以避免破坏既有引用 |
 
 </div>
 
@@ -25,8 +26,6 @@
   * [2.2 机械臂断开连接](#22-机械臂断开连接)
   * [2.3 机械臂上电](#23-机械臂上电)
   * [2.4 机械臂下电](#24-机械臂下电)
-* [3 日志管理接口](#3-日志管理接口)
-  * [3.1 日志下载](#31-日志下载)
 * [4 信息查询接口](#4-信息查询接口)
   * [4.1 查询关节角度](#41-查询关节角度)
   * [4.2 查询末端位姿](#42-查询末端位姿)
@@ -39,11 +38,9 @@
   * [4.9 查询关节电压](#49-查询关节电压)
   * [4.10 查询电机电流](#410-查询电机电流)
   * [4.11 查询关节软件版本号](#411-查询关节软件版本号)
-  * [4.12 查询算法库版本](#412-查询算法库版本)
   * [4.13 查询当前坐标系](#413-查询当前坐标系)
   * [4.14 查询坐标系编号](#414-查询坐标系编号)
   * [4.15 查询机械臂DH参数](#415-查询机械臂dh参数)
-  * [4.16 查询所有作业文件名称](#416-查询所有作业文件名称)
   * [4.17 查询目标位姿可达状态](#417-查询目标位姿可达状态)
   * [4.18 查询机械臂运行状态](#418-查询机械臂运行状态)
   * [4.19 查询当前电机力矩](#419-查询当前电机力矩)
@@ -52,17 +49,9 @@
   * [5.1 设置运行速度](#51-设置运行速度)
   * [5.2 设置控制器有线网口IP](#52-设置控制器有线网口ip)
   * [5.3 设置关节参数](#53-设置关节参数)
-  * [5.4 设置机械臂默认DH参数](#54-设置机械臂默认dh参数)
   * [5.5 设置机械臂默认笛卡尔参数](#55-设置机械臂默认笛卡尔参数)
   * [5.6 坐标转换](#56-坐标转换)
-  * [5.7 设置机械臂DH参数](#57-设置机械臂dh参数)
-* [6 作业运动控制接口](#6-作业运动控制接口)
-  * [6.1 向作业文件插入一条moveJ关节运动](#61-向作业文件插入一条movej关节运动)
-  * [6.2 向作业文件插入一条moveL直线运动](#62-向作业文件插入一条movel直线运动)
-  * [6.3 向作业文件插入一条增量指令IMove](#63-向作业文件插入一条增量指令imove)
-  * [6.4 向作业文件插入一条moveC圆弧运动](#64-向作业文件插入一条movec圆弧运动)
-  * [6.5 运行作业文件](#65-运行作业文件)
-  * [6.6 删除作业文件](#66-删除作业文件)
+* [6 MoveCommand 消息类型说明](#6-movecommand-消息类型说明)
 * [7 实时运动控制接口](#7-实时运动控制接口)
   * [7.1 MoveJ运动控制](#71-movej运动控制)
   * [7.2 MoveL运动控制](#72-movel运动控制)
@@ -81,9 +70,6 @@
 * [10 错误处理与零位标定接口](#10-错误处理与零位标定接口)
   * [10.1 清除错误](#101-清除错误)
   * [10.2 设置关节零点](#102-设置关节零点)
-* [11 全局路点管理接口](#11-全局路点管理接口)
-  * [11.1 查询全局位点](#111-查询全局位点)
-  * [11.2 设置全局位点](#112-设置全局位点)
 * [12 模式与IO控制接口](#12-模式与io控制接口)
   * [12.1 设置当前运行模式](#121-设置当前运行模式)
   * [12.2 查询当前运行模式](#122-查询当前运行模式)
@@ -101,12 +87,6 @@
   * [15.2 关闭关节跟踪模式](#152-关闭关节跟踪模式)
   * [15.3 发送跟踪关节位置](#153-发送跟踪关节位置)
   * [15.4 发送跟踪笛卡尔位姿](#154-发送跟踪笛卡尔位姿)
-* [16 位姿转换工具接口](#16-位姿转换工具接口)
-  * [16.1 四元数转欧拉角](#161-四元数转欧拉角)
-  * [16.2 欧拉角转四元数](#162-欧拉角转四元数)
-  * [16.3 欧拉角转旋转矩阵](#163-欧拉角转旋转矩阵)
-  * [16.4 位姿转旋转矩阵](#164-位姿转旋转矩阵)
-  * [16.5 旋转矩阵转位姿](#165-旋转矩阵转位姿)
 
 
 ## 1 通用约定
@@ -134,7 +114,7 @@
 
 ### 1.4 单位制约定
 > ROS 接口统一使用 REP 103 单位（m / rad / rad/s）。控制器与 SDK 的 mm / 度在 `tl_driver` 边界换算，本文档不再出现两套口径。
-> 例外：控制器 14/21 位点位协议包（`set_global_pos` / `get_global_pos` / `get_pos_reachable`）自身携带单位制标志位，按协议原样透传、不做换算。
+> 例外：`get_pos_reachable` 的 14 维控制器点位协议包自身携带单位制标志位，按协议原样透传、不做换算。
 
 | 物理量 | 单位 | 说明 |
 | :--- | :--- | :--- |
@@ -236,29 +216,6 @@ ros2 service call /tl_driver/power_on std_srvs/srv/Trigger "{}"
 #### 命令示例
 ```
 ros2 service call /tl_driver/power_off std_srvs/srv/Trigger "{}"
-```
-## 3 日志管理接口
-### 3.1 日志下载
-| 功能描述 | 从机械臂控制器下载指定数量的日志条目并保存到本地文件 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/log_download` |
-| 服务类型 | `tl_ros2_interface/srv/LogDownload` |
-
-**输入参数**
-| 参数名 | 类型 | 单位 | 范围 | 说明 |
-|--------|------|------|------|------|
-| count | int32 | — | ≥1 | 要下载的日志条数 |
-| directory_path | string | — | — | 日志保存目录的绝对路径，如 `"/home/ubuntu/桌面"` |
-
-**输出/返回值**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| success | bool | `true` = 下载成功，`false` = 下载失败 |
-| message | string | 失败时包含错误描述 |
-#### 命令示例
-```
-ros2 service call /tl_driver/log_download tl_ros2_interface/srv/LogDownload "{count: 1, directory_path: '/home/ubuntu/桌面'}"
 ```
 ## 4 信息查询接口
 ### 4.1 查询关节角度
@@ -403,7 +360,7 @@ ros2 service call /tl_driver/get_robot_state tl_ros2_interface/srv/GetRobotState
 | success | bool | `true` = 查询成功，`false` = 查询失败 |
 | message | string | 成功时返回动态库版本号（如 `"1.0.0"`），失败时包含错误描述 |
 
-> **注意**：此接口查询的是本地SDK动态库版本，无需连接机械臂即可调用。与 [查询算法库版本](#查询算法库版本)（查询控制器端算法库版本）不同。
+> **注意**：此接口查询的是本地SDK动态库版本，无需连接机械臂即可调用。
 #### 命令示例
 ```
 ros2 service call /tl_driver/get_library_version std_srvs/srv/Trigger "{}"
@@ -526,27 +483,6 @@ ros2 service call /tl_driver/get_motor_current tl_ros2_interface/srv/GetMotorCur
 ```
 ros2 service call /tl_driver/get_joint_software_version tl_ros2_interface/srv/GetJointSoftwareVersion "{axis_num: 1}"
 ```
-### 4.12 查询算法库版本
-| 功能描述 | 查询机械臂控制器端算法库版本信息 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/get_nexmotion_lib_version` |
-| 服务类型 | `std_srvs::srv::Trigger` |
-
-**输入参数**
-无请求参数（空 `Trigger`）。
-
-**输出/返回值**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| success | bool | `true` = 查询成功，`false` = 查询失败 |
-| message | string | 成功时返回算法库版本信息，失败时包含错误描述 |
-
-> **注意**：此接口查询的是控制器端算法库版本，与 [查询库版本信息](#查询库版本信息)（查询本地动态库版本）不同。
-#### 命令示例
-```
-ros2 service call /tl_driver/get_nexmotion_lib_version std_srvs/srv/Trigger "{}"
-```
 ### 4.13 查询当前坐标系
 | 功能描述 | 查询当前激活的工作坐标系类型 |
 | :---: | :---- |
@@ -606,26 +542,6 @@ ros2 service call /tl_driver/get_coord_num tl_ros2_interface/srv/GetCoordNum "{}
 #### 命令示例
 ```
 ros2 service call /tl_driver/get_dh_param tl_ros2_interface/srv/GetDHParam
-```
-### 4.16 查询所有作业文件名称
-| 功能描述 | 查询控制器内所有作业文件的名称列表 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/get_all_job_filename` |
-| 服务类型 | `tl_ros2_interface/srv/GetAllJobFileName` |
-
-**输入参数**
-无请求参数。
-
-**输出/返回值**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| success | bool | `true` = 查询成功，`false` = 查询失败 |
-| message | string | 失败时包含错误描述 |
-| robots_file | JobFileName[] | 作业文件列表，每组包含 file_name 字符串数组 |
-#### 命令示例
-```
-ros2 service call /tl_driver/get_all_job_filename tl_ros2_interface/srv/GetAllJobFileName "{}"
 ```
 ### 4.17 查询目标位姿可达状态
 | 功能描述 | 检查指定目标位姿在给定运动方式下是否可达 |
@@ -814,27 +730,6 @@ ros2 service call /tl_driver/set_robot_joint_param tl_ros2_interface/srv/SetRobo
 }"
 
 ```
-### 5.4 设置机械臂默认DH参数
-| 功能描述 | 将机械臂DH参数恢复为出厂默认值 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/restore_default_dh_param` |
-| 服务类型 | `tl_ros2_interface/srv/RestoreDefaultDHParam` |
-
-**输入参数**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| robot_num | int32 | 机器人编号，通常为 `1` |
-
-**输出/返回值**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| success | bool | `true` = 恢复成功，`false` = 恢复失败 |
-| message | string | 失败时包含错误描述 |
-#### 命令示例
-```
-ros2 service call /tl_driver/restore_default_dh_param tl_ros2_interface/srv/RestoreDefaultDHParam "{robot_num: 1}"
-```
 ### 5.5 设置机械臂默认笛卡尔参数
 | 功能描述 | 将机械臂笛卡尔空间参数恢复为出厂默认值 |
 | :---: | :---- |
@@ -887,45 +782,9 @@ ros2 service call /tl_driver/coord_transform tl_ros2_interface/srv/CoordTransfor
     reference_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 }'
 ```
-### 5.7 设置机械臂DH参数
-| 功能描述 | 设置机械臂的标准DH几何参数（alpha/a/theta/d、安装角等） |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/set_dh_param` |
-| 服务类型 | `tl_ros2_interface/srv/SetDHParam` |
+## 6 MoveCommand 消息类型说明
 
-**输入参数**
-| 参数名 | 类型 | 单位 | 说明 |
-|--------|------|------|------|
-| param | RobotDHParam | — | 机械臂DH参数结构体，字段：alpha/a/theta/d（1-6轴标准DH参数，rad/m）、euler_angle（欧拉角模式）、mounting_angle（安装角，rad） |
-
-**输出/返回值**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| success | bool | `true` = 设置成功，`false` = 设置失败 |
-| message | string | 失败时包含错误描述 |
-
-> **注意**：修改DH参数会影响机械臂运动学模型，请谨慎操作。
-#### 命令示例
-```
-ros2 service call /tl_driver/set_dh_param tl_ros2_interface/srv/SetDHParam \
-"{
-    param:
-    {
-        alpha: [0.0, -90.0, 0.0, 0.0, 0.0, 0.0],
-        a: [0.0, 340.0, 0.0, 0.0, 0.0, 0.0],
-        theta: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-        d: [0.0, 0.0, 320.0, 400.0, 0.0, 0.0],
-        euler_angle: 0,
-        mounting_angle: 0.0
-    }
-}"
-```
-## 6 作业运动控制接口
-
-### MoveCommand消息类型说明
-
-作业运动控制接口共用 `MoveCommand` 消息类型，其字段说明如下：
+`MoveCommand` 消息类型字段说明如下：
 
 | 字段名 | 类型 | 单位 | 范围 | 说明 |
 |--------|------|------|------|------|
@@ -946,247 +805,6 @@ ros2 service call /tl_driver/set_dh_param tl_ros2_interface/srv/SetDHParam \
 | spin | int32 | — | 0～2 | 仅MOVCA指令使用：0=姿态不变，1=六轴不转，2=六轴旋转 |
 | para_sync | bool | — | — | `true` = 外部轴同步，`false` = 不同步 |
 
-### 6.1 向作业文件插入一条moveJ关节运动
-| 功能描述 | 在作业文件指定行插入一条关节空间运动（MoveJ）指令 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/job_insert_moveJ` |
-| 服务类型 | `tl_ros2_interface/srv/JobInsertMove` |
-
-**输入参数**
-| 参数名 | 类型 | 范围 | 说明 |
-|--------|------|------|------|
-| line | int32 | ≥1 | 插入行序号（从1开始） |
-| cmd | MoveCommand | — | 运动指令，字段详见 [MoveCommand消息类型说明](#movecommand消息类型说明) |
-
-**输出/返回值**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| success | bool | `true` = 插入成功，`false` = 插入失败 |
-| message | string | 失败时包含错误描述 |
-
-> **注意**：target_pos_type=0时使用target_pos_value自定义数组；target_pos_type=1时需设置target_pos_name为 `"P0001"` 格式，target_pos_value仅填关节角度。
-#### 命令示例
-targetPosType=0为自定义数组，posInfo[14]：[0]坐标系 0=关节 1=直角 2=工具 3=用户，[1] 0=角度制 1=弧度制，[2]形态，[3]工具手坐标序号，[4]用户坐标序号，[5][6]备用，[7-13]点位信息
-```
-ros2 service call /tl_driver/job_insert_moveJ tl_ros2_interface/srv/JobInsertMove "{
-  line: 1,
-  cmd: {
-    target_pos_value: [
-      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    ],
-    target_pos_name: '',
-    target_pos_type: 0,
-    coord: 0,
-    velocity: 20.0,
-    velocity_sync: 0.0,
-    acc: 20.0,
-    dec: 20.0,
-    pl: 0,
-    time: 0,
-    tool_num: 0,
-    user_num: 0,
-    posidtype: 0,
-    configuration: 0,
-    spin: 0,
-    para_sync: false
-  }
-}"
-```
-targetPosType=1,需要设置targetPosName为"P0001",默认中间三个0
-此时target_pos_value根据实际机械臂轴数来设定参数数量，输入关节角（rad）
-```
-ros2 service call /tl_driver/job_insert_moveJ tl_ros2_interface/srv/JobInsertMove "{
-  line: 1,
-  cmd: {
-    target_pos_value: [
-      0.1745, 0.3491, 0.0, 0.0, 0.0, 0.0
-    ],
-    target_pos_name: 'P0001',
-    target_pos_type: 1,
-    coord: 0,
-    velocity: 20.0,
-    velocity_sync: 0.0,
-    acc: 20.0,
-    dec: 20.0,
-    pl: 0,
-    time: 0,
-    tool_num: 0,
-    user_num: 0,
-    posidtype: 0,
-    configuration: 0,
-    spin: 0,
-    para_sync: false
-  }
-}"
-
-```
-### 6.2 向作业文件插入一条moveL直线运动
-| 功能描述 | 在作业文件指定行插入一条笛卡尔空间直线运动（MoveL）指令 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/job_insert_moveL` |
-| 服务类型 | `tl_ros2_interface/srv/JobInsertMove` |
-
-**输入参数** 同 §6.1，区别：`cmd.coord=1`（直角坐标系），target_pos_value为[X(m), Y, Z, RX(rad), RY, RZ]。
-
-**输出/返回值**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| success | bool | `true` = 插入成功，`false` = 插入失败 |
-| message | string | 失败时包含错误描述 |
-#### 命令示例
-```
-ros2 service call /tl_driver/job_insert_moveL tl_ros2_interface/srv/JobInsertMove "{
-  line: 1,
-  cmd: {
-    target_pos_value: [
-      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    ],
-    target_pos_name: '',
-    target_pos_type: 0,
-    coord: 0,
-    velocity: 20.0,
-    velocity_sync: 0.0,
-    acc: 20.0,
-    dec: 20.0,
-    pl: 0,
-    time: 0,
-    tool_num: 0,
-    user_num: 0,
-    posidtype: 0,
-    configuration: 0,
-    spin: 0,
-    para_sync: false
-  }
-}"
-```
-### 6.3 向作业文件插入一条增量指令IMove
-| 功能描述 | 在作业文件指定行插入一条增量运动（IMove）指令，以当前位姿为基准进行相对运动 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/job_insert_imove` |
-| 服务类型 | `tl_ros2_interface/srv/JobInsertMove` |
-
-**输入参数** 同 §6.1，`cmd` 中的 `target_pos_value` 表示相对增量。
-
-**输出/返回值**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| success | bool | `true` = 插入成功，`false` = 插入失败 |
-| message | string | 失败时包含错误描述 |
-#### 命令示例
-```
-ros2 service call /tl_driver/job_insert_imove tl_ros2_interface/srv/JobInsertMove "{
-  line: 1,
-  cmd: {
-    target_pos_value: [
-      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    ],
-    target_pos_name: '',
-    target_pos_type: 0,
-    coord: 0,
-    velocity: 20.0,
-    velocity_sync: 0.0,
-    acc: 20.0,
-    dec: 20.0,
-    pl: 0,
-    time: 0,
-    tool_num: 0,
-    user_num: 0,
-    posidtype: 0,
-    configuration: 0,
-    spin: 0,
-    para_sync: false
-  }
-}"
-```
-### 6.4 向作业文件插入一条moveC圆弧运动
-| 功能描述 | 在作业文件指定行插入一条笛卡尔空间圆弧运动（MoveC）指令。需连续插入两条：第一条为圆弧中间点，第二条为终点 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/job_insert_moveC` |
-| 服务类型 | `tl_ros2_interface/srv/JobInsertMove` |
-
-**输入参数** 同 §6.2（coord=1，直角坐标系）。
-
-**输出/返回值**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| success | bool | `true` = 插入成功，`false` = 插入失败 |
-| message | string | 失败时包含错误描述 |
-#### 命令示例
-```
-ros2 service call /tl_driver/job_insert_moveC tl_ros2_interface/srv/JobInsertMove "{
-  line: 1,
-  cmd: {
-    target_pos_value: [
-      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    ],
-    target_pos_name: '',
-    target_pos_type: 0,
-    coord: 0,
-    velocity: 20.0,
-    velocity_sync: 0.0,
-    acc: 20.0,
-    dec: 20.0,
-    pl: 0,
-    time: 0,
-    tool_num: 0,
-    user_num: 0,
-    posidtype: 0,
-    configuration: 0,
-    spin: 0,
-    para_sync: false
-  }
-}"
-```
-### 6.5 运行作业文件
-| 功能描述 | 启动运行指定的作业文件 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/job_run` |
-| 服务类型 | `tl_ros2_interface/srv/JobRun` |
-
-**输入参数**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| job_name | string | 作业文件名，如 `"回零点"` |
-
-**输出/返回值**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| success | bool | `true` = 运行成功，`false` = 运行失败（如文件不存在、未使能等） |
-| message | string | 失败时包含错误描述 |
-#### 命令示例
-```
-ros2 service call /tl_driver/job_run tl_ros2_interface/srv/JobRun "{job_name: '回零点'}"
-```
-### 6.6 删除作业文件
-| 功能描述 | 删除指定的作业文件 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/job_delete` |
-| 服务类型 | `tl_ros2_interface/srv/JobRun` |
-
-**输入参数**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| job_name | string | 要删除的作业文件名，如 `"回零点"` |
-
-**输出/返回值**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| success | bool | `true` = 删除成功，`false` = 删除失败 |
-| message | string | 失败时包含错误描述 |
-#### 命令示例
-```
-ros2 service call /tl_driver/job_delete tl_ros2_interface/srv/JobRun "{job_name: '回零点'}"
-```
 ## 7 实时运动控制接口
 ### 7.1 MoveJ运动控制
 | 功能描述 | 通过话题下发关节角度数据，驱动机器人实时关节空间运动到目标位置（不依赖作业文件） |
@@ -1598,55 +1216,6 @@ ros2 service call /tl_driver/clear_error std_srvs/srv/Trigger "{}"
 ```
 ros2 service call /tl_driver/set_axis_zero_pos tl_ros2_interface/srv/SetAxisZeroPos "{axis: 1}"
 ```
-## 11 全局路点管理接口
-### 11.1 查询全局位点
-| 功能描述 | 读取指定名称的全局路点数据，返回14维位置向量 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/get_global_pos` |
-| 服务类型 | `tl_ros2_interface/srv/GetGlobalPos` |
-
-**输入参数**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| pos_name | string | 全局路点名称，如 `"GP0002"` |
-
-**输出/返回值**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| success | bool | `true` = 查询成功，`false` = 查询失败 |
-| message | string | 失败时包含错误描述 |
-| pos_info | float64[] | 14维位点数据：[0]坐标系 [1]单位制(0=度,1=弧度) [2]形态 [3]工具序号 [4]用户序号 [5][6]备用 [7~13]位点信息 |
-#### 命令示例
-```
-ros2 service call /tl_driver/get_global_pos tl_ros2_interface/srv/GetGlobalPos "{pos_name: 'GP0002'}"
-```
-### 11.2 设置全局位点
-| 功能描述 | 创建或修改一个持久化的全局位置变量（路点），可通过名称直接调用 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/set_global_pos` |
-| 服务类型 | `tl_ros2_interface/srv/SetGlobalPos` |
-
-**输入参数**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| pos_name | string | 全局路点名称，如 `"GP0002"` |
-| pos_info | float64[] | 14维位点数据（格式同 [查询全局位点](#查询全局位点) 的 `pos_info`） |
-
-**输出/返回值**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| success | bool | `true` = 设置成功，`false` = 设置失败 |
-| message | string | 失败时包含错误描述 |
-#### 命令示例
-```
-ros2 service call /tl_driver/set_global_pos tl_ros2_interface/srv/SetGlobalPos \
-'{
-    pos_name: "GP0002",
-    pos_info: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 57.14, -32.93, 19.74, -89.89, -19.77, 0.0]
-}'
-```
 ## 12 模式与IO控制接口
 ### 12.1 设置当前运行模式
 | 功能描述 | 切换控制器运行模式 |
@@ -2021,131 +1590,5 @@ ros2 topic pub --once /tl_driver/set_servol_pos tl_ros2_interface/msg/ServolMove
     target_pose: [0.32747, 0.0, 0.39544, 3.14, 0.0, 0.0],
     step_size: 0.002,
     coord: 1
-}"
-```
-## 16 位姿转换工具接口
-### 16.1 四元数转欧拉角
-| 功能描述 | 将四元数姿态转换为欧拉角（RPY）姿态 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/get_quat2rpy` |
-| 服务类型 | `tl_ros2_interface/srv/GetPosTransform` |
-
-**输入参数**
-| 参数名 | 类型 | 长度 | 说明 |
-|--------|------|------|------|
-| input | float64[] | 4 | 四元数 [w, x, y, z]（无单位） |
-
-**输出/返回值**
-| 参数名 | 类型 | 单位 | 说明 |
-|--------|------|------|------|
-| success | bool | — | `true` = 转换成功，`false` = 转换失败 |
-| message | string | — | 失败时包含错误描述 |
-| output | float64[] | rad | 欧拉角 [rx, ry, rz] |
-#### 命令示例
-```
-ros2 service call /tl_driver/get_quat2rpy tl_ros2_interface/srv/GetPosTransform \
-"{
-    input: [-0.080, 0.919, 0.365, 0.122]
-}"
-```
-### 16.2 欧拉角转四元数
-| 功能描述 | 将欧拉角（RPY）姿态转换为四元数姿态 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/get_rpy2quat` |
-| 服务类型 | `tl_ros2_interface/srv/GetPosTransform` |
-
-**输入参数**
-| 参数名 | 类型 | 单位 | 长度 | 说明 |
-|--------|------|------|------|------|
-| input | float64[] | rad | 3 | 欧拉角 [rx, ry, rz] |
-
-**输出/返回值**
-| 参数名 | 类型 | 长度 | 说明 |
-|--------|------|------|------|
-| success | bool | — | `true` = 转换成功，`false` = 转换失败 |
-| message | string | — | 失败时包含错误描述 |
-| output | float64[] | 4 | 四元数 [w, x, y, z]（无单位） |
-#### 命令示例
-```
-ros2 service call /tl_driver/get_rpy2quat tl_ros2_interface/srv/GetPosTransform \
-"{
-    input: [-2.9, 0.167, -0.777]
-}"
-```
-### 16.3 欧拉角转旋转矩阵
-| 功能描述 | 将欧拉角转换为3×3旋转矩阵（输出9个元素，行主序） |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/get_rpy2r` |
-| 服务类型 | `tl_ros2_interface/srv/GetPosTransform` |
-
-**输入参数**
-| 参数名 | 类型 | 单位 | 长度 | 说明 |
-|--------|------|------|------|------|
-| input | float64[] | rad | 3 | 欧拉角 [rx, ry, rz] |
-
-**输出/返回值**
-| 参数名 | 类型 | 长度 | 说明 |
-|--------|------|------|------|
-| success | bool | — | `true` = 转换成功，`false` = 转换失败 |
-| message | string | — | 失败时包含错误描述 |
-| output | float64[] | 9 | 3×3旋转矩阵（行主序，无单位） |
-#### 命令示例
-```
-ros2 service call /tl_driver/get_rpy2r tl_ros2_interface/srv/GetPosTransform \
-"{
-    input: [-2.9, 0.167, -0.777]
-}"
-```
-### 16.4 位姿转旋转矩阵
-| 功能描述 | 从4×4齐次变换矩阵（16个元素，行主序）中提取3×3旋转矩阵 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/get_tr2r` |
-| 服务类型 | `tl_ros2_interface/srv/GetPosTransform` |
-
-**输入参数**
-| 参数名 | 类型 | 长度 | 说明 |
-|--------|------|------|------|
-| input | float64[] | 16 | 4×4齐次变换矩阵（行主序，无单位） |
-
-**输出/返回值**
-| 参数名 | 类型 | 长度 | 说明 |
-|--------|------|------|------|
-| success | bool | — | `true` = 转换成功，`false` = 转换失败 |
-| message | string | — | 失败时包含错误描述 |
-| output | float64[] | 9 | 3×3旋转矩阵（行主序，无单位） |
-#### 命令示例
-```
-ros2 service call /tl_driver/get_tr2r tl_ros2_interface/srv/GetPosTransform \
-"{
-    input: [0.703, 0.691, 0.166, 0.000, 0.652, -0.720, 0.236, 0.000, 0.283, -0.057, -0.957, 0.000, 0.000, 0.000, 0.000, 1.000]
-}"
-```
-### 16.5 旋转矩阵转位姿
-| 功能描述 | 将3×3旋转矩阵扩展为4×4齐次变换矩阵（平移部分为零） |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/get_r2tr` |
-| 服务类型 | `tl_ros2_interface/srv/GetPosTransform` |
-
-**输入参数**
-| 参数名 | 类型 | 长度 | 说明 |
-|--------|------|------|------|
-| input | float64[] | 9 | 3×3旋转矩阵（行主序，无单位） |
-
-**输出/返回值**
-| 参数名 | 类型 | 长度 | 说明 |
-|--------|------|------|------|
-| success | bool | — | `true` = 转换成功，`false` = 转换失败 |
-| message | string | — | 失败时包含错误描述 |
-| output | float64[] | 16 | 4×4齐次变换矩阵（行主序，无单位） |
-#### 命令示例
-```
-ros2 service call /tl_driver/get_r2tr tl_ros2_interface/srv/GetPosTransform \
-"{
-    input: [0.703, 0.691, 0.166, 0.652, -0.720, 0.236, 0.283, -0.057, -0.957]
 }"
 ```
