@@ -177,13 +177,13 @@ ros2 launch tl_gazebo gazebo_tcb610_demo.launch.py          # Gazebo
 
 ## Testing & QA
 
-- **自动化测试仅覆盖 `tl_driver` 的纯逻辑层**：3 个 gtest 二进制、22 个用例，全部在 `src/tl_driver/test/`：
+- **自动化测试仅覆盖 `tl_driver` 的纯逻辑层**：3 个 gtest 二进制、21 个用例，全部在 `src/tl_driver/test/`：
 
   | 文件 | 覆盖 |
   |---|---|
   | `test_quaternion.cpp` | RPY↔四元数、slerp、最短路径、万向锁 |
   | `test_units.cpp` | mm↔m、deg↔rad、mm/s↔m/s、rpm↔rad/s、关节角数量截断 |
-  | `test_msg_convert.cpp` | `to_move_cmd`、Modbus 主站映射、DH 参数、点位名校验 |
+  | `test_msg_convert.cpp` | `to_move_cmd`、Modbus 主站映射、DH 参数 |
 
   测试直接编译 `src/math/quaternion.cpp` 与 `src/convert/msg_convert.cpp`，**不链接 SDK**。
 

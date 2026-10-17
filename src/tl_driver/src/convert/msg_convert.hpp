@@ -2,10 +2,8 @@
 #define TL_DRIVER__MSG_CONVERT_HPP_
 
 /// @file msg_convert.hpp
-/// @brief ROS 消息 / 服务与 SDK 结构之间的转换（含全局点位名校验）。
+/// @brief ROS 消息 / 服务与 SDK 结构之间的转换。
 /// @note SDK 类型（`tl::`）经 arm_sdk.hpp 引入；本模块只做字段搬运，不发 SDK 请求。
-
-#include <string>
 
 #include "tl_ros2_interface/msg/modbus_master_param.hpp"
 #include "tl_ros2_interface/msg/move_command.hpp"
@@ -22,12 +20,6 @@ enum class MotionKind
   kJoint, ///< robot_movej / queue_motion_push_back_moveJ：velocity 为 %
   kLinear ///< robot_movel / moveC / imove：velocity 为 m/s（SDK 侧 mm/s）
 };
-
-/// @brief 校验全局点位名：长度 6、前缀 "GP"、编号 1..9999。
-/// @param[in] pos_name 待校验点位名
-/// @return 通过校验为 true
-/// @note 逐字符解析且 noexcept：非数字字符一律拒绝，不会抛异常。
-bool is_valid_gp_name(const std::string& pos_name) noexcept;
 
 /// @brief MoveCommand 消息（话题与 job/queue 服务共用）转 SDK 运动指令。
 /// @param[in] msg 运动指令消息（ROS 侧 m / rad / m·s⁻¹）

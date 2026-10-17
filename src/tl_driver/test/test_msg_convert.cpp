@@ -183,19 +183,3 @@ TEST(MsgConvert, DhParamIgnoresJointsBeyondSixth)
   EXPECT_NEAR(dh.a[1], 2000.0, 1e-9);
   EXPECT_DOUBLE_EQ(dh.a[2], 0.0); // 未提供 → 保持零初始化
 }
-
-TEST(MsgConvert, GlobalPosNameValidation)
-{
-  // P0-1：非数字首部不得抛异常，非数字尾部不得被 std::stoi 静默放行
-  EXPECT_FALSE(tl_driver::convert::is_valid_gp_name("GPab12"));
-  EXPECT_FALSE(tl_driver::convert::is_valid_gp_name("GP12ab"));
-  EXPECT_FALSE(tl_driver::convert::is_valid_gp_name("GP-001"));
-  EXPECT_TRUE(tl_driver::convert::is_valid_gp_name("GP0001"));
-  EXPECT_TRUE(tl_driver::convert::is_valid_gp_name("GP9999"));
-  EXPECT_FALSE(tl_driver::convert::is_valid_gp_name("GP0000"));  // 0 超出 1..9999
-  EXPECT_FALSE(tl_driver::convert::is_valid_gp_name("GP1"));     // 长度不足
-  EXPECT_FALSE(tl_driver::convert::is_valid_gp_name("GP00001")); // 长度超出
-  EXPECT_FALSE(tl_driver::convert::is_valid_gp_name("XX0001"));  // 前缀不符
-  EXPECT_FALSE(tl_driver::convert::is_valid_gp_name("gp0001"));  // 大小写敏感
-  EXPECT_FALSE(tl_driver::convert::is_valid_gp_name(""));
-}
