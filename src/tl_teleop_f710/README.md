@@ -142,9 +142,9 @@ ros2 launch tl_teleop_f710 tl_teleop_f710_6axis_gazebo.launch.py arm_type:=tcb60
     pos_sensitivity: 160.0       # 平移灵敏度 (mm/s)
     rot_sensitivity: 1.0         # 旋转灵敏度 (rad/s)
     servo_speed: 25.0
-    servo_vmax: 180.0            # 关节最大速度 (°/s)
-    servo_amax: 3000.0           # 关节最大加速度 (°/s²)
-    servo_jmax: 50000.0          # 关节最大加加速度 (°/s³)
+    servo_vmax: 180.0            # 关节最大速度，配置用 °/s（内部转 rad/s 后调用接口）
+    servo_amax: 3000.0           # 关节最大加速度，配置用 °/s²（内部转 rad/s²）
+    servo_jmax: 50000.0          # 关节最大加加速度，配置用 °/s³（内部转 rad/s³）
     deadzone: 0.15               # 摇杆死区
     home_joints: [0,0,0,0,0,0]  # 回零关节角（度）
 ```
@@ -226,7 +226,7 @@ F710 → joy_node → /joy
 | 话题 | 类型 | 方向 | 说明 |
 |------|------|------|------|
 | `/joy` | `sensor_msgs/Joy` | 订阅 | 手柄输入 |
-| `/tl_driver/set_servoj_pos` | `std_msgs/Float64MultiArray` | **发布** | 关节角指令（250Hz，真机）|
+| `/tl_driver/set_servoj_pos` | `std_msgs/Float64MultiArray` | **发布** | 关节角指令（rad，250Hz，真机）|
 | `/tl_driver/set_servol_pos` | `tl_ros2_interface/ServolMove` | **发布** | 笛卡尔位姿指令（仿真）|
 | `/joint_states` | `sensor_msgs/JointState` | 订阅 | 当前关节角（用于启动初始化）|
 

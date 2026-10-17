@@ -16,6 +16,13 @@
 
 namespace tl_driver::convert
 {
+/// @brief 运动指令的速度字段语义：关节运动为百分比，直线类运动为线速度。
+enum class MotionKind
+{
+  kJoint, ///< robot_movej / queue_motion_push_back_moveJ：velocity 为 %
+  kLinear ///< robot_movel / moveC / imove：velocity 为 m/s（SDK 侧 mm/s）
+};
+
 /// @brief 校验全局点位名：长度 6、前缀 "GP"、编号 1..9999。
 /// @param[in] pos_name 待校验点位名
 /// @return 通过校验为 true
@@ -24,9 +31,12 @@ namespace tl_driver::convert
 bool is_valid_gp_name(const std::string& pos_name);
 
 /// @brief MoveCommand 消息（话题与 job/queue 服务共用）转 SDK 运动指令。
-/// @param[in] msg 运动指令消息
-/// @return 填充后的 SDK 运动指令
-tl::MoveCmd to_move_cmd(const tl_ros2_interface::msg::MoveCommand& msg);
+/// @param[in] msg 运动指令消息（ROS 侧 m / rad / m·s⁻¹）
+/// @param[in] kind 速度字段语义（关节 % 或直线 m/s）
+/// @return 填充后的 SDK 运动指令（控制器侧 mm / 度 / mm·s⁻¹）
+/// @note target_pos_value 的 [0..6] 按 coord 转换；[7..13] 为外部轴点位，单位随
+///       外部轴类型，保持原值透传。
+tl::MoveCmd to_move_cmd(const tl_ros2_interface::msg::MoveCommand& msg, MotionKind kind);
 
 /// @brief ModbusMasterParam 消息转 SDK 主站参数。
 /// @param[in] msg 主站参数消息

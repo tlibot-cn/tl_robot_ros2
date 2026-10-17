@@ -62,6 +62,8 @@ using Float64Array = std_msgs::msg::Float64MultiArray;
 using OpenServoJ = tl_ros2_interface::srv::OpenServoJ;
 using SetCurrentMode = tl_ros2_interface::srv::SetCurrentMode;
 
+constexpr double kDegToRad = M_PI / 180.0;
+
 // 关节数（servoj 向量固定 7 元素：前 6 轴 + 第 7 轴补 0）
 static constexpr size_t kNJoints = 7;
 
@@ -86,9 +88,9 @@ public:
     RCLCPP_INFO(this->get_logger(), "============================================================");
 
     // ── 参数 ──
-    this->declare_parameter("vmax", 30.0);    // ServoJ 最大速度（°/s）
-    this->declare_parameter("amax", 60.0);    // ServoJ 最大加速度（°/s²）
-    this->declare_parameter("jmax", 100.0);   // ServoJ 最大加加速度（°/s³）
+    this->declare_parameter("vmax", 30.0);    // ServoJ 最大速度（°/s，入参）
+    this->declare_parameter("amax", 60.0);    // ServoJ 最大加速度（°/s²，入参）
+    this->declare_parameter("jmax", 100.0);   // ServoJ 最大加加速度（°/s³，入参）
     this->declare_parameter("period_ms", 10); // 发送周期（毫秒）→ 100Hz
 
     vmax_ = this->get_parameter("vmax").as_double();
@@ -106,7 +108,7 @@ public:
     open_servoj_cli_ = this->create_client<OpenServoJ>("/tl_driver/open_servoj");
     close_servoj_cli_ = this->create_client<Trigger>("/tl_driver/close_servoj");
 
-    // ── 高频下发话题（100Hz 向 7000 端口发送目标关节角度，单位 °）──
+    // ── 高频下发话题（100Hz 向 7000 端口发送目标关节角度，单位 rad）──
     servoj_pos_pub_ = this->create_publisher<Float64Array>("/tl_driver/set_servoj_pos", 10);
 
     // ── 状态订阅（运行状态 + 关节角度，用于验证实时跟踪）──
@@ -265,7 +267,11 @@ private:
       for (size_t j = 0; j < q.size() && j < step.size(); ++j)
         q[j] += step[j];
       Float64Array msg;
-      msg.data = q; // 7 元素，前 6 轴角度 + 第 7 轴补 0
+      msg.data = q;
+      for (auto& value : msg.data)
+      {
+        value *= kDegToRad; // 轨迹常量沿用度制，发布前转 rad
+      }
       servoj_pos_pub_->publish(msg);
       rclcpp::sleep_for(std::chrono::milliseconds(period_ms_));
       // 收集 /joint_states 反馈（同时避免回调饥饿）
@@ -345,9 +351,9 @@ void tl_example::ServoJDemo::run()
   RCLCPP_INFO(this->get_logger(), "\n========== 6. 打开 ServoJ 跟踪模式 ==========");
   {
     auto req = std::make_shared<OpenServoJ::Request>();
-    req->vmax.assign(kNJoints, vmax_);
-    req->amax.assign(kNJoints, amax_);
-    req->jmax.assign(kNJoints, jmax_);
+    req->vmax.assign(kNJoints, vmax_ * kDegToRad);
+    req->amax.assign(kNJoints, amax_ * kDegToRad);
+    req->jmax.assign(kNJoints, jmax_ * kDegToRad);
     auto resp = callService<OpenServoJ>(open_servoj_cli_, req, "open_servoj");
     if (!resp || !resp->success)
     {

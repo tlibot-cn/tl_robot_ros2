@@ -22,6 +22,11 @@
 #include <algorithm>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 
+namespace
+{
+constexpr double kDegToRad = M_PI / 180.0;
+} // namespace
+
 F710TeleopNode::F710TeleopNode()
     : rclcpp::Node("tl_teleop_f710_node"), latest_joy_(nullptr), speed_value_(50.0), stop_mode_(false),
       target_pose_ready_(false), init_state_(0), kdl_fk_ready_(false)
@@ -74,7 +79,7 @@ F710TeleopNode::F710TeleopNode()
   // 控制定时器（250Hz = 4ms）
   control_timer_ = this->create_wall_timer(std::chrono::milliseconds(4), std::bind(&F710TeleopNode::controlLoop, this));
 
-  RCLCPP_INFO(this->get_logger(), "F710 遥操作节点已启动 (250Hz, 灵敏度 %.1fmm/s, vmax=%.1f°/s)", pos_sensitivity_,
+  RCLCPP_INFO(this->get_logger(), "F710 遥操作节点已启动 (250Hz, 灵敏度 %.3fm/s, vmax=%.3frad/s)", pos_sensitivity_,
               servo_vmax_);
 }
 
@@ -132,13 +137,18 @@ void F710TeleopNode::loadParameters()
   speed_max_ = this->get_parameter("speed_max").as_double();
   speed_step_ = this->get_parameter("speed_step").as_double();
   servo_speed_ = this->get_parameter("servo_speed").as_double();
-  servo_vmax_ = this->get_parameter("servo_vmax").as_double();
-  servo_amax_ = this->get_parameter("servo_amax").as_double();
-  servo_jmax_ = this->get_parameter("servo_jmax").as_double();
-  pos_sensitivity_ = this->get_parameter("pos_sensitivity").as_double();
+  // 配置沿用度制、mm/s；内部统一为 rad/s、rad/s²、rad/s³、m/s、rad
+  servo_vmax_ = this->get_parameter("servo_vmax").as_double() * kDegToRad;
+  servo_amax_ = this->get_parameter("servo_amax").as_double() * kDegToRad;
+  servo_jmax_ = this->get_parameter("servo_jmax").as_double() * kDegToRad;
+  pos_sensitivity_ = this->get_parameter("pos_sensitivity").as_double() / 1000.0;
   rot_sensitivity_ = this->get_parameter("rot_sensitivity").as_double();
   deadzone_ = this->get_parameter("deadzone").as_double();
   home_joints_ = this->get_parameter("home_joints").as_double_array();
+  for (auto& joint : home_joints_)
+  {
+    joint *= kDegToRad;
+  }
 
   axis_left_x_ = this->get_parameter("axis_left_x").as_int();
   axis_left_y_ = this->get_parameter("axis_left_y").as_int();
@@ -178,8 +188,8 @@ void F710TeleopNode::publishServol()
     return;
   auto msg = tl_ros2_interface::msg::ServolMove();
   msg.target_pose = target_pose_;
-  msg.step_size = 5.0;
-  msg.coord = 1; // 基座标系
+  msg.step_size = 0.005; // 5 mm
+  msg.coord = 1;         // 基座标系
   servol_pub_->publish(msg);
 }
 
@@ -286,6 +296,7 @@ bool F710TeleopNode::homeJointsToPose(std::vector<double>& pose_out)
     req->origin_coord = 0;
     req->target_coord = 1;
     req->form = 0;
+    // CoordTransform 入参：关节 rad
     std::vector<double> pos = home_joints_;
     pos.resize(7, 0.0);
     req->origin_pos = pos;
@@ -317,7 +328,7 @@ bool F710TeleopNode::homeJointsToPose(std::vector<double>& pose_out)
   KDL::JntArray q_in(ndof);
   for (int i = 0; i < ndof; ++i)
   {
-    q_in(i) = home_joints_[i] * M_PI / 180.0;
+    q_in(i) = home_joints_[i]; // 内部已是 rad
   }
 
   KDL::Frame frame_out;
@@ -328,9 +339,10 @@ bool F710TeleopNode::homeJointsToPose(std::vector<double>& pose_out)
     return false;
   }
 
-  double x = frame_out.p.x() * 1000.0;
-  double y = frame_out.p.y() * 1000.0;
-  double z = frame_out.p.z() * 1000.0;
+  // ServolMove / CoordTransform 均为 m，KDL 原生也是 m
+  double x = frame_out.p.x();
+  double y = frame_out.p.y();
+  double z = frame_out.p.z();
   double rx, ry, rz;
   frame_out.M.GetRPY(rx, ry, rz);
 
@@ -451,15 +463,10 @@ void F710TeleopNode::jointStateCallback(const sensor_msgs::msg::JointState::Shar
   // 首帧到达且初始化完成 → 用当前关节角初始化位姿
   if (joint_state_ready_ && init_state_ >= 6 && !target_pose_ready_)
   {
-    // /joint_states 为弧度，set_servoJ_pos 需角度 → 转换
-    std::vector<double> joint_deg = current_joint_state_;
-    for (auto& v : joint_deg)
-      v *= 180.0 / M_PI;
-
-    // 用当前关节角作为初始指令（不移动）
+    // /joint_states 与 set_servoj_pos 均为 rad，直接作为初始指令（不移动）
     {
       std::lock_guard<std::mutex> lock(joint_mutex_);
-      last_joint_cmd_ = joint_deg;
+      last_joint_cmd_ = current_joint_state_;
     }
 
     // 异步 FK 算出当前笛卡尔位姿作为 target_pose_
@@ -472,7 +479,7 @@ void F710TeleopNode::jointStateCallback(const sensor_msgs::msg::JointState::Shar
                      {
                        target_pose_ = pose;
                        target_pose_ready_ = true;
-                       RCLCPP_INFO(this->get_logger(), "初始位姿（当前关节角FK）: [%.1f, %.1f, %.1f, %.2f, %.2f, %.2f]",
+                       RCLCPP_INFO(this->get_logger(), "初始位姿（当前关节角FK）: [%.3f, %.3f, %.3f, %.2f, %.2f, %.2f]",
                                    target_pose_[0], target_pose_[1], target_pose_[2], target_pose_[3], target_pose_[4],
                                    target_pose_[5]);
                      }
@@ -494,10 +501,8 @@ bool F710TeleopNode::currentJointToPose(std::vector<double>& pose_out)
     req->origin_coord = 0;
     req->target_coord = 1;
     req->form = 0;
-    // /joint_states 为弧度，coord_transform 需角度 → 转换
+    // CoordTransform 入参：关节 rad
     std::vector<double> pos = current_joint_state_;
-    for (auto& v : pos)
-      v *= 180.0 / M_PI;
     pos.resize(7, 0.0);
     req->origin_pos = pos;
     req->reference_pos = std::vector<double>(7, 0.0);
@@ -525,9 +530,9 @@ bool F710TeleopNode::currentJointToPose(std::vector<double>& pose_out)
   KDL::Frame frame_out;
   if (kdl_fk_solver_->JntToCart(q_in, frame_out) != 0)
     return false;
-  double x = frame_out.p.x() * 1000.0;
-  double y = frame_out.p.y() * 1000.0;
-  double z = frame_out.p.z() * 1000.0;
+  double x = frame_out.p.x();
+  double y = frame_out.p.y();
+  double z = frame_out.p.z();
   double rx, ry, rz;
   frame_out.M.GetRPY(rx, ry, rz);
   pose_out = {x, y, z, rx, ry, rz};
@@ -642,7 +647,7 @@ void F710TeleopNode::controlLoop()
     last_a_press_ = now;
     stop_mode_ = false;
     speed_value_ = speed_default_;
-    // 直接发 home_joints（度），不做 IK（与 Python 版本一致）
+    // 直接发 home_joints（内部已转为 rad），不做 IK（与 Python 版本一致）
     {
       std::lock_guard<std::mutex> lock(joint_mutex_);
       last_joint_cmd_ = home_joints_;
@@ -655,7 +660,7 @@ void F710TeleopNode::controlLoop()
       {
         target_pose_ = home_pose;
         publishServol();
-        RCLCPP_INFO(this->get_logger(), "回零 -> [%.1f, %.1f, %.1f, %.2f, %.2f, %.2f]", target_pose_[0],
+        RCLCPP_INFO(this->get_logger(), "回零 -> [%.3f, %.3f, %.3f, %.2f, %.2f, %.2f]", target_pose_[0],
                     target_pose_[1], target_pose_[2], target_pose_[3], target_pose_[4], target_pose_[5]);
       }
     }
@@ -669,7 +674,7 @@ void F710TeleopNode::controlLoop()
                                    if (homeJointsToPose(home_pose))
                                    {
                                      target_pose_ = home_pose;
-                                     RCLCPP_INFO(this->get_logger(), "回零 -> [%.1f, %.1f, %.1f, %.2f, %.2f, %.2f]",
+                                     RCLCPP_INFO(this->get_logger(), "回零 -> [%.3f, %.3f, %.3f, %.2f, %.2f, %.2f]",
                                                  target_pose_[0], target_pose_[1], target_pose_[2], target_pose_[3],
                                                  target_pose_[4], target_pose_[5]);
                                    }

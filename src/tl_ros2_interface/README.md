@@ -81,6 +81,9 @@ TL 系列机械臂 ROS2 接口说明
 ## tl_ros2_interface功能包说明
 tl_ros2_interface 功能包为 TL 系列机械臂在 ROS2 框架下提供消息（msg）和服务（srv）接口定义，供上层驱动或应用调用。该包本身没有可执行程序，主要作用为定义协议数据结构和服务接口。
 
+> **单位约定**：全部 ROS 接口使用 REP 103 单位（关节 rad、笛卡尔位置 m、线速度 m/s）。控制器/SDK 的 mm/度在 `tl_driver` 边界换算。
+> 例外：`GetGlobalPos` / `SetGlobalPos` / `GetPosReachable` 的 14 位点位数组是控制器协议包，自带单位制标志位，按协议原样透传。
+
 ## tl_ros2_interface使用说明
 该功能包并没有可执行的使用命令，其主要作用为为其他功能包提供必须的消息文件。
 
@@ -181,7 +184,7 @@ float64 arm_angle
 ```
 __msg成员__
 - header: 标准消息头
-- position: x,y,z 位置。`/tcp_pose` 发布时为 **m**；作为 `SetUserCoord.pos` 输入时为 **mm**（控制器 mm 体系，注意与 `/tcp_pose` 不同）
+- position: x,y,z 位置，单位 **m**（`/tcp_pose` 与 `SetUserCoord.pos` 一致）
 - rpy: 姿态欧拉角（弧度，XYZ 内旋）
 - arm_angle: 冗余臂角（弧度；6 轴为 0，`SetUserCoord` 未使用）
 
@@ -251,11 +254,11 @@ int32 spin
 bool para_sync
 ```
 __msg成员__
-- target_pos_value: 14 维目标点位。前 7 位本体、后 7 位外部轴；`coord=0` 时 [0..6] 为关节角（度）；`coord=1/2/3` 时位置 mm、姿态 rad，[7..13] 外部轴按 SDK 原值透传
+- target_pos_value: 14 维目标点位。前 7 位本体、后 7 位外部轴；`coord=0` 时 [0..6] 为关节角（rad）；`coord=1/2/3` 时位置 m、姿态 rad，[7..13] 外部轴按 SDK 原值透传
 - target_pos_name: 内置点位名（如 `"GP0001"`，`target_pos_type=5/6` 时使用）
 - target_pos_type: PosType：0=自定义数组 1=P 2=E 3=RP 4=AP 5=系统内置GP 6=含外部轴的GE
-- coord: 0=关节（度）1=直角 2=工具 3=用户（1/2/3 时位置 mm、姿态 rad）
-- velocity/velocity_sync: MOVJ 为 %（0<v≤100）；MOVL 为 mm/s（0<v≤1000）；队列接口同此口径
+- coord: 0=关节（rad）1=直角 2=工具 3=用户（1/2/3 时位置 m、姿态 rad）
+- velocity/velocity_sync: MOVJ 为 %（0<v≤100）；MOVL 为 m/s（0<v≤1）；队列接口同此口径
 - acc/dec: 加速度/减速度百分比，(0,100]
 - pl: 平滑过渡等级 0～5，非百分比
 - time: 提前执行时间（SDK 头未标注单位）
@@ -277,20 +280,20 @@ __msg成员__
 ### 机器人DH参数RobotDHParam_msg
 ```
 # 对应 SDK tl::RobotDHParam：alpha[6]/a[6]/theta[6]/d[6]/eulerAngle/mountingAngle
-float64[] alpha           # 1-6轴DH参数alpha，单位：deg
-float64[] a               # 1-6轴DH参数a，单位：mm
-float64[] theta           # 1-6轴DH参数theta，单位：deg
-float64[] d               # 1-6轴DH参数d，单位：mm
+float64[] alpha           # 1-6轴DH参数alpha，单位：rad
+float64[] a               # 1-6轴DH参数a，单位：m
+float64[] theta           # 1-6轴DH参数theta，单位：rad
+float64[] d               # 1-6轴DH参数d，单位：m
 int32 euler_angle         # 欧拉角模式
-float64 mounting_angle    # 机器人安装角度，单位：deg
+float64 mounting_angle    # 机器人安装角度，单位：rad
 ```
 __msg成员__
-- alpha: 1-6轴DH参数alpha（deg）
-- a: 1-6轴DH参数a（mm）
-- theta: 1-6轴DH参数theta（deg）
-- d: 1-6轴DH参数d（mm）
+- alpha: 1-6轴DH参数alpha（rad）
+- a: 1-6轴DH参数a（m）
+- theta: 1-6轴DH参数theta（rad）
+- d: 1-6轴DH参数d（m）
 - euler_angle: 欧拉角模式
-- mounting_angle: 机器人安装角度（deg）
+- mounting_angle: 机器人安装角度（rad）
 
 ### 机械臂关节参数RobotJointParam_msg
 ```
@@ -311,16 +314,16 @@ int32 direction
 __msg成员__
 - reduction_ratio: 减速比
 - encoder_resolution: 编码器位数
-- pos_sw_limit: 轴正限位（度）
-- neg_sw_limit: 轴反限位（度）
-- rated_rot_speed: 电机额定正转速（rpm）
-- rated_derot_speed: 电机额定反转速（rpm；新 SDK 无对应字段，当前恒为 0）
-- max_rot_speed: 电机最大正转速（rpm）
-- max_derot_speed: 电机最大反转速（rpm；新 SDK 无对应字段，当前恒为 0）
-- rated_vel: 额定正速度（度/s；新 SDK 无对应字段，当前恒为 0）
-- rated_devel: 额定反速度（度/s；新 SDK 无对应字段，当前恒为 0）
-- max_acc: 最大加速度（度/s²）
-- max_dec: 最大减速度（度/s²）
+- pos_sw_limit: 轴正限位（rad）
+- neg_sw_limit: 轴反限位（rad）
+- rated_rot_speed: 电机额定正转速（rad/s）
+- rated_derot_speed: 电机额定反转速（rad/s；新 SDK 无对应字段，当前恒为 0）
+- max_rot_speed: 电机最大正转速（rad/s）
+- max_derot_speed: 电机最大反转速（rad/s；新 SDK 无对应字段，当前恒为 0）
+- rated_vel: 额定正速度（rad/s；新 SDK 无对应字段，当前恒为 0）
+- rated_devel: 额定反速度（rad/s；新 SDK 无对应字段，当前恒为 0）
+- max_acc: 最大加速度（rad/s²）
+- max_dec: 最大减速度（rad/s²）
 - direction: 模型方向，1：正向，-1：反向
 
 ### 工具参数ToolParam_msg
@@ -338,27 +341,27 @@ float64 payload_mass_center_y
 float64 payload_mass_center_z
 ```
 __msg成员__
-- x: X 轴偏移（mm）
-- y: Y 轴偏移（mm）
-- z: Z 轴偏移（mm）
-- a: 绕 A 轴旋转（度）
-- b: 绕 B 轴旋转（度）
-- c: 绕 C 轴旋转（度）
+- x: X 轴偏移（m）
+- y: Y 轴偏移（m）
+- z: Z 轴偏移（m）
+- a: 绕 A 轴旋转（rad）
+- b: 绕 B 轴旋转（rad）
+- c: 绕 C 轴旋转（rad）
 - payload_mass: 负载质量（kg）
 - payload_inertia: 负载惯量（SDK 未标注单位）
-- payload_mass_center_x: 负载质心 X（mm）
-- payload_mass_center_y: 负载质心 Y（mm）
-- payload_mass_center_z: 负载质心 Z（mm）
+- payload_mass_center_x: 负载质心 X（m）
+- payload_mass_center_y: 负载质心 Y（m）
+- payload_mass_center_z: 负载质心 Z（m）
 
 ### ServoL直线伺服ServolMove_msg
 ```
 float64[] target_pose     # [x, y, z, rx, ry, rz] 目标笛卡尔位姿
-float64 step_size         # 插值步长 (mm)，相邻插值点之间的最大笛卡尔距离，默认 2.0
+float64 step_size         # 插值步长 (m)，相邻插值点之间的最大笛卡尔距离，默认 0.002
 int32 coord               # 坐标系：1=基座标系(Base) 2=工具坐标系(Tool) 3=用户坐标系(User)
 ```
 __msg成员__
-- target_pose: 目标笛卡尔位姿 [x, y, z, rx, ry, rz]，位置 mm、姿态 rad
-- step_size: 插值步长（mm），默认 2.0
+- target_pose: 目标笛卡尔位姿 [x, y, z, rx, ry, rz]，位置 m、姿态 rad
+- step_size: 插值步长（m），默认 0.002
 - coord: 坐标系编号（1=基座标系，2=工具坐标系，3=用户坐标系）
 
 > 前置条件：需先调用 `open_servoj` 打开关节跟踪模式；每次收到该话题消息，节点自动获取当前位姿，插值并 IK 转为关节角后通过 servoj 发送。
@@ -380,7 +383,7 @@ float64[] target_pos
 ```
 - origin_coord/target_coord: 源/目标坐标系编号（0=关节 1=基坐标 2=工具 3=用户）
 - form: 形态
-- origin_pos/reference_pos: 输入坐标与逆解参考点。关节坐标为度；直角/工具/用户坐标为位置 mm + 姿态 rad
+- origin_pos/reference_pos: 输入坐标与逆解参考点。关节坐标为 rad；直角/工具/用户坐标为位置 m + 姿态 rad
 - 返回: success/message/target_pos（转换结果，单位同上）
 
 ### 所有作业文件名GetAllJobFileName_srv
@@ -445,7 +448,7 @@ float64[] pos
 ```
 - 输入 pos_name，返回对应全局路点
 - pos_name: 全局位置点名称
-- 返回: success/message/pos（长度 14：[0]坐标系 [1]单位制 [2]形态 [3]工具 [4]用户 [5][6]备用 [7-13]点位信息；位置 mm、姿态 rad）
+- 返回: success/message/pos（长度 14：[0]坐标系 [1]单位制 [2]形态 [3]工具 [4]用户 [5][6]备用 [7-13]点位信息；控制器协议包，位置 mm、角度按 [1]）
 
 ### 关节软件版本号GetJointSoftwareVersion_srv
 ```
@@ -499,7 +502,7 @@ bool success
 string message
 ```
 - 输入目标位姿，返回是否可达
-- pos: 长度 14，布局同全局点位（位置 mm、姿态 rad）
+- pos: 长度 14，布局同全局点位（控制器协议包，位置 mm、角度按 [1]）
 - move_type: 运动类型："MOVJ" 或 "MOVL"
 - 返回: success/message
 
@@ -513,7 +516,7 @@ float64[] output
 ```
 - 输入位姿，返回转换后的位姿
 - input: 输入数组（四元数 / 欧拉角 / 旋转矩阵 / 齐次矩阵，随具体服务）
-- 单位：欧拉角 rad（SDK 未标注，依 coord_transform 的 ±3.1416 rad 与 servo_movel 的 mm+rad 推断）
+- 单位：欧拉角 rad、位置 m（四元数/旋转矩阵无量纲）
 - 返回: success/message/output（转换后的数组，单位同上）
 
 ### 关节参数GetRobotJointParam_srv
@@ -661,9 +664,9 @@ bool success
 string message
 ```
 - 设置并打开关节伺服的最大速度/加速度
-- vmax: 最大速度数组，固定 7 元素（6 轴末位补 0；7 轴第 7 位为真实 J7），单位 °/s
-- amax: 最大加速度数组，固定 7 元素，单位 °/s²
-- jmax: 最大加加速度数组，固定 7 元素，单位 °/s³
+- vmax: 最大速度数组，固定 7 元素（6 轴末位补 0；7 轴第 7 位为真实 J7），单位 rad/s
+- amax: 最大加速度数组，固定 7 元素，单位 rad/s²
+- jmax: 最大加加速度数组，固定 7 元素，单位 rad/s³
 - 注意：传 6 元素会导致控制器协议解析错乱并断开 7000 端口连接（SDK 警告）
 - 返回: success/message
 
@@ -810,7 +813,7 @@ string message
 ```
 - 设置/保存全局位置点
 - pos_name: 位置点名称
-- pos_info: 长度 14：[0]坐标系 [1]单位制 [2]形态 [3]工具 [4]用户 [5][6]备用 [7-13]点位信息；位置 mm、姿态 rad
+- pos_info: 长度 14：[0]坐标系 [1]单位制 [2]形态 [3]工具 [4]用户 [5][6]备用 [7-13]点位信息；控制器协议包，位置 mm、角度按 [1]
 - 返回: success/message
 
 ### 设置关节参数SetRobotJointParam_srv
@@ -860,7 +863,7 @@ string message
 ```
 - 设置用户坐标系的笛卡尔位姿
 - user_num: 用户坐标系编号
-- pos: 笛卡尔位姿（position mm、rpy rad；注意与 `/tcp_pose` 的 m 口径不同，arm_angle 未使用）
+- pos: 笛卡尔位姿（position m、rpy rad；arm_angle 未使用）
 - 返回: success/message
 
 ### 工具手参数标定ToolHandCalib_srv
@@ -921,7 +924,7 @@ float64[] joint_speed
 float64[] joint_speed_sync
 ```
 - 查询当前线速度和关节速度
-- 返回: success/message/line_speed（末端线速度，mm/s）/joint_speed（本体关节速度，长度 7，度/s）/joint_speed_sync（外部轴关节速度，长度 5，度/s）
+- 返回: success/message/line_speed（末端线速度，m/s）/joint_speed（本体关节速度，长度 7，rad/s）/joint_speed_sync（外部轴关节速度，长度 5，rad/s）
 
 ### 查询当前运行模式GetCurrentMode_srv
 ```

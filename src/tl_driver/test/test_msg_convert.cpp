@@ -3,6 +3,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
+
 #include "convert/msg_convert.hpp"
 #include "tl_ros2_interface/msg/modbus_master_param.hpp"
 #include "tl_ros2_interface/msg/move_command.hpp"
@@ -33,14 +35,14 @@ TEST(MsgConvert, ToMoveCmdMapsAllFields)
   msg.para_sync = true;
   msg.target_pos_value = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.0};
 
-  const tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(msg);
+  const tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(msg, tl_driver::convert::MotionKind::kLinear);
 
   EXPECT_EQ(cmd.targetPosType, static_cast<tl::PosType>(tl::PosType::data));
   EXPECT_EQ(cmd.targetPosName, "");
   EXPECT_EQ(static_cast<int>(cmd.coord), 2);
-  EXPECT_DOUBLE_EQ(cmd.velocity, 11.5);
-  EXPECT_DOUBLE_EQ(cmd.velocitySync, 22.5);
-  EXPECT_DOUBLE_EQ(cmd.acc, 33.5);
+  EXPECT_DOUBLE_EQ(cmd.velocity, 11500.0);     // m/s → mm/s
+  EXPECT_DOUBLE_EQ(cmd.velocitySync, 22500.0); // m/s → mm/s
+  EXPECT_DOUBLE_EQ(cmd.acc, 33.5);             // 百分比不换算
   EXPECT_DOUBLE_EQ(cmd.dec, 44.5);
   EXPECT_EQ(cmd.pl, 5);
   EXPECT_EQ(cmd.time, 6);
@@ -51,16 +53,35 @@ TEST(MsgConvert, ToMoveCmdMapsAllFields)
   EXPECT_EQ(cmd.spin, 11);
   EXPECT_EQ(cmd.parasync, true);
   ASSERT_EQ(cmd.targetPosValue.size(), msg.target_pos_value.size());
-  for (std::size_t i = 0; i < msg.target_pos_value.size(); ++i)
-  {
-    EXPECT_DOUBLE_EQ(cmd.targetPosValue[i], msg.target_pos_value[i]) << "分量 " << i;
-  }
+  // 笛卡尔坐标：前 3 位 m → mm，姿态 rad 原值
+  EXPECT_DOUBLE_EQ(cmd.targetPosValue[0], 1000.0);
+  EXPECT_DOUBLE_EQ(cmd.targetPosValue[1], 2000.0);
+  EXPECT_DOUBLE_EQ(cmd.targetPosValue[2], 3000.0);
+  EXPECT_DOUBLE_EQ(cmd.targetPosValue[3], 4.0);
+  EXPECT_DOUBLE_EQ(cmd.targetPosValue[4], 5.0);
+  EXPECT_DOUBLE_EQ(cmd.targetPosValue[5], 6.0);
+  EXPECT_DOUBLE_EQ(cmd.targetPosValue[6], 0.0);
+}
+
+TEST(MsgConvert, ToMoveCmdConvertsJointRadiansToDegrees)
+{
+  MoveCommand msg;
+  msg.coord = 0;
+  msg.velocity = 50.0;
+  msg.target_pos_value = {M_PI, -M_PI / 2.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+
+  const tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(msg, tl_driver::convert::MotionKind::kJoint);
+
+  EXPECT_DOUBLE_EQ(cmd.velocity, 50.0); // 关节速度为百分比，不换算
+  EXPECT_NEAR(cmd.targetPosValue[0], 180.0, 1e-9);
+  EXPECT_NEAR(cmd.targetPosValue[1], -90.0, 1e-9);
+  EXPECT_DOUBLE_EQ(cmd.targetPosValue[2], 0.0);
 }
 
 TEST(MsgConvert, ToMoveCmdOnDefaultMessageKeepsEmptyTarget)
 {
   const MoveCommand msg;
-  const tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(msg);
+  const tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(msg, tl_driver::convert::MotionKind::kJoint);
   EXPECT_TRUE(cmd.targetPosValue.empty());
   EXPECT_EQ(cmd.toolNum, 0);
   EXPECT_DOUBLE_EQ(cmd.velocity, 0.0);
@@ -125,24 +146,28 @@ TEST(MsgConvert, DhParamRoundTripKeepsSixJointsAndAngles)
   msg.mounting_angle = -0.5;
 
   const tl::RobotDHParam dh = tl_driver::convert::to_dh_param(msg);
+  constexpr double kRadToDeg = 180.0 / 3.14159265358979323846;
   for (int i = 0; i < 6; ++i)
   {
-    EXPECT_DOUBLE_EQ(dh.alpha[i], msg.alpha[i]) << "alpha " << i;
-    EXPECT_DOUBLE_EQ(dh.a[i], msg.a[i]) << "a " << i;
-    EXPECT_DOUBLE_EQ(dh.theta[i], msg.theta[i]) << "theta " << i;
-    EXPECT_DOUBLE_EQ(dh.d[i], msg.d[i]) << "d " << i;
+    EXPECT_NEAR(dh.alpha[i], msg.alpha[i] * kRadToDeg, 1e-9) << "alpha " << i;
+    EXPECT_NEAR(dh.a[i], msg.a[i] * 1000.0, 1e-9) << "a " << i;
+    EXPECT_NEAR(dh.theta[i], msg.theta[i] * kRadToDeg, 1e-9) << "theta " << i;
+    EXPECT_NEAR(dh.d[i], msg.d[i] * 1000.0, 1e-9) << "d " << i;
   }
   EXPECT_EQ(dh.eulerAngle, 1);
-  EXPECT_DOUBLE_EQ(dh.mountingAngle, -0.5);
+  EXPECT_NEAR(dh.mountingAngle, -0.5 * kRadToDeg, 1e-9);
 
   RobotDHParam back;
   tl_driver::convert::from_dh_param(dh, back);
-  EXPECT_EQ(back.alpha, msg.alpha);
-  EXPECT_EQ(back.a, msg.a);
-  EXPECT_EQ(back.theta, msg.theta);
-  EXPECT_EQ(back.d, msg.d);
+  for (int i = 0; i < 6; ++i)
+  {
+    EXPECT_NEAR(back.alpha[i], msg.alpha[i], 1e-12);
+    EXPECT_NEAR(back.a[i], msg.a[i], 1e-12);
+    EXPECT_NEAR(back.theta[i], msg.theta[i], 1e-12);
+    EXPECT_NEAR(back.d[i], msg.d[i], 1e-12);
+  }
   EXPECT_EQ(back.euler_angle, 1);
-  EXPECT_DOUBLE_EQ(back.mounting_angle, -0.5);
+  EXPECT_NEAR(back.mounting_angle, -0.5, 1e-12);
 }
 
 TEST(MsgConvert, DhParamIgnoresJointsBeyondSixth)
@@ -154,8 +179,8 @@ TEST(MsgConvert, DhParamIgnoresJointsBeyondSixth)
   msg.d = {};
 
   const tl::RobotDHParam dh = tl_driver::convert::to_dh_param(msg);
-  EXPECT_DOUBLE_EQ(dh.alpha[5], 6.0);
-  EXPECT_DOUBLE_EQ(dh.a[1], 2.0);
+  EXPECT_NEAR(dh.alpha[5], 6.0 * 180.0 / 3.14159265358979323846, 1e-9);
+  EXPECT_NEAR(dh.a[1], 2000.0, 1e-9);
   EXPECT_DOUBLE_EQ(dh.a[2], 0.0); // 未提供 → 保持零初始化
 }
 

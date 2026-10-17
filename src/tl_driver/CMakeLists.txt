@@ -113,6 +113,9 @@ if(BUILD_TESTING)
   ament_add_gtest(test_quaternion test/test_quaternion.cpp src/math/quaternion.cpp)
   target_include_directories(test_quaternion PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
+  ament_add_gtest(test_units test/test_units.cpp)
+  target_include_directories(test_units PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
   ament_add_gtest(test_msg_convert test/test_msg_convert.cpp src/convert/msg_convert.cpp)
   target_include_directories(test_msg_convert PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/lib/include"

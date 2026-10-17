@@ -12,6 +12,7 @@ using json = nlohmann::json;
 
 static constexpr double GRIP_THRESHOLD = 0.9;
 static constexpr double CONTROL_PERIOD_S = 0.01;
+static constexpr double kDegToRad = M_PI / 180.0;
 struct TeleopTiming
 {
   using Clock = std::chrono::steady_clock;
@@ -117,7 +118,7 @@ TL_Teleop::TL_Teleop() : Node("tl_teleop_node")
   declare_parameter("arm_axis_mode", 0);
   declare_parameter("pos_scale", 0.5);
   declare_parameter("pos_deadzone", 0.005);
-  declare_parameter("max_pos_delta_mm", 300.0);
+  declare_parameter("max_pos_delta_m", 0.3);
   declare_parameter("singular_angle", 160.0);
   declare_parameter("singular_scale", 0.2);
   declare_parameter("joint_jump_threshold", 30.0);
@@ -141,10 +142,11 @@ TL_Teleop::TL_Teleop() : Node("tl_teleop_node")
   }
   pos_scale_ = get_parameter("pos_scale").as_double();
   pos_deadzone_ = get_parameter("pos_deadzone").as_double();
-  max_pos_delta_mm_ = get_parameter("max_pos_delta_mm").as_double();
-  singular_angle_ = get_parameter("singular_angle").as_double();
+  max_pos_delta_m_ = get_parameter("max_pos_delta_m").as_double();
+  // 配置沿用度制，内部统一为 rad
+  singular_angle_ = get_parameter("singular_angle").as_double() * kDegToRad;
   singular_scale_ = get_parameter("singular_scale").as_double();
-  joint_jump_threshold_ = get_parameter("joint_jump_threshold").as_double();
+  joint_jump_threshold_ = get_parameter("joint_jump_threshold").as_double() * kDegToRad;
   servo_speed_ = get_parameter("servo_speed").as_double();
   auto joint_limits_flat = get_parameter("joint_limits").as_double_array();
   if (joint_limits_flat.size() != static_cast<size_t>(arm_joints_ * 2))
@@ -162,15 +164,17 @@ TL_Teleop::TL_Teleop() : Node("tl_teleop_node")
   joint_limits_.clear();
   for (size_t i = 0; i < joint_limits_flat.size(); i += 2)
   {
-    joint_limits_.emplace_back(joint_limits_flat[i], joint_limits_flat[i + 1]);
+    // 配置为度，内部统一为 rad
+    joint_limits_.emplace_back(joint_limits_flat[i] * kDegToRad, joint_limits_flat[i + 1] * kDegToRad);
   }
 
   double servo_vmax_val = get_parameter("servo_vmax").as_double();
   double servo_amax_val = get_parameter("servo_amax").as_double();
   double servo_jmax_val = get_parameter("servo_jmax").as_double();
-  servo_vmax_.assign(7, servo_vmax_val);
-  servo_amax_.assign(7, servo_amax_val);
-  servo_jmax_.assign(7, servo_jmax_val);
+  // OpenServoJ 接口为 rad/s、rad/s²、rad/s³；配置沿用度制
+  servo_vmax_.assign(7, servo_vmax_val * kDegToRad);
+  servo_amax_.assign(7, servo_amax_val * kDegToRad);
+  servo_jmax_.assign(7, servo_jmax_val * kDegToRad);
 
   set_speed_client_ = create_client<tl_ros2_interface::srv::SetSpeed>("/tl_driver/set_speed");
   set_current_mode_client_ = create_client<tl_ros2_interface::srv::SetCurrentMode>("/tl_driver/set_current_mode");
@@ -375,15 +379,9 @@ std::vector<double> TL_Teleop::get_arm_cartesian_pose()
   {
     return {};
   }
-  // tl_driver 发布的 /tcp_pose：position 单位 m、rpy 单位 rad（publish_tcp_pose 已做 mm→m 转换）
-  // 逆解请求（CoordTransform BASE→JOINT）入参要求 mm，此处统一转为 mm，作为遥操作基准坐标系
-  constexpr double kMToMm = 1000.0;
-  return {latest_tcp_pose_.position.x * kMToMm,
-          latest_tcp_pose_.position.y * kMToMm,
-          latest_tcp_pose_.position.z * kMToMm,
-          latest_tcp_pose_.rpy.x,
-          latest_tcp_pose_.rpy.y,
-          latest_tcp_pose_.rpy.z};
+  // /tcp_pose 与 CoordTransform 入参均为 m / rad，直接使用
+  return {latest_tcp_pose_.position.x, latest_tcp_pose_.position.y, latest_tcp_pose_.position.z,
+          latest_tcp_pose_.rpy.x,      latest_tcp_pose_.rpy.y,      latest_tcp_pose_.rpy.z};
 }
 
 std::vector<double> TL_Teleop::get_inverse_kinematics(double x, double y, double z, double rx, double ry, double rz)
@@ -432,7 +430,7 @@ std::array<double, 4> TL_Teleop::get_rpy2quat_sdk(double rx, double ry, double r
 }
 
 // 将关节角度裁剪到限位范围内，防止运动超出机械臂物理限制
-// 输入/输出单位：度
+// 输入/输出单位：rad
 std::vector<double> TL_Teleop::clamp_joints(const std::vector<double>& joints)
 {
   std::vector<double> clamped;
@@ -446,7 +444,7 @@ std::vector<double> TL_Teleop::clamp_joints(const std::vector<double>& joints)
 }
 
 // 关节跳变检测：新指令与上一帧差值超过阈值则拒绝，防止异常指令或通信错误
-// 阈值单位：度
+// 阈值单位：rad
 bool TL_Teleop::joints_safe(const std::vector<double>& new_joints)
 {
   if (last_joints_.empty())
@@ -458,7 +456,7 @@ bool TL_Teleop::joints_safe(const std::vector<double>& new_joints)
   {
     if (std::abs(new_joints[i] - last_joints_[i]) > joint_jump_threshold_)
     {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Joint %zu jump too large: %.1f deg", i,
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Joint %zu jump too large: %.3f rad", i,
                            std::abs(new_joints[i] - last_joints_[i]));
       return false;
     }
@@ -515,7 +513,7 @@ std::array<double, 3> TL_Teleop::quat2rpy(const std::array<double, 4>& q)
 
 void TL_Teleop::control_loop()
 {
-  // 基准点：握下扳机瞬间的机械臂笛卡尔位置（mm）
+  // 基准点：握下扳机瞬间的机械臂笛卡尔位置（m）
   double base_x = 0.0, base_y = 0.0, base_z = 0.0;
   TeleopTiming prof;
 
@@ -638,13 +636,13 @@ void TL_Teleop::control_loop()
       // VR 手柄坐标系 → 机械臂基座坐标系映射
       // VR: X右 Y上 Z前  |  机械臂: X前 Y左 Z上
       // 映射关系：X_arm = -Z_vr, Y_arm = -X_vr, Z_arm = Y_vr
-      // 手柄单位 m → 机械臂单位 mm（×1000），再乘位置缩放系数
-      double arm_delta_X = -dz * 1000.0 * pos_scale_ * scale;
-      double arm_delta_Y = -dx * 1000.0 * pos_scale_ * scale;
-      double arm_delta_Z = dy * 1000.0 * pos_scale_ * scale;
-      arm_delta_X = std::max(-max_pos_delta_mm_, std::min(max_pos_delta_mm_, arm_delta_X));
-      arm_delta_Y = std::max(-max_pos_delta_mm_, std::min(max_pos_delta_mm_, arm_delta_Y));
-      arm_delta_Z = std::max(-max_pos_delta_mm_, std::min(max_pos_delta_mm_, arm_delta_Z));
+      // 手柄与机械臂均为 m，直接乘位置缩放系数
+      double arm_delta_X = -dz * pos_scale_ * scale;
+      double arm_delta_Y = -dx * pos_scale_ * scale;
+      double arm_delta_Z = dy * pos_scale_ * scale;
+      arm_delta_X = std::max(-max_pos_delta_m_, std::min(max_pos_delta_m_, arm_delta_X));
+      arm_delta_Y = std::max(-max_pos_delta_m_, std::min(max_pos_delta_m_, arm_delta_Y));
+      arm_delta_Z = std::max(-max_pos_delta_m_, std::min(max_pos_delta_m_, arm_delta_Z));
 
       double target_x = base_x + arm_delta_X;
       double target_y = base_y + arm_delta_Y;

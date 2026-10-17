@@ -21,6 +21,7 @@
  */
 
 #include <chrono>
+#include <cmath>
 #include <functional>
 #include <memory>
 #include <string>
@@ -41,6 +42,11 @@ namespace tl_example
 using Trigger = std_srvs::srv::Trigger;
 using ArmStatus = tl_ros2_interface::msg::ArmStatus;
 using MoveCommand = tl_ros2_interface::msg::MoveCommand;
+
+namespace
+{
+constexpr double kDegToRad = M_PI / 180.0;
+} // namespace
 using SetCurrentMode = tl_ros2_interface::srv::SetCurrentMode;
 using SetSpeed = tl_ros2_interface::srv::SetSpeed;
 
@@ -104,7 +110,8 @@ private:
 
   // ── 参数 ──
   double global_speed_ = 30.0;   // 全局速度（%）
-  double motion_speed_ = 20.0;   // 指令速度（1~100）
+  double motion_speed_ = 20.0;   // MoveJ 速度（%，1~100）
+  double linear_speed_ = 0.02;   // MoveL 速度（m/s）
   double acc_dec_ = 10.0;        // 加减速（1~100）
   double wait_timeout_s_ = 60.0; // 等待运动完成超时（秒）
 
@@ -201,8 +208,8 @@ private:
 
   /// 构造 MoveCommand 公共字段
   /// 注意：target_pos_value 必须为 14 维（官方 make_movej_cmd / make_movel_cmd 布局）：
-  ///   - coord=0（关节）：index 0~6 = J1~J7 关节角（度），后 7 位置 0
-  ///   - coord=1（直角）：index 0~5 = [X,Y,Z,RX,RY,RZ]（mm/rad），后 8 位置 0
+  ///   - coord=0（关节）：index 0~6 = J1~J7 关节角（rad），后 7 位置 0
+  ///   - coord=1（直角）：index 0~5 = [X,Y,Z,RX,RY,RZ]（m/rad），后 8 位置 0
   /// 这里统一在开头按序写入 pos 并补齐到 14 维，调用方无需关心维度。
   MoveCommand makeMoveCmd(int coord, const std::vector<double>& pos) const
   {
@@ -215,7 +222,7 @@ private:
     msg.target_pos_name = "";
     msg.target_pos_type = 0; // 自定义数组
     msg.coord = coord;       // 0=关节 1=直角
-    msg.velocity = motion_speed_;
+    msg.velocity = (coord == 0) ? motion_speed_ : linear_speed_;
     msg.velocity_sync = 0.0;
     msg.acc = acc_dec_;
     msg.dec = acc_dec_;
@@ -315,11 +322,11 @@ void tl_example::MoveControlDemo::run()
   }
 
   // ── 6. MoveJ 关节空间运动 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 6. MoveJ 运动控制（关节坐标，单位：度）==========");
+  RCLCPP_INFO(this->get_logger(), "\n========== 6. MoveJ 运动控制（关节坐标，单位：rad）==========");
   {
     // 与 Python 示例一致：J1=20°, J2=10°, J3=-10°，其余 0
-    MoveCommand msg = makeMoveCmd(0, {20.0, 10.0, -10.0, 0.0, 0.0, 0.0, 0.0});
-    RCLCPP_INFO(this->get_logger(), "  目标关节角: [20, 10, -10, 0, 0, 0]°，速度 %.0f", motion_speed_);
+    MoveCommand msg = makeMoveCmd(0, {20.0 * kDegToRad, 10.0 * kDegToRad, -10.0 * kDegToRad, 0.0, 0.0, 0.0, 0.0});
+    RCLCPP_INFO(this->get_logger(), "  目标关节角: [20, 10, -10, 0, 0, 0]°，速度 %.0f%%", motion_speed_);
     movej_pub_->publish(msg);
     if (!waitMotionDone("MoveJ"))
     {
@@ -328,11 +335,12 @@ void tl_example::MoveControlDemo::run()
   }
 
   // ── 7. MoveL 笛卡尔直线运动 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 7. MoveL 运动控制（直角坐标，mm / rad）==========");
+  RCLCPP_INFO(this->get_logger(), "\n========== 7. MoveL 运动控制（直角坐标，m / rad）==========");
   {
-    // 与 Python 示例一致：位置(280, 90, 270)mm，姿态(3.14, 0, 0)rad
-    MoveCommand msg = makeMoveCmd(1, {280.0, 90.0, 270.0, 3.14, 0.0, 0.0});
-    RCLCPP_INFO(this->get_logger(), "  目标位姿: pos(280, 90, 270)mm rpy(3.14, 0, 0)rad，速度 %.0f", motion_speed_);
+    // 与 Python 示例一致：位置(0.28, 0.09, 0.27)m，姿态(3.14, 0, 0)rad
+    MoveCommand msg = makeMoveCmd(1, {0.28, 0.09, 0.27, 3.14, 0.0, 0.0});
+    RCLCPP_INFO(this->get_logger(), "  目标位姿: pos(0.28, 0.09, 0.27)m rpy(3.14, 0, 0)rad，速度 %.3fm/s",
+                linear_speed_);
     movel_pub_->publish(msg);
     if (!waitMotionDone("MoveL"))
     {

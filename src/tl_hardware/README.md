@@ -15,7 +15,7 @@ joint_trajectory_controller (ros2_control)
   ▼
 TLHardwareInterface
   │  ┌─ subscriber: /joint_states         ◄── tl_driver 发布
-  │  ├─ publisher:  /tl_driver/set_servoj_pos  ──► tl_driver 接收 (deg)
+  │  ├─ publisher:  /tl_driver/set_servoj_pos  ──► tl_driver 接收 (rad)
   │  ├─ client:     /tl_driver/open_servoj     ──► 开启 servoj 流
   │  └─ client:     /tl_driver/close_servoj    ──► 关闭 servoj 流
   ▼  TCP/IP
@@ -27,7 +27,7 @@ TLHardwareInterface
 | 方向 | 方式 | 话题 / 服务 |
 |------|------|-------------|
 | **读取状态** | Subscriber | `/joint_states`（sensor_msgs/JointState） |
-| **写入指令** | Publisher | `/tl_driver/set_servoj_pos`（std_msgs/Float64MultiArray，**角度**） |
+| **写入指令** | Publisher | `/tl_driver/set_servoj_pos`（std_msgs/Float64MultiArray，**rad**） |
 | **开启流模式** | Service Client | `/tl_driver/open_servoj`（tl_ros2_interface/srv/OpenServoJ） |
 | **关闭流模式** | Service Client | `/tl_driver/close_servoj`（std_srvs/srv/Trigger） |
 
@@ -61,9 +61,8 @@ TLHardwareInterface
 
 ### `write()`
 
-- 读取 `joint_position_commands_`（弧度）
-- 转换为**角度**（× 180/π）
-- 发布 `Float64MultiArray` 到 `/tl_driver/set_servoj_pos`
+- 读取 `joint_position_commands_`（rad）
+- 直接发布 `Float64MultiArray` 到 `/tl_driver/set_servoj_pos`（驱动负责换算到 SDK 度制）
 
 ### `on_deactivate()`
 
@@ -86,9 +85,9 @@ TLHardwareInterface
 | `open_servoj_service` | `/tl_driver/open_servoj` | 开启 servoj 流服务 |
 | `close_servoj_service` | `/tl_driver/close_servoj` | 关闭 servoj 流服务 |
 | `state_timeout_sec` | `1.0` | 关节状态超时告警阈值（秒） |
-| `servoj_vmax` | `30.0` | 各关节最大速度（deg/s），支持单值或逗号分隔的逐关节值 |
-| `servoj_amax` | `100.0` | 各关节最大加速度（deg/s²），支持单值或逗号分隔的逐关节值 |
-| `servoj_jmax` | `500.0` | 各关节最大加加速度（deg/s³），支持单值或逗号分隔的逐关节值 |
+| `servoj_vmax` | `0.5236` | 各关节最大速度（rad/s），支持单值或逗号分隔的逐关节值（默认值等价 30°/s） |
+| `servoj_amax` | `1.7453` | 各关节最大加速度（rad/s²），支持单值或逗号分隔的逐关节值（默认值等价 100°/s²） |
+| `servoj_jmax` | `8.7266` | 各关节最大加加速度（rad/s³），支持单值或逗号分隔的逐关节值（默认值等价 500°/s³） |
 
 示例配置片段：
 
@@ -99,9 +98,9 @@ TLHardwareInterface
 <param name="open_servoj_service">/tl_driver/open_servoj</param>
 <param name="close_servoj_service">/tl_driver/close_servoj</param>
 <param name="state_timeout_sec">1.0</param>
-<param name="servoj_vmax">30.0,30.0,30.0,30.0,30.0,30.0,30.0</param>
-<param name="servoj_amax">100.0</param>
-<param name="servoj_jmax">500.0</param>
+<param name="servoj_vmax">0.5236,0.5236,0.5236,0.5236,0.5236,0.5236,0.5236</param>
+<param name="servoj_amax">1.7453</param>
+<param name="servoj_jmax">8.7266</param>
 ```
 
 ## 插件注册

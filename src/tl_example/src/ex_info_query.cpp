@@ -411,7 +411,7 @@ void tl_example::InfoQueryDemo::testInfoQuery()
                                                                         "get_robot_joint_param(id=1)");
     if (resp && resp->success)
     {
-      RCLCPP_INFO(this->get_logger(), "      减速比=%.3f 限位[%.1f, %.1f]° 额定速度=%.1f°/s",
+      RCLCPP_INFO(this->get_logger(), "      减速比=%.3f 限位[%.3f, %.3f]rad 额定速度=%.3frad/s",
                   resp->param.reduction_ratio, resp->param.neg_sw_limit, resp->param.pos_sw_limit,
                   resp->param.rated_vel);
     }
@@ -488,10 +488,10 @@ void tl_example::InfoQueryDemo::testInfoQuery()
     auto resp = callService<tl_ros2_interface::srv::GetDHParam>(get_dh_param_cli_, req, "get_dh_param");
     if (resp && resp->success)
     {
-      printArray(resp->param.alpha, "      alpha(deg) ");
-      printArray(resp->param.a, "      a(mm) ");
-      printArray(resp->param.theta, "      theta(deg) ");
-      printArray(resp->param.d, "      d(mm) ");
+      printArray(resp->param.alpha, "      alpha(rad) ");
+      printArray(resp->param.a, "      a(m) ");
+      printArray(resp->param.theta, "      theta(rad) ");
+      printArray(resp->param.d, "      d(m) ");
       RCLCPP_INFO(this->get_logger(), "      euler_angle=%d mounting_angle=%.3f", resp->param.euler_angle,
                   resp->param.mounting_angle);
     }
@@ -581,8 +581,8 @@ void tl_example::InfoQueryDemo::testInfoQuery()
                                                                               "get_current_line_joint_speed");
     if (resp && resp->success)
     {
-      RCLCPP_INFO(this->get_logger(), "      line_speed = %.2f mm/s", resp->line_speed);
-      printArray(resp->joint_speed, "      joint_speed(°/s) ");
+      RCLCPP_INFO(this->get_logger(), "      line_speed = %.3f m/s", resp->line_speed);
+      printArray(resp->joint_speed, "      joint_speed(rad/s) ");
     }
   }
 }

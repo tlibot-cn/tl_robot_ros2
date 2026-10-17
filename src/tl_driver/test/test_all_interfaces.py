@@ -342,7 +342,7 @@ class DriverQuickTest(Node):
         if resp and resp.success:
             p = resp.param
             self.logger.info(
-                f"      减速比={p.reduction_ratio:.3f} 限位[{p.neg_sw_limit:.1f},{p.pos_sw_limit:.1f}] 额定速度={p.rated_vel:.1f}"
+                f"      减速比={p.reduction_ratio:.3f} 限位[{p.neg_sw_limit:.3f},{p.pos_sw_limit:.3f}]rad 额定速度={p.rated_vel:.3f}rad/s"
             )
 
         cli = self.wait_service("/tl_driver/get_joint_temperature", GetJointTemperature)
@@ -403,7 +403,7 @@ class DriverQuickTest(Node):
             cli, GetCurrentLineJointSpeed.Request(), "get_current_line_joint_speed"
         )
         if resp and resp.success:
-            self.logger.info(f"      line_speed = {resp.line_speed:.2f} mm/s")
+            self.logger.info(f"      line_speed = {resp.line_speed:.3f} m/s")
             self.print_arr("      joint_speed ", resp.joint_speed)
 
     def test_basic_set(self):

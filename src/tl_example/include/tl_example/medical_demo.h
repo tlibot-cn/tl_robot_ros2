@@ -45,7 +45,7 @@ public:
   {
     std::string pos_key;     // 点位名称
     std::string description; // 动作描述
-    double velocity;         // 速度百分比
+    double velocity;         // 线速度（m/s）
   };
 
 private:

@@ -12,6 +12,15 @@
 
 ## [Unreleased]
 
+### 2026-10-17
+
+- **破坏性变更**：全部 ROS 接口统一为 REP 103 单位——关节角 rad、笛卡尔位置 m、线速度 m/s、关节速度 rad/s；控制器 / SDK 的 mm / 度 / % 由 `tl_driver` 在边界换算。受影响接口：`MoveCommand`（关节 rad、位置 m、MOVL 速度 m/s）、`/tl_driver/set_servoj_pos`（rad）、`ServolMove`（m、step m）、`CartesianPose`（`SetUserCoord` 改 m）、`ToolParam`（m、rad）、`RobotDHParam`（rad、m）、`RobotJointParam`（rad、rad/s、rad/s²）、`OpenServoJ`（rad/s 系列）、`CoordTransform`（rad、m）、`GetCurrentLineJointSpeed`（m/s、rad/s）。`set_global_pos` / `get_global_pos` / `get_pos_reachable` 的 14/21 位协议包保留控制器 mm + 单位标志位口径
+- tl_driver：新增 `src/convert/units.hpp` 集中单位换算，运动指令 / ServoJ / ServoL / 工具与用户坐标 / DH / 关节参数 / 线速度在边界转换；ServoJ 约束自动补齐 6 轴第 7 位
+- tl_hardware：`write()` 直接发布 rad，`servoj_vmax/amax/jmax` 改用 rad 默认值（等价原 30/100/500 度制）
+- tl_teleop / tl_teleop_f710 / tl_example：内部计算与发布统一 rad / m，配置参数保留度制并在读取时换算；`tl_teleop` 的 `max_pos_delta_mm` 更名为 `max_pos_delta_m`（默认 0.3 m）
+- tl_ros2_interface：msg / srv 字段注释与 `README.md` 同步新单位；新增 `src/tl_driver/doc/tl_driver单位对照表.md`，说明书升至 V1.8
+- tl_driver 测试：新增 `test_units.cpp`，更新 `test_msg_convert.cpp` 覆盖 rad/m 转换
+
 ### 2026-09-24
 
 - tl_driver：启动日志新增驱动包自身版本行（`Driver Version: x.y.z`，取自 `package.xml`），与已有的 `SDK Version` 行并列输出（`c857ac0`）

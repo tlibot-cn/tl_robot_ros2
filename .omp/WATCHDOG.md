@@ -28,24 +28,27 @@
 
 ## 二、单位与量纲（本仓库第一号坑）
 
-口径：**ROS 侧 m / rad；控制器与服务接口 mm / 度 / %**。换算发生在驱动内或各消费方，改任何一端都要同时看另一端。
+口径：**ROS 接口统一 REP 103（m / rad / m·s⁻¹ / rad·s⁻¹）；控制器与 SDK 的 mm / 度 / % 只在 `tl_driver` 边界换算**。改任何一端都要同时看另一端。
 
 | 通道 | 单位 | 位置 |
 |---|---|---|
 | `/joint_states.position` | rad（SDK 返回度，驱动内批量转） | `publish_joint_pose` |
-| `/tcp_pose.position` | m（`kMmToM`）；`rpy` rad | `publish_tcp_pose` |
-| `/tl_driver/set_servoj_pos` | **度**（原值透传 aux） | `handle_set_servoj_pos_topic` |
-| `/tl_driver/set_servol_pos.target_pose` | 位置 mm + 姿态 rad；`step_size` mm | `handle_set_servol_pos_topic` |
-| `MoveCommand.target_pos_value` | 原值透传：`coord=0` 度；`1/2/3` 为 `[X,Y,Z mm, RX,RY,RZ rad]` | `handle_movej_topic` / `handle_movel_topic` |
-| `ToolParam` 的 `x/y/z`、`a/b/c`、`payload_mass` | mm / 度 / kg（单位注释在 SDK `tl_types.h`） | `handle_set_tool_param_service` |
-| `SetUserCoord.pos.position` | mm + 姿态 rad（原值透传） | `handle_set_user_coord_service` |
+| `/tcp_pose.position` | m（`convert::mm_to_m`）；`rpy` rad | `publish_tcp_pose` |
+| `/tl_driver/set_servoj_pos` | **rad**（驱动内 rad→度，6 轴末位补 0） | `handle_set_servoj_pos_topic` |
+| `/tl_driver/set_servol_pos.target_pose` | 位置 m + 姿态 rad；`step_size` m | `handle_set_servol_pos_topic` |
+| `MoveCommand.target_pos_value` | `coord=0` 关节 rad；`1/2/3` 为 `[X,Y,Z m, RX,RY,RZ rad]` | `handle_movej_topic` / `handle_movel_topic` |
+| `MoveCommand.velocity` | MOVJ 为 %；MOVL 为 m/s | `to_move_cmd` |
+| `ToolParam` 的 `x/y/z`、`a/b/c`、`payload_mass` | m / rad / kg | `handle_set_tool_param_service` |
+| `SetUserCoord.pos.position` | m；姿态 rad | `handle_set_user_coord_service` |
 
-消费方换算（改单位必须同步这一组）：
+**协议包例外**：`SetGlobalPos.pos_info` / `GetGlobalPos.pos` / `GetPosReachable.pos` 是控制器 14/21 位协议包，自带单位制标志位，保留 mm + 标志位口径，驱动不换算。
 
-- `tl_teleop`：`/tcp_pose`(m) ×`kMToMm` → coord_transform `origin_pos`(mm)；VR 位移 ×1000
-- `tl_teleop_f710_node`：KDL FK(m) ×1000 → `ServolMove.target_pose`(mm)；`/joint_states`(rad) ×180/π → `set_servoj_pos`(度)
-- `tl_teleop_f710_sim_bridge`：servol(mm) ÷1000 → KDL(m)
-- `tl_hardware_interface`：ros2_control(rad) ×180/π → `set_servoj_pos`(度)
+消费方换算（这些是 SDK/第三方边界，不是 ROS 接口口径）：
+
+- `tl_teleop`：`/tcp_pose`(m) ×1000 → PXREA SDK；`set_servoj_pos` 直接发 rad
+- `tl_teleop_f710_node`：KDL FK(m) 直接填 `ServolMove.target_pose`(m)；`/joint_states`(rad) 直接发 `set_servoj_pos`(rad)
+- `tl_teleop_f710_sim_bridge`：ServolMove(m) 直接进 KDL(m)
+- `tl_hardware_interface`：ros2_control(rad) 直接发 `set_servoj_pos`(rad)；`OpenServoJ` 约束参数为 rad/s
 
 **信号**：出现硬编码 `1000.0` / `180.0 / M_PI`、变量名带 `mm` 却参与 m 运算、新增跨层字段没有单位注释 → 逐一核对该通道两端。
 

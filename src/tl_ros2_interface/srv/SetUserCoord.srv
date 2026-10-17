@@ -1,8 +1,7 @@
 # 设置用户坐标系
-# 单位：pos.position 为 mm（控制器 mm 体系）、pos.rpy 为 rad；注意与 /tcp_pose 的 m 口径不同。
-# SDK UserCoordParam 未标注单位，mm 结论依 AGENTS 单位表与同族 ToolParam 接口。
+# 单位遵循 REP 103：position m、rpy rad；驱动在边界换算到控制器 mm。
 int32 user_num                      # 用户坐标系编号（1~N）
-tl_ros2_interface/CartesianPose pos # 用户坐标（position mm + rpy rad；arm_angle 未使用）
+tl_ros2_interface/CartesianPose pos # 用户坐标（position m + rpy rad）
 ---
 bool success
 string message

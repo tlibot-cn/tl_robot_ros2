@@ -30,18 +30,24 @@
 
 **① SDK 库只读。** `src/tl_driver/lib/`（`libtl_host.so` + `include/*.h` 14 个头，V3.1.0）是本方 SDK 的预编译产物，`src/tl_teleop/lib/`（`libPXREARobotSDK.so`）是 PXREA 的第三方 SDK —— 两者都随包发布、不改、不格式化（`scripts/format-cpp.sh` 已跳过 `lib/include/`）。
 
-**② 单位口径。** ROS 侧 m / rad；控制器与服务接口 mm / 度 / %。换算发生在驱动内或各消费方，**改任一端必须同时改另一端**：
+**② 单位口径。** ROS 接口统一 REP 103（m / rad / rad/s），控制器与 SDK 的 mm / 度 / % 在 `tl_driver` 边界换算，**改任一端必须同时改另一端**：
 
 | 通道 | 单位 |
 | --- | --- |
 | `/joint_states.position` | rad（驱动内度→弧度） |
 | `/tcp_pose.position` / `.rpy` | m / rad（驱动内 mm→m） |
-| `/tl_driver/set_servoj_pos` | 度（原值透传 aux；7 元素，末位补 0） |
-| `/tl_driver/set_servol_pos.target_pose` | mm + 姿态 rad；`step_size` mm（≤0 → 2.0） |
-| `MoveCommand.target_pos_value` | 原值透传：`coord=0` 为度；`1/2/3` 为 mm + 姿态 rad |
-| `ToolParam` / `SetUserCoord` | mm + 姿态 rad（`ToolParam` 的 `a/b/c` 为度、`payload_mass` 为 kg） |
+| `/tl_driver/set_servoj_pos` | rad（驱动内弧度→度后透传 aux；7 元素，末位补 0） |
+| `/tl_driver/set_servol_pos.target_pose` | m + 姿态 rad；`step_size` m（≤0 → 0.002） |
+| `MoveCommand.target_pos_value` | `coord=0` 为关节角 rad；`1/2/3` 为 m + 姿态 rad |
+| `MoveCommand.velocity` | MOVJ 为 %；MOVL 为 m/s |
+| `ToolParam` / `SetUserCoord` | m + 姿态 rad（`ToolParam` 的 `a/b/c` 为 rad、`payload_mass` 为 kg） |
+| `OpenServoJ.vmax` / `amax` / `jmax` | rad/s、rad/s²、rad/s³（固定 7 元素） |
+| `RobotDHParam` / `RobotJointParam` | rad、m；转速 rad/s；角加速度 rad/s² |
+| `GetCurrentLineJointSpeed` | `line_speed` m/s；`joint_speed` rad/s |
 
-消费方换算共四处：`tl_teleop`（`/tcp_pose` m→mm ×1000）、`tl_teleop_f710_node`（KDL FK m→mm ×1000、rad→度 ×180/π）、`tl_teleop_f710_sim_bridge`（mm→m ÷1000）、`tl_hardware_interface`（rad→度 ×180/π）。
+**协议包例外**：`GetGlobalPos` / `SetGlobalPos` / `GetPosReachable` 的 14/21 位数组是控制器协议包，自带单位制标志位，保留 mm + 标志位口径、驱动不换算。
+
+消费方仍保留的边界换算：`tl_teleop`（`/tcp_pose` m→mm ×1000，供 PXREA SDK）、`tl_teleop_f710_node`（KDL FK m→mm ×1000、rad→度 ×180/π）、`tl_teleop_f710_sim_bridge`（mm→m ÷1000）、`tl_hardware_interface`（rad→度 ×180/π）。运动指令与参数类服务由 `tl_driver` 统一换算，消费方直接发 REP 103 值。
 欧拉角约定为 **XYZ 内旋**（scipy 中用大写 `'XYZ'`）。
 先例：`/tcp_pose` 的 m↔mm 误用曾让遥操作 IK 目标点错 1000 倍，控制器报 **9754「目标位置不可达」**（`2c5b2e4`）。
 
@@ -63,8 +69,8 @@
 | `/tcp_pose` | `tl_driver` 发（m / rad） |
 | `/arm_status` | `tl_driver` 发（运行状态） |
 | `/tl_driver/moveJ`、`/tl_driver/moveL` | `tl_driver` 收（`MoveCommand`；**不等到位**，需到位判定的一方自行轮询 `/arm_status`） |
-| `/tl_driver/set_servoj_pos` | `tl_driver` 收（度，走 aux） |
-| `/tl_driver/set_servol_pos` | `tl_driver` 收（mm + rad）；`tl_teleop_f710` 仿真模式发 |
+| `/tl_driver/set_servoj_pos` | `tl_driver` 收（rad，固定 7 元素，走 aux） |
+| `/tl_driver/set_servol_pos` | `tl_driver` 收（m + rad）；`tl_teleop_f710` 仿真模式发 |
 
 其余话题与服务见 `src/tl_driver/doc/tl_driver服务与话题说明书.md`。
 

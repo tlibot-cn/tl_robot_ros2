@@ -3,11 +3,11 @@
 
 #include "node/publishers.hpp"
 
-#include <algorithm>
 #include <utility>
 
 #include "arm_client.hpp"
 #include "arm_sdk.hpp"
+#include "convert/units.hpp"
 
 namespace tl_driver
 {
@@ -41,12 +41,7 @@ void StatePublishers::publish_arm_state()
   if (tl::get_current_position(session_.fd(), tl::Coord::JOINT, joint_pose) == tl::Result::SUCCESS)
   {
     // 将角度转换为弧度(批量转换)
-    const double deg_to_rad = M_PI / 180.0;
-    std::transform(joint_pose.begin(), joint_pose.end(), joint_pose.begin(),
-                   [deg_to_rad](double deg)
-                   {
-                     return deg * deg_to_rad;
-                   });
+    convert::joint_deg_to_rad(joint_pose, joint_pose.size());
 
     publish_joint_pose(joint_pose);
   }
@@ -78,15 +73,13 @@ void StatePublishers::publish_joint_pose(const std::vector<double>& joint_pose)
 void StatePublishers::publish_tcp_pose(const std::vector<double>& tcp_pose)
 {
   // SDK 返回：位置 mm、欧拉角弧度（rad）→ 统一转换为 ROS 标准单位：m 和 rad
-  constexpr double kMmToM = 1.0 / 1000.0;
-
   tl_ros2_interface::msg::CartesianPose msg;
   msg.header.stamp = node_.now();
   msg.header.frame_id = "base_link";
 
-  msg.position.x = tcp_pose[0] * kMmToM;
-  msg.position.y = tcp_pose[1] * kMmToM;
-  msg.position.z = tcp_pose[2] * kMmToM;
+  msg.position.x = convert::mm_to_m(tcp_pose[0]);
+  msg.position.y = convert::mm_to_m(tcp_pose[1]);
+  msg.position.z = convert::mm_to_m(tcp_pose[2]);
 
   msg.rpy.x = tcp_pose[3];
   msg.rpy.y = tcp_pose[4];

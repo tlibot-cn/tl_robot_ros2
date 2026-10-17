@@ -130,9 +130,10 @@ hardware_interface::CallbackReturn TLHardwareInterface::on_init(const hardware_i
     return result;
   };
 
-  servoj_vmax_ = parse_vector_param("servoj_vmax", 30.0);
-  servoj_amax_ = parse_vector_param("servoj_amax", 100.0);
-  servoj_jmax_ = parse_vector_param("servoj_jmax", 500.0);
+  // OpenServoJ 的约束单位为 rad/s、rad/s²、rad/s³（默认值与原 30°/s、100°/s²、500°/s³ 等价）
+  servoj_vmax_ = parse_vector_param("servoj_vmax", 0.5235987755982988);
+  servoj_amax_ = parse_vector_param("servoj_amax", 1.7453292519943295);
+  servoj_jmax_ = parse_vector_param("servoj_jmax", 8.726646259971648);
 
   const auto state_timeout = get_hardware_parameter("state_timeout_sec", "1.0");
   try
@@ -172,7 +173,7 @@ hardware_interface::CallbackReturn TLHardwareInterface::on_configure(const rclcp
     node_ = std::make_shared<rclcpp::Node>("tl_hardware", node_options);
 
     // Publisher for servoj position commands (Float64MultiArray in
-    // degrees).
+    // radians).
     servoj_pos_pub_ =
         node_->create_publisher<std_msgs::msg::Float64MultiArray>(servoj_topic_, rclcpp::QoS(10).reliable());
 
@@ -452,12 +453,8 @@ hardware_interface::return_type TLHardwareInterface::write(const rclcpp::Time& /
     return hardware_interface::return_type::OK;
   }
 
-  // Convert radians → degrees and publish to servoj topic.
-  servoj_msg_.data.clear();
-  for (const auto& rad_cmd : joint_position_commands_)
-  {
-    servoj_msg_.data.push_back(rad_cmd * 180.0 / M_PI);
-  }
+  // ros2_control 与 /tl_driver/set_servoj_pos 均为弧度，直接转发
+  servoj_msg_.data.assign(joint_position_commands_.begin(), joint_position_commands_.end());
 
   servoj_pos_pub_->publish(servoj_msg_);
 

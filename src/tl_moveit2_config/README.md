@@ -126,7 +126,7 @@ TLHardwareInterface (tl_hardware 硬件接口插件)
 
 **关键点：**
 - `TLHardwareInterface` 从 `/joint_states` 读取关节状态（位置、速度、力矩）并写入 ros2_control 状态接口。
-- `joint_trajectory_controller` 规划的位置指令（弧度）通过 `write()` 转换为角度，发布到 `/tl_driver/set_servoj_pos`。
+- `joint_trajectory_controller` 规划的位置指令（rad）由 `write()` 直接发布到 `/tl_driver/set_servoj_pos`，驱动负责换算到 SDK 度制。
 - 激活时自动调用 `/tl_driver/open_servoj` 开启 servoj 流模式，并等待首帧关节状态数据。
 - 停用时通过 `/tl_driver/close_servoj` 关闭流模式。
 
@@ -277,7 +277,7 @@ source install/setup.bash
 
 **Q：如何调节 servoj 流的运动参数（速度、加速度）？**
 
-A：在 `<arm>.ros2_control.xacro` 的 `TLHardwareInterface` 插件配置中添加 `servoj_vmax`、`servoj_amax`、`servoj_jmax` 参数。默认值为 30.0 deg/s、100.0 deg/s²、500.0 deg/s³。支持单值（应用到所有关节）或以逗号分隔的逐关节值。
+A：在 `<arm>.ros2_control.xacro` 的 `TLHardwareInterface` 插件配置中添加 `servoj_vmax`、`servoj_amax`、`servoj_jmax` 参数。单位为 rad/s、rad/s²、rad/s³，默认值为 0.5236、1.7453、8.7266（等价 30°/s、100°/s²、500°/s³）。支持单值（应用到所有关节）或以逗号分隔的逐关节值。
 
 **Q：真实硬件控制支持哪些臂型？**
 

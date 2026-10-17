@@ -84,10 +84,10 @@ private:
   int arm_joints_{7};
   double pos_scale_{0.5};
   double pos_deadzone_{0.005};
-  double max_pos_delta_mm_{300.0};
-  double singular_angle_{160.0};
+  double max_pos_delta_m_{0.3};
+  double singular_angle_{2.792526803190927}; // 160°
   double singular_scale_{0.2};
-  double joint_jump_threshold_{30.0};
+  double joint_jump_threshold_{0.5235987755982988}; // 30°
   std::vector<std::pair<double, double>> joint_limits_;
   std::vector<double> servo_vmax_;
   std::vector<double> servo_amax_;

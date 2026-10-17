@@ -152,7 +152,7 @@ src/
 实现 `TLHardwareInterface` 硬件接口插件（`hardware_interface::SystemInterface`），桥接 ros2_control 控制器层与 `tl_driver` 驱动节点。
 
 - 读取 `/joint_states` 获取关节状态，写入 ros2_control 状态接口
-- 通过 `joint_trajectory_controller` 接收规划轨迹，将弧度指令转换为角度后发布到 `/tl_driver/set_servoj_pos`
+- 通过 `joint_trajectory_controller` 接收规划轨迹，将关节角（rad）直接发布到 `/tl_driver/set_servoj_pos`（驱动负责换算到 SDK 度制）
 - 自动管理 servoj 流生命周期（`open_servoj` / `close_servoj`）
 
 所有 14 种臂型的 MoveIt2 配置包均已集成该插件，通过 `use_real_hardware` 参数切换真实/虚拟硬件模式。

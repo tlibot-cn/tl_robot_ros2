@@ -12,6 +12,7 @@
 #include "arm_client.hpp"
 #include "arm_sdk.hpp"
 #include "convert/msg_convert.hpp"
+#include "convert/units.hpp"
 #include "math/quaternion.hpp"
 #include "node/driver_node.hpp"
 
@@ -31,7 +32,7 @@ void handle_movej_topic(DriverNode& node, const tl_ros2_interface::msg::MoveComm
     return;
   }
 
-  tl::MoveCmd cmd = convert::to_move_cmd(*msg);
+  tl::MoveCmd cmd = convert::to_move_cmd(*msg, convert::MotionKind::kJoint);
 
   tl::Result ret = tl::robot_movej(node.session().fd(), cmd);
 
@@ -46,7 +47,7 @@ void handle_movel_topic(DriverNode& node, const tl_ros2_interface::msg::MoveComm
     return;
   }
 
-  tl::MoveCmd cmd = convert::to_move_cmd(*msg);
+  tl::MoveCmd cmd = convert::to_move_cmd(*msg, convert::MotionKind::kLinear);
 
   tl::Result ret = tl::robot_movel(node.session().fd(), cmd);
 
@@ -64,7 +65,18 @@ void handle_set_servoj_pos_topic(DriverNode& node, const std_msgs::msg::Float64M
     return;
   }
 
+  // ROS 侧为 rad，SDK 要求度；SDK 固定 7 元素，6 轴在末尾补 0
   std::vector<double> pos = msg->data;
+  if (pos.size() == 6)
+  {
+    pos.push_back(0.0);
+  }
+  if (pos.size() != 7)
+  {
+    RCLCPP_WARN(node.get_logger(), "[ServoJ]: data must have 6 or 7 elements, got %zu", pos.size());
+    return;
+  }
+  convert::joint_rad_to_deg(pos, pos.size());
   tl::Result ret = tl::set_servoJ_pos(node.session().fd_aux(), pos);
   RCLCPP_INFO(node.get_logger(), "[ServoJ]: result=%s", arm_client::result_to_string(ret));
 }
@@ -103,12 +115,16 @@ void handle_set_servol_pos_topic(DriverNode& node, const tl_ros2_interface::msg:
   double cx = current_pos[0], cy = current_pos[1], cz = current_pos[2];
   double crx = current_pos[3], cry = current_pos[4], crz = current_pos[5];
 
-  // 目标位姿
-  const auto& target_pose = msg->target_pose;
+  // 目标位姿：ROS 侧位置 m、姿态 rad；SDK 需要位置 mm
+  std::vector<double> target_pose = msg->target_pose;
   if (target_pose.size() < 6)
   {
     RCLCPP_ERROR(node.get_logger(), "[ServoL]: target_pose must have at least 6 elements");
     return;
+  }
+  for (std::size_t i = 0; i < 3 && i < target_pose.size(); ++i)
+  {
+    target_pose[i] = convert::m_to_mm(target_pose[i]);
   }
   double tx = target_pose[0], ty = target_pose[1], tz = target_pose[2];
   double trx = target_pose[3], try_ = target_pose[4], trz = target_pose[5];
@@ -117,11 +133,8 @@ void handle_set_servol_pos_topic(DriverNode& node, const tl_ros2_interface::msg:
   double dx = tx - cx, dy = ty - cy, dz = tz - cz;
   double dist = std::sqrt(dx * dx + dy * dy + dz * dz);
 
-  double step_size = msg->step_size;
-  if (step_size <= 0.0)
-  {
-    step_size = 2.0; // 默认步长 2mm
-  }
+  // ROS 侧步长 m，SDK 侧计算用 mm；≤0 时取默认 0.002 m = 2 mm
+  double step_size = msg->step_size > 0.0 ? convert::m_to_mm(msg->step_size) : 2.0;
 
   int N = std::max(1, static_cast<int>(std::ceil(dist / step_size)));
   RCLCPP_INFO(node.get_logger(), "[ServoL] dist=%.1fmm, step=%.1f, points=%d", dist, step_size, N);

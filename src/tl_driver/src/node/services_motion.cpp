@@ -3,6 +3,7 @@
 /// 按域搬移，行为不变）。
 
 #include "convert/msg_convert.hpp"
+#include "convert/units.hpp"
 #include <functional>
 #include <memory>
 #include <string>
@@ -163,9 +164,24 @@ void handle_open_servoj_service(DriverNode& node,
     return;
   }
 
+  // ROS 侧 rad/s、rad/s²、rad/s³；SDK 要求度制且固定 7 元素
   std::vector<double> vmax = request->vmax;
   std::vector<double> amax = request->amax;
   std::vector<double> jmax = request->jmax;
+  for (auto *values : {&vmax, &amax, &jmax})
+  {
+    if (values->size() == 6)
+    {
+      values->push_back(0.0);
+    }
+    if (values->size() != 7)
+    {
+      response->success = false;
+      response->message = "vmax/amax/jmax must have 6 or 7 elements";
+      return;
+    }
+    convert::joint_rad_to_deg(*values, values->size());
+  }
 
   tl::Result ret = tl::open_servoJ(node.session().fd_aux(), vmax, amax, jmax);
   response->success = (ret == tl::Result::SUCCESS);
@@ -224,7 +240,7 @@ void handle_queue_motion_movej_service(DriverNode& node,
     return;
   }
 
-  tl::MoveCmd cmd = convert::to_move_cmd(request->cmd);
+  tl::MoveCmd cmd = convert::to_move_cmd(request->cmd, convert::MotionKind::kJoint);
 
   tl::Result ret = tl::queue_motion_push_back_moveJ(node.session().fd(), cmd);
   if (ret != tl::Result::SUCCESS)

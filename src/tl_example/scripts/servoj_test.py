@@ -21,6 +21,7 @@ servoj_test.py — 简单的 ServoJ 关节插补测试节点
     hold_time    到达目标后保持时间（秒），默认 1.0
 """
 
+import math
 import signal
 import sys
 
@@ -52,13 +53,14 @@ class ServoJTestNode(Node):
 
         self.arm_joints = self.get_parameter("arm_joints").value
         self.joint = self.get_parameter("joint").value
-        self.target_angle = self.get_parameter("target_angle").value
+        # 参数沿用度制；接口统一为 rad
+        self.target_angle = math.radians(self.get_parameter("target_angle").value)
         self.num_points = self.get_parameter("num_points").value
         self.rate = self.get_parameter("rate").value
         self.hold_time = self.get_parameter("hold_time").value
-        self.vmax = self.get_parameter("vmax").value
-        self.amax = self.get_parameter("amax").value
-        self.jmax = self.get_parameter("jmax").value
+        self.vmax = math.radians(self.get_parameter("vmax").value)
+        self.amax = math.radians(self.get_parameter("amax").value)
+        self.jmax = math.radians(self.get_parameter("jmax").value)
 
         if self.joint >= self.arm_joints:
             self.get_logger().error(f"joint 索引 {self.joint} 超出关节数 {self.arm_joints}")
@@ -70,7 +72,7 @@ class ServoJTestNode(Node):
         self._servoj_pub = self.create_publisher(Float64MultiArray, "/tl_driver/set_servoj_pos", 10)
 
         self.get_logger().info(
-            f"ServoJ 插补测试: J{self.joint + 1} 从 0° -> {self.target_angle}°, "
+            f"ServoJ 插补测试: J{self.joint + 1} 从 0° -> {math.degrees(self.target_angle):.1f}°, "
             f"插值 {self.num_points} 点 @ {self.rate}Hz"
         )
 
@@ -110,11 +112,11 @@ class ServoJTestNode(Node):
         if not self._call_service(executor, self._open_cli, open_req, "open_servoj"):
             return False
 
-        # 3. 从零点位置开始，对指定关节做线性插值（0° -> target_angle°）
+        # 3. 从零点位置开始，对指定关节做线性插值（接口单位 rad）
         self.get_logger().warn(
             "请确保机械臂当前处于零点位置（关节角全为 0°），即将开始运动，Ctrl-C 可随时中断 ..."
         )
-        start_deg = [0.0] * self.arm_joints
+        start_rad = [0.0] * self.arm_joints
         rate = self.create_rate(self.rate)
         try:
             # 3.1 插值 num_points 个点
@@ -122,13 +124,13 @@ class ServoJTestNode(Node):
                 if not rclpy.ok():
                     break
                 fraction = i / (self.num_points - 1) if self.num_points > 1 else 1.0
-                pos = list(start_deg)
+                pos = list(start_rad)
                 pos[self.joint] = self.target_angle * fraction
                 self._publish(pos)
                 rate.sleep()
 
             # 3.2 到达目标后保持 hold_time，避免停发导致机械臂急停
-            pos = list(start_deg)
+            pos = list(start_rad)
             pos[self.joint] = self.target_angle
             hold_end = self.get_clock().now() + rclpy.duration.Duration(seconds=self.hold_time)
             while rclpy.ok() and self.get_clock().now() < hold_end:

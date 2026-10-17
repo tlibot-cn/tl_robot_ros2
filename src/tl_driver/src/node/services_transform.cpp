@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "arm_sdk.hpp"
+#include "convert/units.hpp"
 #include "node/registrars.hpp"
 #include "node/driver_node.hpp"
 
@@ -254,13 +255,37 @@ void handle_coord_transform_service(DriverNode& node,
     return;
   }
 
+  // ROS: 关节 rad / 笛卡尔 m + rad；SDK: 关节度 / 笛卡尔 mm + rad
   std::vector<double> originPos = request->origin_pos;
-  std::vector<double> referencePos = request->reference_pos;
-  std::vector<double> targetPos;
+  if (request->origin_coord == 0)
+  {
+    convert::joint_rad_to_deg(originPos, 7);
+  }
+  else
+  {
+    convert::cartesian_m_to_mm(originPos);
+  }
 
+  // reference_pos 为逆解参考关节角（SDK 度为制；空向量保持为空）
+  std::vector<double> referencePos = request->reference_pos;
+  convert::joint_rad_to_deg(referencePos, referencePos.size());
+
+  std::vector<double> targetPos;
   tl::Result ret = tl::get_origin_coord_to_target_coord(
       node.session().fd(), static_cast<tl::Coord>(request->origin_coord), originPos,
       static_cast<tl::Coord>(request->target_coord), targetPos, request->form, referencePos);
+
+  if (ret == tl::Result::SUCCESS)
+  {
+    if (request->target_coord == 0)
+    {
+      convert::joint_deg_to_rad(targetPos, targetPos.size());
+    }
+    else
+    {
+      convert::cartesian_mm_to_m(targetPos);
+    }
+  }
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Coord transform successfully" : "Failed to transform coord";
   response->target_pos = targetPos;

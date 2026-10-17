@@ -90,7 +90,7 @@ void handle_job_insert_movej_service(DriverNode& node,
     return;
   }
 
-  tl::MoveCmd cmd = convert::to_move_cmd(request->cmd);
+  tl::MoveCmd cmd = convert::to_move_cmd(request->cmd, convert::MotionKind::kJoint);
 
   tl::Result ret = tl::job_insert_moveJ(node.session().fd(), request->line, cmd);
   response->success = (ret == tl::Result::SUCCESS);
@@ -108,7 +108,7 @@ void handle_job_insert_movel_service(DriverNode& node,
     return;
   }
 
-  tl::MoveCmd cmd = convert::to_move_cmd(request->cmd);
+  tl::MoveCmd cmd = convert::to_move_cmd(request->cmd, convert::MotionKind::kLinear);
 
   tl::Result ret = tl::job_insert_moveL(node.session().fd(), request->line, cmd);
   response->success = (ret == tl::Result::SUCCESS);
@@ -126,7 +126,7 @@ void handle_job_insert_imove_service(DriverNode& node,
     return;
   }
 
-  tl::MoveCmd cmd = convert::to_move_cmd(request->cmd);
+  tl::MoveCmd cmd = convert::to_move_cmd(request->cmd, convert::MotionKind::kLinear);
 
   tl::Result ret = tl::job_insert_imove(node.session().fd(), request->line, cmd);
   response->success = (ret == tl::Result::SUCCESS);
@@ -144,7 +144,7 @@ void handle_job_insert_movec_service(DriverNode& node,
     return;
   }
 
-  tl::MoveCmd cmd = convert::to_move_cmd(request->cmd);
+  tl::MoveCmd cmd = convert::to_move_cmd(request->cmd, convert::MotionKind::kLinear);
 
   tl::Result ret = tl::job_insert_moveC(node.session().fd(), request->line, cmd);
   response->success = (ret == tl::Result::SUCCESS);

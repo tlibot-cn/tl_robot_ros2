@@ -2,6 +2,7 @@
 /// @brief 配置类服务：DH 参数/关节参数/工具/坐标系/全局点位/可达性的实现（由 driver_node.cpp 按域搬移，行为不变）。
 
 #include "convert/msg_convert.hpp"
+#include "convert/units.hpp"
 #include <functional>
 #include <memory>
 #include <chrono>
@@ -58,12 +59,13 @@ void handle_get_robot_joint_param_service(
     response->message = "Get robot joint param successfully";
     response->param.reduction_ratio = param.reduceRatio;
     response->param.encoder_resolution = param.encoderResolution;
-    response->param.pos_sw_limit = param.maxPos;
-    response->param.neg_sw_limit = param.minPos;
-    response->param.rated_rot_speed = param.ratedRotSpeed;
-    response->param.max_rot_speed = param.maxRotSpeed;
-    response->param.max_acc = param.maxAcc;
-    response->param.max_dec = param.maxDec;
+    // SDK: 软限位/加速度为度、电机转速为 rpm → ROS: rad、rad/s、rad/s²
+    response->param.pos_sw_limit = convert::deg_to_rad(param.maxPos);
+    response->param.neg_sw_limit = convert::deg_to_rad(param.minPos);
+    response->param.rated_rot_speed = convert::rpm_to_rad_s(param.ratedRotSpeed);
+    response->param.max_rot_speed = convert::rpm_to_rad_s(param.maxRotSpeed);
+    response->param.max_acc = convert::deg_to_rad(param.maxAcc);
+    response->param.max_dec = convert::deg_to_rad(param.maxDec);
     response->param.direction = param.axisDirection;
     // 新 SDK 无 rated_derot_speed / max_derot_speed / rated_vel / rated_devel 对应字段，保持默认 0
   }
@@ -95,12 +97,13 @@ void handle_set_robot_joint_param_service(
   tl::RobotJointParam param{};
   param.reduceRatio = request->param.reduction_ratio;
   param.encoderResolution = request->param.encoder_resolution;
-  param.maxPos = request->param.pos_sw_limit;
-  param.minPos = request->param.neg_sw_limit;
-  param.ratedRotSpeed = request->param.rated_rot_speed;
-  param.maxRotSpeed = request->param.max_rot_speed;
-  param.maxAcc = request->param.max_acc;
-  param.maxDec = request->param.max_dec;
+  // ROS: rad、rad/s、rad/s² → SDK: 度、rpm、度/s²
+  param.maxPos = convert::rad_to_deg(request->param.pos_sw_limit);
+  param.minPos = convert::rad_to_deg(request->param.neg_sw_limit);
+  param.ratedRotSpeed = convert::rad_s_to_rpm(request->param.rated_rot_speed);
+  param.maxRotSpeed = convert::rad_s_to_rpm(request->param.max_rot_speed);
+  param.maxAcc = convert::rad_to_deg(request->param.max_acc);
+  param.maxDec = convert::rad_to_deg(request->param.max_dec);
   param.axisDirection = request->param.direction;
   // 新 SDK 无 rated_derot_speed / max_derot_speed / rated_vel / rated_devel 对应字段，忽略
 
@@ -182,18 +185,19 @@ void handle_set_tool_param_service(DriverNode& node,
     return;
   }
 
+  // ROS: m / rad / kg → SDK: mm / 度 / kg
   tl::ToolParam param{};
-  param.X = request->param.x;
-  param.Y = request->param.y;
-  param.Z = request->param.z;
-  param.A = request->param.a;
-  param.B = request->param.b;
-  param.C = request->param.c;
+  param.X = convert::m_to_mm(request->param.x);
+  param.Y = convert::m_to_mm(request->param.y);
+  param.Z = convert::m_to_mm(request->param.z);
+  param.A = convert::rad_to_deg(request->param.a);
+  param.B = convert::rad_to_deg(request->param.b);
+  param.C = convert::rad_to_deg(request->param.c);
   param.payloadMass = request->param.payload_mass;
   param.payloadInertia = request->param.payload_inertia;
-  param.payloadMassCenter_X = request->param.payload_mass_center_x;
-  param.payloadMassCenter_Y = request->param.payload_mass_center_y;
-  param.payloadMassCenter_Z = request->param.payload_mass_center_z;
+  param.payloadMassCenter_X = convert::m_to_mm(request->param.payload_mass_center_x);
+  param.payloadMassCenter_Y = convert::m_to_mm(request->param.payload_mass_center_y);
+  param.payloadMassCenter_Z = convert::m_to_mm(request->param.payload_mass_center_z);
 
   tl::Result ret = tl::set_tool_hand_param(node.session().fd(), request->tool_num, param);
   response->success = (ret == tl::Result::SUCCESS);
@@ -214,9 +218,10 @@ void handle_set_user_coord_service(DriverNode& node,
   // 使用新 SDK 推荐的 UserCoordParam 重载（旧的 vector 重载已标记 deprecated）
   tl::UserCoordParam param{};
   param.location_type = 0; // 静态用户坐标
-  param.position[0] = request->pos.position.x;
-  param.position[1] = request->pos.position.y;
-  param.position[2] = request->pos.position.z;
+  // ROS: position m、姿态 rad → SDK: position mm、姿态 rad
+  param.position[0] = convert::m_to_mm(request->pos.position.x);
+  param.position[1] = convert::m_to_mm(request->pos.position.y);
+  param.position[2] = convert::m_to_mm(request->pos.position.z);
   param.position[3] = request->pos.rpy.x;
   param.position[4] = request->pos.rpy.y;
   param.position[5] = request->pos.rpy.z;
@@ -314,6 +319,8 @@ void handle_get_pos_reachable_service(DriverNode& node,
     return;
   }
 
+  // 该接口的 pos 是控制器 14 位协议包（含 [1] 单位制标志位），长度单位在该协议中
+  // 没有独立标志，无法在不改变协议语义的前提下转换为 m；作为协议格式保留 mm/度。
   std::vector<double> queryPos = request->pos;
 
   bool result = false;

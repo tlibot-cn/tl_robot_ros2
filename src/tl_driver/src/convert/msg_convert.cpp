@@ -3,6 +3,8 @@
 
 #include "convert/msg_convert.hpp"
 
+#include "convert/units.hpp"
+
 namespace tl_driver::convert
 {
 bool is_valid_gp_name(const std::string& pos_name)
@@ -15,14 +17,15 @@ bool is_valid_gp_name(const std::string& pos_name)
   return (num >= 1 && num <= 9999);
 }
 
-tl::MoveCmd to_move_cmd(const tl_ros2_interface::msg::MoveCommand& msg)
+tl::MoveCmd to_move_cmd(const tl_ros2_interface::msg::MoveCommand& msg, MotionKind kind)
 {
   tl::MoveCmd cmd{};
   cmd.targetPosType = static_cast<tl::PosType>(tl::PosType::data);
   cmd.targetPosName = "";
   cmd.coord = static_cast<tl::Coord>(msg.coord);
-  cmd.velocity = msg.velocity;
-  cmd.velocitySync = msg.velocity_sync;
+  // 关节运动速度为百分比、加减速度为百分比，不换算；直线运动速度 m/s → mm/s。
+  cmd.velocity = (kind == MotionKind::kLinear) ? m_s_to_mm_s(msg.velocity) : msg.velocity;
+  cmd.velocitySync = (kind == MotionKind::kLinear) ? m_s_to_mm_s(msg.velocity_sync) : msg.velocity_sync;
   cmd.acc = msg.acc;
   cmd.dec = msg.dec;
   cmd.pl = msg.pl;
@@ -33,7 +36,21 @@ tl::MoveCmd to_move_cmd(const tl_ros2_interface::msg::MoveCommand& msg)
   cmd.configuration = msg.configuration;
   cmd.spin = msg.spin;
   cmd.parasync = msg.para_sync;
+
   cmd.targetPosValue = msg.target_pos_value;
+  if (msg.coord == 0)
+  {
+    // 关节坐标：前 7 位为 J1..J7（ROS rad → SDK 度）
+    joint_rad_to_deg(cmd.targetPosValue, 7);
+  }
+  else
+  {
+    // 直角 / 工具 / 用户坐标：位置 m → mm；姿态本身为 rad，无需换算
+    for (std::size_t i = 0; i < 3 && i < cmd.targetPosValue.size(); ++i)
+    {
+      cmd.targetPosValue[i] = m_to_mm(cmd.targetPosValue[i]);
+    }
+  }
   return cmd;
 }
 
@@ -74,37 +91,53 @@ bool to_modbus_master_param(const tl_ros2_interface::msg::ModbusMasterParam& msg
 
 tl::RobotDHParam to_dh_param(const tl_ros2_interface::msg::RobotDHParam& msg)
 {
-  // 新 SDK: 标准DH参数 alpha/a/theta/d，逐字段映射到 SDK 的 tl::RobotDHParam
+  // ROS: alpha/theta/mounting_angle 为 rad，a/d 为 m；SDK: deg / mm
   tl::RobotDHParam dh{};
   for (int i = 0; i < 6 && i < static_cast<int>(msg.alpha.size()); ++i)
   {
-    dh.alpha[i] = msg.alpha[i];
+    dh.alpha[i] = rad_to_deg(msg.alpha[i]);
   }
   for (int i = 0; i < 6 && i < static_cast<int>(msg.a.size()); ++i)
   {
-    dh.a[i] = msg.a[i];
+    dh.a[i] = m_to_mm(msg.a[i]);
   }
   for (int i = 0; i < 6 && i < static_cast<int>(msg.theta.size()); ++i)
   {
-    dh.theta[i] = msg.theta[i];
+    dh.theta[i] = rad_to_deg(msg.theta[i]);
   }
   for (int i = 0; i < 6 && i < static_cast<int>(msg.d.size()); ++i)
   {
-    dh.d[i] = msg.d[i];
+    dh.d[i] = m_to_mm(msg.d[i]);
   }
   dh.eulerAngle = msg.euler_angle;
-  dh.mountingAngle = msg.mounting_angle;
+  dh.mountingAngle = rad_to_deg(msg.mounting_angle);
   return dh;
 }
 
 void from_dh_param(const tl::RobotDHParam& dh, tl_ros2_interface::msg::RobotDHParam& msg)
 {
-  // 新 SDK: 标准DH参数 alpha/a/theta/d，逐字段映射到 ROS2 消息
+  // SDK: deg / mm → ROS: rad / m
   msg.alpha.assign(dh.alpha, dh.alpha + 6);
   msg.a.assign(dh.a, dh.a + 6);
   msg.theta.assign(dh.theta, dh.theta + 6);
   msg.d.assign(dh.d, dh.d + 6);
+  for (auto& value : msg.alpha)
+  {
+    value = deg_to_rad(value);
+  }
+  for (auto& value : msg.theta)
+  {
+    value = deg_to_rad(value);
+  }
+  for (auto& value : msg.a)
+  {
+    value = mm_to_m(value);
+  }
+  for (auto& value : msg.d)
+  {
+    value = mm_to_m(value);
+  }
   msg.euler_angle = dh.eulerAngle;
-  msg.mounting_angle = dh.mountingAngle;
+  msg.mounting_angle = deg_to_rad(dh.mountingAngle);
 }
 } // namespace tl_driver::convert

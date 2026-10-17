@@ -182,10 +182,10 @@ void ServolSimBridge::servolCallback(const tl_ros2_interface::msg::ServolMove::S
     return;
   }
 
-  // 单位换算：servol 使用 mm，KDL 使用 m
-  double x_m = target[0] / 1000.0;
-  double y_m = target[1] / 1000.0;
-  double z_m = target[2] / 1000.0;
+  // ServolMove 与 KDL 均为 m / rad
+  double x_m = target[0];
+  double y_m = target[1];
+  double z_m = target[2];
 
   // 取当前关节角作为 IK 初始猜测
   KDL::JntArray q_guess(ndof_), q_out(ndof_);
@@ -199,7 +199,7 @@ void ServolSimBridge::servolCallback(const tl_ros2_interface::msg::ServolMove::S
 
   if (!ok)
   {
-    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "IK 求解失败 target=(%.1f, %.1f, %.1f)",
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "IK 求解失败 target=(%.3f, %.3f, %.3f)",
                          target[0], target[1], target[2]);
     return;
   }

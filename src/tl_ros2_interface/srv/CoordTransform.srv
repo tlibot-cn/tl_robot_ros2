@@ -1,11 +1,11 @@
 # 坐标转换
-# 单位：关节坐标（coord=0）为度；直角/工具/用户坐标（1/2/3）为位置 mm + 姿态 rad（与 SDK 一致）。
+# 单位遵循 REP 103：关节坐标（coord=0）为 rad；直角/工具/用户坐标（1/2/3）为位置 m + 姿态 rad。
 int32 origin_coord        # 源坐标系：0=关节 1=基坐标 2=工具 3=用户
 int32 target_coord        # 目标坐标系：0=关节 1=基坐标 2=工具 3=用户
 int32 form                # 形态
-float64[] origin_pos      # 源坐标（关节：度；直角/工具/用户：mm + rad）
-float64[] reference_pos   # 逆解参考点
+float64[] origin_pos      # 源坐标（关节：rad；直角/工具/用户：m + rad）
+float64[] reference_pos   # 逆解参考关节角（rad）
 ---
 bool success
 string message
-float64[] target_pos      # 转换结果（关节：度；直角/工具/用户：mm + rad）
+float64[] target_pos      # 转换结果（关节：rad；直角/工具/用户：m + rad）

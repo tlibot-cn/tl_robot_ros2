@@ -9,6 +9,7 @@
 
 #include "arm_client.hpp"
 #include "arm_sdk.hpp"
+#include "convert/units.hpp"
 #include "node/registrars.hpp"
 #include "node/driver_node.hpp"
 
@@ -378,7 +379,10 @@ void handle_get_current_line_joint_speed_service(
   {
     response->success = true;
     response->message = "Get current line joint speed successfully";
-    response->line_speed = line_speed;
+    // SDK: mm/s、度/s → ROS: m/s、rad/s
+    response->line_speed = convert::mm_s_to_m_s(line_speed);
+    convert::joint_deg_to_rad(joint_speed, joint_speed.size());
+    convert::joint_deg_to_rad(joint_speed_sync, joint_speed_sync.size());
     response->joint_speed = joint_speed;
     response->joint_speed_sync = joint_speed_sync;
   }

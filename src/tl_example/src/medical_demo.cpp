@@ -18,7 +18,7 @@ namespace tl_example
 // 演示点位定义（直角坐标系, coord=1）
 //
 // target_pos_value 字段 14 维：
-//   [X(mm), Y(mm), Z(mm), RX(rad), RY(rad), RZ(rad),
+//   [X(m), Y(m), Z(m), RX(rad), RY(rad), RZ(rad),
 //    外部轴1..7 备用 0]
 //
 // RX = -π 表示工具末端竖直向下，适合移液/夹取操作
@@ -32,7 +32,7 @@ constexpr double TOOL_RZ = -M_PI / 2.0; // -90°
 
 /**
  * @brief 构造 14 维直角坐标数组
- * @param x,y,z  末端位置（mm）
+ * @param x,y,z  末端位置（m）
  * @param rx,ry,rz  末端姿态（rad）
  */
 std::vector<double> makePos(double x, double y, double z, double rx = TOOL_DOWN_RX, double ry = TOOL_RY,
@@ -44,34 +44,34 @@ std::vector<double> makePos(double x, double y, double z, double rx = TOOL_DOWN_
 // 直角坐标点位字典
 const std::map<std::string, std::vector<double>> POSITIONS = {
     // 安全等待位（机械臂收缩，远离工作区）
-    {"home", makePos(230.004, -0.009, 359.008, -3.141, 0.0, 0.0)},
+    {"home", makePos(0.230004, -0.000009, 0.359008, -3.141, 0.0, 0.0)},
     // 样本架上方（检验科采血管架）
-    {"above_sample", makePos(150.0, 100.0, 350.0)},
+    {"above_sample", makePos(0.150, 0.100, 0.350)},
     // 样本位（下降吸取 / 夹取）
-    {"at_sample", makePos(150.0, 100.0, 180.0)},
+    {"at_sample", makePos(0.150, 0.100, 0.180)},
     // 试剂架 / 分装位上方
-    {"above_reagent", makePos(250.0, 100.0, 350.0)},
+    {"above_reagent", makePos(0.250, 0.100, 0.350)},
     // 试剂位（下降加样 / 分装）
-    {"at_reagent", makePos(250.0, 100.0, 180.0)},
+    {"at_reagent", makePos(0.250, 0.100, 0.180)},
     // 检测仪器进样口上方
-    {"above_instrument", makePos(200.0, 250.0, 350.0)},
+    {"above_instrument", makePos(0.200, 0.250, 0.350)},
     // 检测仪器进样口（放置样本）
-    {"at_instrument", makePos(200.0, 250.0, 200.0)},
+    {"at_instrument", makePos(0.200, 0.250, 0.200)},
 };
 
-// 演示序列：{ 点位, 动作描述, 速度% }
+// 演示序列：{ 点位, 动作描述, 线速度 m/s }
 const std::vector<MedicalDemo::SequenceStep> DEMO_SEQUENCE = {
-    {"home", "返回安全等待位", 80},
-    {"above_sample", "移动到样本架上方（检验科采血管架）", 80},
-    {"at_sample", "下降至取样位（吸取血液 / 体液样本）", 80},
-    {"above_sample", "抬起样本（避免碰撞转移）", 80},
-    {"above_reagent", "移动到试剂架上方（生化 / 免疫试剂位）", 80},
-    {"at_reagent", "下降至分装加样位（样本注入试剂孔板）", 80},
-    {"above_reagent", "抬起末端（避免拖拽污染）", 80},
-    {"above_instrument", "移动到检测仪器进样口（化学发光 / 生化分析仪）", 80},
-    {"at_instrument", "下降放置样本（将样本架送入仪器）", 80},
-    {"above_instrument", "抬起末端", 80},
-    {"home", "返回安全位置，流程结束", 80},
+    {"home", "返回安全等待位", 0.08},
+    {"above_sample", "移动到样本架上方（检验科采血管架）", 0.08},
+    {"at_sample", "下降至取样位（吸取血液 / 体液样本）", 0.08},
+    {"above_sample", "抬起样本（避免碰撞转移）", 0.08},
+    {"above_reagent", "移动到试剂架上方（生化 / 免疫试剂位）", 0.08},
+    {"at_reagent", "下降至分装加样位（样本注入试剂孔板）", 0.08},
+    {"above_reagent", "抬起末端（避免拖拽污染）", 0.08},
+    {"above_instrument", "移动到检测仪器进样口（化学发光 / 生化分析仪）", 0.08},
+    {"at_instrument", "下降放置样本（将样本架送入仪器）", 0.08},
+    {"above_instrument", "抬起末端", 0.08},
+    {"home", "返回安全位置，流程结束", 0.08},
 };
 
 } // anonymous namespace
@@ -146,8 +146,8 @@ MedicalDemo::MoveCommand MedicalDemo::buildMoveL(const std::string& pos_key, dou
   msg.coord = 1;           // 直角坐标系
   msg.velocity = velocity;
   msg.velocity_sync = 0.0;
-  msg.acc = velocity;
-  msg.dec = velocity;
+  msg.acc = 20.0; // 加减速度百分比
+  msg.dec = 20.0;
   msg.pl = 0; // 精确到达
   msg.time = 0;
   msg.tool_num = 0;
@@ -328,7 +328,7 @@ void MedicalDemo::moveNextStep()
     {
       // 发送当前 MoveL
       const auto& step = DEMO_SEQUENCE[seq_index_];
-      RCLCPP_INFO(this->get_logger(), "▶ [%zu/%zu] %s  → 位置=%s  速度=%.0f%%", seq_index_ + 1, DEMO_SEQUENCE.size(),
+      RCLCPP_INFO(this->get_logger(), "▶ [%zu/%zu] %s  → 位置=%s  速度=%.3fm/s", seq_index_ + 1, DEMO_SEQUENCE.size(),
                   step.description.c_str(), step.pos_key.c_str(), step.velocity);
 
       MoveCommand msg = buildMoveL(step.pos_key, step.velocity);

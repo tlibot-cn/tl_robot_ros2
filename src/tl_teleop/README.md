@@ -132,7 +132,7 @@ tl_teleop_node:
     # ========== 位置控制参数 ==========
     pos_scale: 0.5                   # 位置缩放系数（VR 位移 1m → 末端移动 0.5m）
     pos_deadzone: 0.005              # 位置死区（m），各轴独立判定
-    max_pos_delta_mm: 300.0          # 单步最大位置增量（mm），防止异常跳变
+    max_pos_delta_m: 0.3             # 单步最大位置增量（m），防止异常跳变
 
     # ========== 奇异点防护参数 ==========
     joint_jump_threshold: 30.0       # 关节跳变阈值（度），超过此值拒绝执行
@@ -144,9 +144,9 @@ tl_teleop_node:
 
     # ========== ServoJ 初始化参数（标量值，自动广播到所有关节）==========
     servo_speed: 25.0                # ServoJ 运动速度
-    servo_vmax: 80.0                 # ServoJ 最大速度（度/秒）
-    servo_amax: 3000.0               # ServoJ 最大加速度（度/秒²）
-    servo_jmax: 50000.0              # ServoJ 最大加加速度（度/秒³）
+    servo_vmax: 80.0                 # ServoJ 最大速度，配置用 °/s（内部转 rad/s）
+    servo_amax: 3000.0               # ServoJ 最大加速度，配置用 °/s²（内部转 rad/s²）
+    servo_jmax: 50000.0              # ServoJ 最大加加速度，配置用 °/s³（内部转 rad/s³）
 ```
 
 **参数说明**：
@@ -156,7 +156,7 @@ tl_teleop_node:
 | `arm_axis_mode` | int | — | 机械臂关节数，必须为 6 或 7 |
 | `pos_scale` | double | 0.5 | 位置缩放系数。手柄位移 1m → 末端移动 `pos_scale` m |
 | `pos_deadzone` | double | 0.005 | 位置死区（m），各轴独立判定，小于此值的位移被忽略 |
-| `max_pos_delta_mm` | double | 300.0 | 单步最大位置增量（mm），防止异常跳变 |
+| `max_pos_delta_m` | double | 0.3 | 单步最大位置增量（m），防止异常跳变 |
 | `singular_angle` | double | 160.0 | 奇异点判定角度（度）。6 轴检测 J5/J6，7 轴检测 J6/J7 |
 | `singular_scale` | double | 0.2 | 奇异点区域速度缩放系数 |
 | `joint_jump_threshold` | double | 30.0 | 关节跳变阈值（度），相邻帧超过此值拒绝执行 |
@@ -233,7 +233,7 @@ tl_teleop 作为客户端节点，主要使用（消费）tl_driver 提供的话
 ```
 | 话题 | 类型 | 说明 |
 |------|------|------|
-| `/tl_driver/set_servoj_pos` | `std_msgs/Float64MultiArray` | 目标关节角度数组（单位：度），100Hz 频率发布 |
+| `/tl_driver/set_servoj_pos` | `std_msgs/Float64MultiArray` | 目标关节角度数组（单位：rad），100Hz 频率发布 |
 
 ### 订阅的话题
 ```
