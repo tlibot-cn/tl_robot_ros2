@@ -104,12 +104,13 @@
 - Python：`black --check .`
 - 同分支新推送会取消仍在跑的旧 CI（`concurrency`）
 
-**`release.yml`（打标签触发，任意 tag 推送）**，四步：
+**`release.yml`（打标签触发，任意 tag 推送）**，五步：
 
 1. **guard**：标签名须匹配 `[vV]?主.次.补[-(rc|beta)N]` **且**标签提交是远端 `master`/`dev` 的祖先，两条都满足才发布；否则只留 notice、**静默跳过**（其余后缀如 alpha、里程碑标记一律不发布）。带 `-rc`/`-beta` 的标为 prerelease。
 2. **notes**：`scripts/release-notes.sh <tag>` 从 `CHANGELOG.md` 抽对应版本章节作正文（`V3.0.0` → `## [3.0.0]`，rc/beta 回退基础版本章节），末尾附完整变更日志链接，不用 GitHub 自动生成的提交/PR 列表。**找不到章节或章节为空 → 失败退出、不创建 Release**。
 3. **format**：与 `ci.yml` 相同的格式检查。
-4. **publish**：`gh release create`，标题即标签名，不附构建产物。
+4. **package**：`git archive` 从标签提交生成源码归档 `tl_robot_ros2-<标签>.zip`（顶层带同名目录前缀），只含已跟踪文件，排除 `.omp/`、`scripts/`、`.github/`、`AGENTS.md`；打包后校验归档内不含这些路径，命中即失败。
+5. **publish**：`gh release create`，标题即标签名，附第 4 步的源码归档，不附编译产物。
 
 **发版顺序（必须）**：先把分支推上去并等 CI 绿 → `git tag Vx.y.z` → `git push origin Vx.y.z`。
 tag 推送事件不携带分支信息，守卫靠提交祖先关系判断，**只推标签不推分支时远端分支引用仍在旧位置，守卫会静默跳过**（只剩标签、没有 Release）；误推时补推分支再重推标签即可。

@@ -11,8 +11,10 @@
 #                对应版本章节作为正文（找不到章节/章节为空 → 失败退出，
 #                不创建 Release）
 #   3. format  — 格式检查（与 ci.yml 相同逻辑）
-#   4. publish — 创建 GitHub Release（标题即标签名，正文取自 CHANGELOG
-#                章节 + 完整变更日志链接，不附构建产物；
+#   4. package — 打包源码归档（git archive，仅含标签提交中的已跟踪文件；
+#                排除 .omp/、scripts/、.github/、AGENTS.md 等内部开发文件）
+#   5. publish — 创建 GitHub Release（标题即标签名，正文取自 CHANGELOG
+#                章节 + 完整变更日志链接，附源码归档；
 #                rc/beta 标记为 prerelease）
 #
 # 不做 CI 构建: 依赖环境过重（MoveIt/RViz/ros2_control 全量安装），
@@ -33,7 +35,7 @@ permissions:
 
 jobs:
   release:
-    name: 发布 (guard + Release 说明 + 格式检查 + GitHub Release)
+    name: 发布 (guard + Release 说明 + 格式检查 + 源码打包 + GitHub Release)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -120,7 +122,37 @@ jobs:
           fi
 
       # ------------------------------------------------------
-      # 4. 发布 — 创建 GitHub Release（不附构建产物）
+      # 4. 打包 — 用 git archive 从标签提交生成源码归档:
+      #    只含标签提交中的已跟踪文件（build/install/log 等本地构建产物
+      #    与未跟踪文件天然不入包）；排除内部开发文件:
+      #      .omp/     agent 配置与规则
+      #      scripts/  构建/发版辅助脚本
+      #      .github/  CI 工作流
+      #      AGENTS.md agent 上下文文件
+      #    顶层目录加 tl_robot_ros2-<标签>/ 前缀，解压即得完整工作空间。
+      # ------------------------------------------------------
+      - name: 打包源码归档
+        if: steps.guard.outputs.release == 'true'
+        run: |
+          PKG="tl_robot_ros2-${GITHUB_REF_NAME}"
+          ARCHIVE="/tmp/${PKG}.zip"
+          git archive --format=zip \
+            --prefix="${PKG}/" \
+            --output="${ARCHIVE}" \
+            "$GITHUB_REF_NAME" -- . \
+            ':(exclude).omp' \
+            ':(exclude)scripts' \
+            ':(exclude).github' \
+            ':(exclude)AGENTS.md'
+          if unzip -Z1 "${ARCHIVE}" | grep -qE "^${PKG}/(\.omp|scripts|\.github|AGENTS\.md)(/|$)"; then
+            echo "::error::源码归档中仍包含应排除的路径 (.omp/scripts/.github/AGENTS.md)"
+            exit 1
+          fi
+          unzip -Z1 "${ARCHIVE}" | wc -l
+          echo "::notice::已生成 ${ARCHIVE}"
+
+      # ------------------------------------------------------
+      # 5. 发布 — 创建 GitHub Release，附第 4 步生成的源码归档
       #    标题即标签名（不加仓库名等前缀）；正文为 CHANGELOG 章节正文；
       #    rc/beta 标签加 --prerelease，不占用 Latest
       # ------------------------------------------------------
@@ -133,4 +165,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
             --notes-file /tmp/release-notes.md \
+            "/tmp/tl_robot_ros2-${GITHUB_REF_NAME}.zip" \
             $PRERELEASE_FLAG
