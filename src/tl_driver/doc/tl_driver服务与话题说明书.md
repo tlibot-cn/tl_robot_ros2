@@ -16,6 +16,7 @@
 |V1.7 | 2026-9-22 | 修订（`/tcp_pose` 位置单位 m → mm、1.4 单位制约定表述、15.4 `step_size` 默认值 5.0 → 2.0）|
 |V1.8 | 2026-9-22 | 修订（8.2 `set_user_coord` 输入位姿位置单位 m → mm）|
 |V1.9 | 2026-9-22 | 修订（显式标注全部接口单位：笛卡尔位置 mm、姿态 rad、关节 度；修正 MoveCommand target_pos_value 布局描述）|
+|V1.10 | 2026-10-17 | 修订（字段级单位标注核对：`pl` 改为过渡等级 0～5（非百分比）、4.7 转速单位 rpm、4.10 改述为本体 7 轴且单位 A、4.15/5.7 DH 参数注明 SDK 未标注单位、15.1/15.3 补「固定 7 元素」长度契约、14.2 与 MoveCommand 表队列速度口径）|
 
 </div>
 
@@ -141,7 +142,7 @@
 | :--- | :--- | :--- |
 | 笛卡尔位置 | **mm** | [`/tcp_pose`](#42-查询末端位姿)（`position.x/y/z`）；[`/tl_driver/moveL`](#72-movel运动控制)、[`job_insert_moveL`](#62-向作业文件插入一条movel直线运动)、[`job_insert_moveC`](#64-向作业文件插入一条movec圆弧运动)、[`job_insert_imove`](#63-向作业文件插入一条增量指令imove)、`queue_motion_movej` 的 `target_pos_value` **本体**位置分量（`[0..2]`）；[`/tl_driver/set_servol_pos`](#154-发送跟踪笛卡尔位姿)（`target_pose` 的 x/y/z、`step_size`）；[`/tl_driver/set_user_coord`](#82-设置用户坐标系)（`pos.position.x/y/z`）；[`/tl_driver/set_tool_param`](#81-设置工具手参数)（`param.x/y/z`、`param.payload_mass_center_x/y/z`）；[`/tl_driver/coord_transform`](#56-坐标转换)（`coord` 为 1/2/3 时的 `origin_pos`/`reference_pos`/`target_pos`）；[`/tl_driver/get_pos_reachable`](#417-查询目标位姿可达状态)（`pos[7..13]`）；[`/tl_driver/get_global_pos`](#111-查询全局位点)、[`/tl_driver/set_global_pos`](#112-设置全局位点)（`pos`/`pos_info[7..13]`）；[`get_dh_param`](#415-查询机械臂dh参数)/[`set_dh_param`](#57-设置机械臂dh参数) 的长度类字段（`l1~l20`、`pitch`、`sliding_lead_value`、`uplift_lead_value`、`spray_distance`、`sp`/`tl` 中的长度量） |
 | 姿态（欧拉角/位姿角分量） | rad | `CartesianPose.rpy.x/y/z`、`CartesianPose.arm_angle`；`target_pos_value` **本体**姿态 RX/RY/RZ（`[3..5]`）；`ServolMove.target_pose` 的 rx/ry/rz；`coord_transform`、`set_user_coord` 中的姿态分量 |
-| 关节量 | 度（°） | `target_pos_value` 在 `coord=0` 时整组为关节角；[`/tl_driver/moveJ`](#71-movej运动控制)、[`job_insert_moveJ`](#61-向作业文件插入一条movej关节运动)、`queue_motion_movej`、`job_insert_imove` 的关节维度；[`/tl_driver/set_servoj_pos`](#153-发送跟踪关节位置)；`RobotJointParam` 的限位与速度（°、°/s） |
+| 关节量 | 度（°） | `target_pos_value` 在 `coord=0` 时整组为关节角；[`/tl_driver/moveJ`](#71-movej运动控制)、[`job_insert_moveJ`](#61-向作业文件插入一条movej关节运动)、`queue_motion_movej`、`job_insert_imove` 的关节维度；[`/tl_driver/set_servoj_pos`](#153-发送跟踪关节位置)；`RobotJointParam` 的限位与速度（°、°/s；`*_rot_speed` 电机转速为 rpm） |
 | 关节角速度/角加速度 | °/s、°/s²、°/s³ | [`OpenServoJ`](#151-打开关节跟踪模式) 的 `vmax/amax/jmax`；[`get_current_line_joint_speed`](#420-查询当前线速度和关节速度) 的 `joint_speed`/`joint_speed_sync` |
 | 运动/加速度百分比 | % | `MoveCommand.velocity`/`velocity_sync`/`acc`/`dec`（关节运动）；[`set_speed`](#51-设置运行速度)/[`get_speed`](#43-查询运行速度) |
 | 笛卡尔线速度 | mm/s | `MoveCommand.velocity` 在 MOVL（`coord=1`）时为 mm/s；[`get_current_line_joint_speed`](#420-查询当前线速度和关节速度) 的 `line_speed` |
@@ -493,7 +494,7 @@ ros2 service call /tl_driver/get_joint_temperature tl_ros2_interface/srv/GetJoin
 ros2 service call /tl_driver/get_joint_voltage tl_ros2_interface/srv/GetJointVoltage "{}"
 ```
 ### 4.10 查询电机电流
-| 功能描述 | 查询独立轴当前电机电流 |
+| 功能描述 | 查询机器人本体 7 轴电机电流（外部轴同步电流 SDK 有返回，本节点未暴露） |
 | :---: | :---- |
 | 通信机制 | ROS2服务 |
 | 服务名 | `/tl_driver/get_motor_current` |
@@ -507,7 +508,7 @@ ros2 service call /tl_driver/get_joint_voltage tl_ros2_interface/srv/GetJointVol
 |--------|------|------|------|
 | success | bool | — | `true` = 查询成功，`false` = 查询失败 |
 | message | string | — | 失败时包含错误描述 |
-| motor_current | float64[] | A | 机械臂独立轴电机电流 |
+| motor_current | float64[] | A | 机器人本体 7 轴电机电流（SDK 头标注 **‰**，与实际不符，以 A 为准） |
 #### 命令示例
 ```
 ros2 service call /tl_driver/get_motor_current tl_ros2_interface/srv/GetMotorCurrent "{}"
@@ -609,7 +610,7 @@ ros2 service call /tl_driver/get_coord_num tl_ros2_interface/srv/GetCoordNum "{}
 |--------|------|------|------|
 | success | bool | — | `true` = 查询成功，`false` = 查询失败 |
 | message | string | — | 失败时包含错误描述 |
-| param | RobotDHParam | — | 机械臂DH参数结构体。长度类字段单位 **mm**：`l1~l20`（连杆长度）、`pitch`（螺距）、`sliding_lead_value`/`uplift_lead_value`（电动缸导程）、`spray_distance`（喷料距离）、`sp`/`tl` 中的长度量；无量纲：`couple_coe_*`（联动系数）、`*convertion_ratio*`、`amplification_ratio`、`upside_down` 等 |
+| param | RobotDHParam | — | 机械臂DH参数结构体。长度类字段单位 **mm**（SDK 头未标注单位，依控制器手册 / 现场核对）：`l1~l20`（连杆长度）、`pitch`（螺距）、`sliding_lead_value`/`uplift_lead_value`（电动缸导程）、`spray_distance`（喷料距离）、`sp`/`tl` 中的长度量；无量纲：`couple_coe_*`（联动系数）、`*convertion_ratio*`、`amplification_ratio`、`upside_down` 等 |
 #### 命令示例
 ```
 ros2 service call /tl_driver/get_dh_param tl_ros2_interface/srv/GetDHParam
@@ -904,7 +905,7 @@ ros2 service call /tl_driver/coord_transform tl_ros2_interface/srv/CoordTransfor
 **输入参数**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| param | RobotDHParam | — | 机械臂DH参数结构体。长度类字段单位 **mm**：`l1~l20`（连杆长度）、`pitch`、`sliding_lead_value`/`uplift_lead_value`、`spray_distance`、`sp`/`tl` 中的长度量；`couple_coe_*` 等系数无量纲 |
+| param | RobotDHParam | — | 机械臂DH参数结构体。长度类字段单位 **mm**（SDK 头未标注单位，依控制器手册 / 现场核对）：`l1~l20`（连杆长度）、`pitch`、`sliding_lead_value`/`uplift_lead_value`、`spray_distance`、`sp`/`tl` 中的长度量；`couple_coe_*` 等系数无量纲 |
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
@@ -935,11 +936,11 @@ ros2 service call /tl_driver/set_dh_param tl_ros2_interface/srv/SetDHParam \
 | target_pos_name | string | — | — | 目标位姿变量名，如 `"P0001"`（target_pos_type=1时使用） |
 | target_pos_type | int32 | — | 0 或 1 | 位姿类型（`PosType`）：`0` = 自定义数组（使用 `target_pos_value`），`1` = 变量模式（使用 `target_pos_name`，如 `"P0001"`） |
 | coord | int32 | — | 0～3 | 坐标系：0=关节，1=直角，2=工具，3=用户 |
-| velocity | float64 | % / mm/s | 1～100（%）<br>1～1000（mm/s） | 运动速度：关节运动（`coord=0`）为 **%**；MOVL 直线运动（`coord=1`）为 **mm/s** |
+| velocity | float64 | % / mm/s | 1～100（%）<br>1～1000（mm/s） | 运动速度：关节运动（`coord=0`）为 **%**；MOVL 直线运动（`coord=1`）为 **mm/s**；队列接口（`queue_motion_movej`）同此口径（SDK 队列头注释的「度/s」有误） |
 | velocity_sync | float64 | % / mm/s | 同上 | 同步轴速度，单位口径同 `velocity` |
 | acc | float64 | % | 1～100 | 加速度百分比 |
 | dec | float64 | % | 1～100 | 减速度百分比 |
-| pl | int32 | — | ≥0 | 平滑度（过渡等级），0=精确到达（等级值，非百分比） |
+| pl | int32 | — | 0～5 | 平滑过渡等级，0=精确到达（SDK 范围 [0,5]，等级值而非百分比） |
 | time | int32 | — | — | 提前执行时间 |
 | tool_num | int32 | — | — | 工具坐标系编号 |
 | user_num | int32 | — | — | 用户坐标系编号 |
@@ -1209,7 +1210,7 @@ ros2 service call /tl_driver/job_delete tl_ros2_interface/srv/JobRun "{job_name:
 | velocity_sync | float64 | % | 1～100 | 同步轴速度百分比 |
 | acc | float64 | % | 1～100 | 加速度百分比 |
 | dec | float64 | % | 1～100 | 减速度百分比 |
-| pl | int32 | — | ≥0 | 平滑度，0=精确到达 |
+| pl | int32 | — | 0～5 | 平滑过渡等级，0=精确到达（SDK 范围 [0,5]，等级值而非百分比） |
 | time | int32 | — | — | 提前执行时间 |
 | tool_num | int32 | — | — | 工具坐标系编号 |
 | user_num | int32 | — | — | 用户坐标系编号 |
@@ -1866,7 +1867,7 @@ ros2 service call /tl_driver/queue_motion_set_status tl_ros2_interface/srv/Queue
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
 | is_continue | bool | `false` = 新队列运动，`true` = 从断点继续执行 |
-| cmd | MoveCommand | 运动指令（参见 [MoveCommand消息类型说明](#movecommand消息类型说明)；本节为关节用法：`coord=0` 时 `target_pos_value` 单位 **度**，`velocity`/`acc`/`dec` 单位 **%**。驱动强制 `targetPosType=0`，`coord` 透传） |
+| cmd | MoveCommand | 运动指令（参见 [MoveCommand消息类型说明](#movecommand消息类型说明)；本节为关节用法：`coord=0` 时 `target_pos_value` 单位 **度**，`velocity`/`acc`/`dec` 单位 **%**（队列接口与 `MoveCommand` 同口径，SDK 队列头注释的「度/s」有误）。驱动强制 `targetPosType=0`，`coord` 透传） |
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
@@ -1917,7 +1918,7 @@ ros2 service call /tl_driver/queue_motion_stop std_srvs/srv/Trigger "{}"
 **输入参数**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| vmax | float64[] | °/s | 各轴最大速度，数组长度 ≥ 关节数 |
+| vmax | float64[] | °/s | 各轴最大速度，**固定 7 元素**：6 轴机器人在第 7 元素补 0，7 轴机器人为真实 J7 约束值（传 6 元素会断开 7000 端口连接，见 SDK `tl_servo_ext.h`） |
 | amax | float64[] | °/s² | 各轴最大加速度 |
 | jmax | float64[] | °/s³ | 各轴最大加加速度 |
 
@@ -1967,7 +1968,7 @@ ros2 service call /tl_driver/close_servoj std_srvs/srv/Trigger "{}"
 **输入参数**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| data | float64[] | ° | 目标关节角度数组（7维，前6轴角度，第7轴补0） |
+| data | float64[] | ° | 目标关节角度数组，**固定 7 元素**：6 轴机器人前 6 轴为关节角、第 7 元素补 0；7 轴机器人第 7 元素为真实 J7 关节角 |
 
 **输出/返回值**
 无返回值（话题发布单向通信）。

@@ -18,10 +18,10 @@ TL 系列机械臂 ROS2 接口说明
 
 > **本包接口的笛卡尔位置量为 `mm`（有意偏离 ROS 惯例的 `m`）**：位置量直接透传 SDK 原值，驱动不做单位换算（`/joint_states` 是唯一例外，做度→rad 换算）。与 `src/tl_driver/doc/tl_driver服务与话题说明书.md` 的 1.4 节口径一致。
 >
-> - 位置 **mm**：`CartesianPose.position`、`MoveCommand.target_pos_value`（`coord=1`）、`ServolMove.target_pose` 的 x/y/z 与 `step_size`、`ToolParam.x/y/z` 与 `payload_mass_center_*`、`RobotDHParam` 的长度类字段、`SetUserCoord.pos.position`、`CoordTransform.origin_pos`/`reference_pos`/`target_pos`（直角/工具/用户坐标系）、`GetPosReachable.pos`、`GetGlobalPos.pos`、`SetGlobalPos.pos_info`
+> - 位置 **mm**：`CartesianPose.position`、`MoveCommand.target_pos_value`（`coord=1`）、`ServolMove.target_pose` 的 x/y/z 与 `step_size`、`ToolParam.x/y/z` 与 `payload_mass_center_*`、`RobotDHParam` 的长度类字段（SDK 头未标注单位，依控制器手册 / 现场核对）、`SetUserCoord.pos.position`、`CoordTransform.origin_pos`/`reference_pos`/`target_pos`（直角/工具/用户坐标系）、`GetPosReachable.pos`、`GetGlobalPos.pos`、`SetGlobalPos.pos_info`
 > - 姿态 **rad**：`CartesianPose.rpy`、`CartesianPose.arm_angle`、`ServolMove.target_pose` 的 rx/ry/rz、`MoveCommand.target_pos_value` 的 RX/RY/RZ
-> - 关节量 **度**：`MoveCommand.target_pos_value` 在 `coord=0` 时整组为关节角、`OpenServoJ.vmax/amax/jmax`（°/s、°/s²、°/s³）、`GetCurrentLineJointSpeed.joint_speed`/`joint_speed_sync`（°/s）、`RobotJointParam` 的限位与速度（°、°/s）
-> - 其它：`MoveCommand.velocity` 关节运动为 `%`、MOVL（`coord=1`）为 `mm/s`；`acc`/`dec` 为 `%`；`GetCurrentLineJointSpeed.line_speed` 为 `mm/s`；`GetCurrentMotorTorque.motor_torque`/`motor_torque_sync` 为 `%`（SDK 注释：长度 7 / 长度 5）；`couple_coe_*`、`*convertion_ratio*`、四元数与旋转矩阵无量纲；`ToolParam.a/b/c` 的单位 SDK 未标注，待现场确认
+> - 关节量 **度**：`MoveCommand.target_pos_value` 在 `coord=0` 时整组为关节角、`OpenServoJ.vmax/amax/jmax`（°/s、°/s²、°/s³）、`GetCurrentLineJointSpeed.joint_speed`/`joint_speed_sync`（°/s）、`RobotJointParam` 的限位与速度（°、°/s；`*_rot_speed` 电机转速为 rpm）
+> - 其它：`MoveCommand.velocity` 关节运动为 `%`、MOVL（`coord=1`）为 `mm/s`（队列接口同口径，SDK 队列头注释的「度/s」有误）；`acc`/`dec` 为 `%`；`GetCurrentLineJointSpeed.line_speed` 为 `mm/s`；`GetCurrentMotorTorque.motor_torque`/`motor_torque_sync` 为 `%`（SDK 注释：长度 7 / 长度 5）；`couple_coe_*`、`*convertion_ratio*`、四元数与旋转矩阵无量纲；`ToolParam.a/b/c` 的单位 SDK 未标注，待现场确认
 >
 > **两套 14 维布局不同，勿混用**：
 > - `MoveCommand.target_pos_value`（本体位姿）= `[0..6]` 机器人本体 `[X(mm), Y(mm), Z(mm), RX(rad), RY(rad), RZ(rad), 冗余臂角(rad)]` + `[7..13]` 外部轴（单位随外部轴类型，本仓库按 SDK 原值透传、不做换算）；`coord=0` 时整组为关节角（度）。**不含**坐标系/单位制头部。
@@ -55,7 +55,7 @@ TL 系列机械臂 ROS2 接口说明
 * 5.8 [关节软件版本号GetJointSoftwareVersion_srv](#关节软件版本号GetJointSoftwareVersion_srv)
 * 5.9 [关节温度GetJointTemperature_srv](#关节温度GetJointTemperature_srv)
 * 5.10 [关节电压GetJointVoltage_srv](#关节电压GetJointVoltage_srv)
-* 5.11 [电机温度GetMotorCurrent_srv](#电机温度GetMotorCurrent_srv)
+* 5.11 [电机电流GetMotorCurrent_srv](#电机电流getmotorcurrent_srv)
 * 5.12 [目标位姿可达状态GetPosReachable_srv](#目标位姿可达状态GetPosReachable_srv)
 * 5.13 [位姿转换GetPosTransform_srv](#位姿转换GetPosTransform_srv)
 * 5.14 [关节参数GetRobotJointParam_srv](#关节参数GetRobotJointParam_srv)
@@ -268,7 +268,7 @@ __msg成员__
 - target_pos_name: 目标位置名称，如 `"P0001"`
 - target_pos_type: 位姿类型（`0` = 自定义数组，使用 `target_pos_value`；`1` = 变量模式，使用 `target_pos_name`）
 - coord: 坐标系编号（0=关节，1=直角，2=工具，3=用户）
-- velocity/velocity_sync: 速度——关节运动（`coord=0`）为 **%**（1～100），MOVL 直线运动（`coord=1`）为 **mm/s**（1～1000）
+- velocity/velocity_sync: 速度——关节运动（`coord=0`）为 **%**（1～100），MOVL 直线运动（`coord=1`）为 **mm/s**（1～1000）；队列路径（`queue_motion_movej`）同口径（SDK 队列头注释的「度/s」有误）
 - acc/dec: 加减速度，**%**（1～100）
 - pl/time: 平滑度过渡等级（`pl`，0=精确到达，等级值非百分比）/ 提前执行时间
 - tool_num/user_num: 工具/用户坐标编号
@@ -489,7 +489,7 @@ string message
 tl_ros2_interface/RobotDHParam param
 ```
 - 返回机器人DH参数
-- 返回: success/message/param（DH 参数，长度类字段 `l1..l20`/`pitch`/`sliding_lead_value`/`uplift_lead_value`/`spray_distance`/`sp`/`tl` 单位 **mm**）
+- 返回: success/message/param（DH 参数，长度类字段 `l1..l20`/`pitch`/`sliding_lead_value`/`uplift_lead_value`/`spray_distance`/`sp`/`tl` 单位 **mm**，SDK 头未标注单位，依控制器手册 / 现场核对）
 
 ### 数字输入输出状态GetDigitalInputOutput_srv
 ```
@@ -533,7 +533,7 @@ string message
 float64[] temperatures
 ```
 - 返回各关节温度数组
-- 返回: success/message/temperatures（各关节温度数组）
+- 返回: success/message/temperatures（各关节温度数组，单位 **℃**——SDK 头未标注单位）
 
 ### 关节电压GetJointVoltage_srv
 ```
@@ -544,17 +544,17 @@ float64[] joint_voltage
 float64[] positioner_voltage
 ```
 - 返回关节电压数组
-- 返回: success/message/joint_voltage（关节电压数组）/positioner_voltage（定位器电压数组）
+- 返回: success/message/joint_voltage（关节电压数组，单位 **V**——SDK 头未标注单位）/positioner_voltage（定位器电压数组，单位 **V**）
 
-### 电机温度GetMotorCurrent_srv
+### 电机电流GetMotorCurrent_srv
 ```
 ---
 bool success
 string message
 float64[] motor_current
 ```
-- 返回电机电流数组
-- 返回: success/message/motor_current（电机电流数组）
+- 返回机器人本体 7 轴电机电流（外部轴同步电流 SDK 有返回，本节点未暴露）
+- 返回: success/message/motor_current（机器人本体 7 轴电流，单位 **A**——SDK 头标注 ‰，与实际不符）
 
 ### 目标位姿可达状态GetPosReachable_srv
 ```

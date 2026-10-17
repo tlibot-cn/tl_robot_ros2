@@ -11,6 +11,19 @@
 
 ## [Unreleased]
 
+### 2026-10-17
+
+#### 修复
+
+- tl_ros2_interface：`MoveCommand.pl` 原标注「单位: %」更正为 SDK 实际口径「平滑过渡等级（0～5，非百分比）」；`GetCurrentLineJointSpeed.joint_speed`/`joint_speed_sync` 的数组长度由「5」更正为「7」；`RobotJointParam` 的 `rated_rot_speed`/`rated_derot_speed`/`max_rot_speed`/`max_derot_speed` 由「度/s」更正为「rpm」；`GetJointSoftwareVersion` 服务标题由「获取独立轴当前电机电流」更正为「获取指定关节（轴）的软件版本号」
+- tl_ros2_interface README：`GetMotorCurrent` 小节标题误写为「电机温度」，更正为「电机电流」（目录、小节标题与锚点同步）
+
+#### 文档
+
+- tl_ros2_interface：`OpenServoJ.vmax/amax/jmax` 与 `/tl_driver/set_servoj_pos` 补「固定 7 元素、6 轴末位补 0」长度契约（SDK 注明传 6 元素会断开 7000 端口连接）；`GetJointTemperature`/`GetJointVoltage` 补 ℃ / V 单位并注明 SDK 头未标注；`GetPosTransform` 补欧拉角 rad 的推断依据
+- tl_ros2_interface：`GetMotorCurrent` 由「独立轴当前电机电流」更正为「机器人本体 7 轴电机电流（外部轴同步电流未暴露）」，并标注单位 **A**（SDK 头标的 ‰ 与实际不符）；`MoveCommand.velocity` 明确队列接口与 `MoveCommand` 同口径（关节 %、MOVL mm/s；SDK 队列头注释的「度/s」有误）；`RobotDHParam` 长度类字段注明 SDK 头未标注单位
+- tl_driver 服务与话题说明书：同步上述字段级单位修正（`pl` 范围 0～5、4.7 转速 rpm、4.10 标题与单位 A、14.2 队列速度口径、DH 参数 SDK 未标注单位）
+
 ### 2026-09-24
 
 #### 新增

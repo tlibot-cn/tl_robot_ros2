@@ -1,4 +1,4 @@
-# 获取独立轴当前电机电流
+# 获取指定关节（轴）的软件版本号，版本号经 message 字段返回
 int32 axis_num
 ---
 bool success
