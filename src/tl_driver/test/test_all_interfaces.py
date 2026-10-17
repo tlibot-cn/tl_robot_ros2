@@ -7,30 +7,26 @@ test_all_interfaces.py
 参照 tx.cpp（C++ 版驱动快速自检）的分组与调用逻辑实现，覆盖：
 
   §2  连接管理      connect_arm / power_on / power_off（disconnect_arm 不自动调用，需手动断开）
-  §3  日志管理      log_download
   §4  信息查询      get_speed / get_controller_id / get_robot_state / get_library_version /
                     get_robot_joint_param / get_joint_temperature / get_joint_voltage /
-                    get_motor_current / get_joint_software_version / get_nexmotion_lib_version /
-                    get_current_coord / get_coord_num / get_dh_param / get_all_job_filename /
+                    get_motor_current / get_joint_software_version /
+                    get_current_coord / get_coord_num / get_dh_param /
                     get_pos_reachable / get_current_motor_torque / get_current_line_joint_speed
                     + 话题 /joint_states、/tcp_pose、/arm_status
   §5  基础设置      set_speed / coord_transform
-  §6  作业运动      job_insert_moveJ / job_insert_moveL / job_insert_imove / job_insert_moveC
   §8  坐标系与工具  set_tool_param / set_user_coord / set_coord_num / set_current_coord
   §9  示教操作      stop_jogging / set_drag_mode / get_drag_status / track_save
   §10 错误/零位    clear_error
-  §11 全局路点      get_global_pos / set_global_pos
   §12 模式与IO     set_current_mode / get_current_mode / set_digital_output / get_digital_input_output
   §13 Modbus       modbus_write / modbus_read
   §14 队列运动      queue_motion_set_status / queue_motion_stop
   §15 ServoJ       close_servoj
-  §16 位姿转换      get_quat2rpy / get_rpy2quat / get_rpy2r / get_tr2r / get_r2tr
 
 危险接口（会触发运动、改动标定/IP、删除文件等）默认跳过，仅打印提示：
   disconnect_arm（需用户手动断开）/
-  moveJ / moveL / start_jogging / queue_motion_movej / open_servoj / job_run / job_delete /
-  track_playback / set_axis_zero_pos / set_dh_param / set_robot_joint_param /
-  set_controller_ip / restore_default_dh_param / set_default_cartesian_param
+  moveJ / moveL / start_jogging / queue_motion_movej / open_servoj /
+  track_playback / set_axis_zero_pos / set_robot_joint_param /
+  set_controller_ip / set_default_cartesian_param
 
 @usage
   方式一（推荐，需已 source install/setup.bash）:
@@ -101,17 +97,14 @@ from sensor_msgs.msg import JointState
 from tl_ros2_interface.msg import (
     ArmStatus,
     CartesianPose,
-    MoveCommand,
     ToolParam,
     ModbusMasterParam,
     ModbusTCPParam,
     ModbusRTUParam,
-    JobFileName,
     ServolMove,
 )
 from tl_ros2_interface.srv import (
     CoordTransform,
-    GetAllJobFileName,
     GetCoordNum,
     GetCurrentCoord,
     GetCurrentLineJointSpeed,
@@ -119,35 +112,27 @@ from tl_ros2_interface.srv import (
     GetCurrentMotorTorque,
     GetDHParam,
     GetDigitalInputOutput,
-    GetGlobalPos,
     GetJointSoftwareVersion,
     GetJointTemperature,
     GetJointVoltage,
     GetMotorCurrent,
     GetPosReachable,
-    GetPosTransform,
     GetRobotJointParam,
     GetRobotState,
     GetSpeed,
-    JobInsertMove,
-    JobRun,
     Jogging,
-    LogDownload,
     ModbusRead,
     ModbusWrite,
     OpenServoJ,
     QueueMotionMoveJ,
     QueueMotionSetStatus,
-    RestoreDefaultDHParam,
     SetAxisZeroPos,
     SetControllerIP,
     SetCoordNum,
     SetCurrentCoord,
     SetCurrentMode,
-    SetDHParam,
     SetDigitalOutput,
     SetDragMode,
-    SetGlobalPos,
     SetRobotJointParam,
     SetSpeed,
     SetToolParam,
@@ -155,31 +140,6 @@ from tl_ros2_interface.srv import (
     TrackPlayback,
     TrackSave,
 )
-
-
-# ============================================================
-# 工具
-# ============================================================
-def make_move_cmd(target_pos_value=None, coord=0, velocity=30.0, acc=20.0, dec=20.0, pl=0):
-    """构造 MoveCommand"""
-    cmd = MoveCommand()
-    cmd.target_pos_type = 0
-    cmd.target_pos_value = target_pos_value if target_pos_value is not None else [0.0] * 7
-    cmd.target_pos_name = ""
-    cmd.coord = coord
-    cmd.velocity = velocity
-    cmd.velocity_sync = 0.0
-    cmd.acc = acc
-    cmd.dec = dec
-    cmd.pl = pl
-    cmd.time = 0
-    cmd.tool_num = 0
-    cmd.user_num = 0
-    cmd.posidtype = 0
-    cmd.configuration = 0
-    cmd.spin = 0
-    cmd.para_sync = False
-    return cmd
 
 
 class DriverQuickTest(Node):
@@ -379,13 +339,6 @@ class DriverQuickTest(Node):
         cli = self.wait_service("/tl_driver/get_dh_param", GetDHParam)
         self.call_srv(cli, GetDHParam.Request(), "get_dh_param")
 
-        cli = self.wait_service("/tl_driver/get_all_job_filename", GetAllJobFileName)
-        resp = self.call_srv(cli, GetAllJobFileName.Request(), "get_all_job_filename")
-        if resp and resp.success:
-            for f in resp.robots_file:
-                for name in f.file_name:
-                    self.logger.info(f"      file: {name}")
-
         cli = self.wait_service("/tl_driver/get_pos_reachable", GetPosReachable)
         req = GetPosReachable.Request()
         req.pos = [0.0] * 7
@@ -423,33 +376,6 @@ class DriverQuickTest(Node):
         resp = self.call_srv(cli, req, "coord_transform(0->1)")
         if resp and resp.success:
             self.print_arr("      target_pos ", resp.target_pos)
-
-    def test_jobs(self):
-        self.logger.info("\n========== §6 作业（仅插入，运行/删除跳过）==========")
-        # 4 个插入指令服务
-        insert_cmds = [
-            ("/tl_driver/job_insert_moveJ", "job_insert_moveJ"),
-            ("/tl_driver/job_insert_moveL", "job_insert_moveL"),
-            ("/tl_driver/job_insert_imove", "job_insert_imove"),
-            ("/tl_driver/job_insert_moveC", "job_insert_moveC"),
-        ]
-        for srv_name, label in insert_cmds:
-            cli = self.wait_service(srv_name, JobInsertMove)
-            req = JobInsertMove.Request()
-            req.line = 0
-            req.cmd = make_move_cmd()
-            self.call_srv(cli, req, label)
-
-        # 危险：作业运行/删除
-        for srv_name, label in [
-            ("/tl_driver/job_run", "job_run"),
-            ("/tl_driver/job_delete", "job_delete"),
-        ]:
-            cli = self.wait_service(srv_name, JobRun, timeout_s=1.0)
-            if cli:
-                self.skip(label, "会运行/删除作业文件，仅做就绪检查")
-            else:
-                self.logger.warn(f"  [{label}] 服务未就绪")
 
     def test_coord_tool(self):
         self.logger.info("\n========== §8 坐标系与工具 ==========")
@@ -504,21 +430,6 @@ class DriverQuickTest(Node):
         cli = self.wait_service("/tl_driver/track_playback", TrackPlayback, timeout_s=1.0)
         if cli:
             self.skip("track_playback", "会触发运动")
-
-    def test_global_pos(self):
-        self.logger.info("\n========== §11 全局路点 ==========")
-        cli = self.wait_service("/tl_driver/set_global_pos", SetGlobalPos)
-        req = SetGlobalPos.Request()
-        req.pos_name = "GP0001"
-        req.pos_info = [1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 300.0, 0.0, 200.0, 3.14, 0.0, 0.0, 0.0]
-        self.call_srv(cli, req, "set_global_pos(GP0001)")
-
-        cli = self.wait_service("/tl_driver/get_global_pos", GetGlobalPos)
-        req = GetGlobalPos.Request()
-        req.pos_name = "GP0001"
-        resp = self.call_srv(cli, req, "get_global_pos(GP0001)")
-        if resp and resp.success:
-            self.print_arr("      pos ", resp.pos)
 
     def test_mode_io(self):
         self.logger.info("\n========== §12 模式与 IO ==========")
@@ -616,32 +527,13 @@ class DriverQuickTest(Node):
         if cli:
             self.skip("open_servoj", "会触发运动")
 
-    def test_pose_transform(self):
-        self.logger.info("\n========== §16 位姿转换 ==========")
-        cases = [
-            ("/tl_driver/get_quat2rpy", [0.0, 0.0, 0.0, 1.0]),
-            ("/tl_driver/get_rpy2quat", [0.0, 0.0, 0.0]),
-            ("/tl_driver/get_rpy2r", [0.0, 0.0, 0.0]),
-            ("/tl_driver/get_tr2r", [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
-            ("/tl_driver/get_r2tr", [1, 0, 0, 0, 1, 0, 0, 0, 1]),
-        ]
-        for srv_name, inp in cases:
-            cli = self.wait_service(srv_name, GetPosTransform)
-            req = GetPosTransform.Request()
-            req.input = [float(v) for v in inp]
-            resp = self.call_srv(cli, req, srv_name.split("/")[-1])
-            if resp and resp.success:
-                self.print_arr("      output ", resp.output)
-
     def test_dangerous(self):
         self.logger.info("\n========== 极高风险接口汇总（均跳过）==========")
         for label, reason in [
             ("moveJ/moveL 话题", "会触发运动"),
             ("set_axis_zero_pos", "改动零点标定"),
-            ("set_dh_param", "改动 DH 参数"),
             ("set_robot_joint_param", "改动关节参数"),
             ("set_controller_ip", "修改控制器网络"),
-            ("restore_default_dh_param", "恢复出厂 DH"),
             ("set_default_cartesian_param", "重置笛卡尔参数"),
         ]:
             self.skip(label, reason)
@@ -666,32 +558,20 @@ class DriverQuickTest(Node):
         # ============================================================
         self.logger.info("\n========== §2 连接管理 ==========")
         self.call_trigger(cli_version, "get_library_version（库版本）")
-        cli_nex = self.wait_service("/tl_driver/get_nexmotion_lib_version", Trigger)
-        self.call_trigger(cli_nex, "get_nexmotion_lib_version（算法库版本）")
         cli_id = self.wait_service("/tl_driver/get_controller_id", Trigger)
         self.call_trigger(cli_id, "get_controller_id（控制器序列号）")
         self.call_trigger(cli_connect, "connect_arm（连接机械臂）")
 
         self.test_topics()  # §4 话题（连接后才有数据）
 
-        self.logger.info("\n========== §3 日志管理 ==========")
-        cli = self.wait_service("/tl_driver/log_download", LogDownload)
-        req = LogDownload.Request()
-        req.count = 1
-        req.directory_path = "/tmp"
-        self.call_srv(cli, req, "log_download")
-
         # self.test_info_query()
         # self.test_basic_set()
-        # self.test_jobs()
         # self.test_coord_tool()
         # self.test_jog_track()
-        # self.test_global_pos()
         # self.test_mode_io()
         self.test_modbus()
         # self.test_queue()
         # self.test_servoj()
-        # self.test_pose_transform()
         # self.test_dangerous()
 
         self.logger.info("\n========== 结束 ==========")

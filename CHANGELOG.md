@@ -23,7 +23,10 @@
 
 ### 2026-10-17
 
-- **破坏性变更**：全部 ROS 接口统一为 REP 103 单位——关节角 rad、笛卡尔位置 m、线速度 m/s、关节速度 rad/s；控制器 / SDK 的 mm / 度 / % 由 `tl_driver` 在边界换算。受影响接口：`MoveCommand`（关节 rad、位置 m、MOVL 速度 m/s）、`/tl_driver/set_servoj_pos`（rad）、`ServolMove`（m、step m）、`CartesianPose`（`SetUserCoord` 改 m）、`ToolParam`（m、rad）、`RobotDHParam`（rad、m）、`RobotJointParam`（rad、rad/s、rad/s²）、`OpenServoJ`（rad/s 系列）、`CoordTransform`（rad、m）、`GetCurrentLineJointSpeed`（m/s、rad/s）。`set_global_pos` / `get_global_pos` / `get_pos_reachable` 的 14/21 位协议包保留控制器 mm + 单位标志位口径
+- **破坏性变更**：tl_driver 移除 18 个不属于 ROS 驱动职责的服务，服务数量 65 → 47。移除范围：纯数学变换（`get_quat2rpy` / `get_rpy2quat` / `get_rpy2r` / `get_tr2r` / `get_r2tr`）、控制器作业文件（`get_all_job_filename` / `job_run` / `job_delete` / `job_insert_moveJ` / `job_insert_moveL` / `job_insert_imove` / `job_insert_moveC`）、全局路点（`get_global_pos` / `set_global_pos`）、`get_nexmotion_lib_version`、`set_dh_param`、`restore_default_dh_param`、`log_download`。`tl_ros2_interface` 中的 srv 定义暂保留，供外部工具按需引用
+- tl_teleop：`get_rpy2quat` 改为本地数学转换，不再依赖驱动服务
+- tl_example / `test_all_interfaces.py`：同步移除已下线服务的调用；说明书删除对应章节，章节号保持不变以避免破坏既有引用
+- **破坏性变更**：全部 ROS 接口统一为 REP 103 单位——关节角 rad、笛卡尔位置 m、线速度 m/s、关节速度 rad/s；控制器 / SDK 的 mm / 度 / % 由 `tl_driver` 在边界换算。受影响接口：`MoveCommand`（关节 rad、位置 m、MOVL 速度 m/s）、`/tl_driver/set_servoj_pos`（rad）、`ServolMove`（m、step m）、`CartesianPose`（`SetUserCoord` 改 m）、`ToolParam`（m、rad）、`RobotDHParam`（rad、m）、`RobotJointParam`（rad、rad/s、rad/s²）、`OpenServoJ`（rad/s 系列）、`CoordTransform`（rad、m）、`GetCurrentLineJointSpeed`（m/s、rad/s）。`get_pos_reachable` 的 14 维协议包保留控制器 mm + 单位标志位口径
 - tl_driver：新增 `src/convert/units.hpp` 集中单位换算，运动指令 / ServoJ / ServoL / 工具与用户坐标 / DH / 关节参数 / 线速度在边界转换；ServoJ 约束自动补齐 6 轴第 7 位
 - tl_hardware：`write()` 直接发布 rad，`servoj_vmax/amax/jmax` 改用 rad 默认值（等价原 30/100/500 度制）
 - tl_teleop / tl_teleop_f710 / tl_example：内部计算与发布统一 rad / m，配置参数保留度制并在读取时换算；`tl_teleop` 的 `max_pos_delta_mm` 更名为 `max_pos_delta_m`（默认 0.3 m）

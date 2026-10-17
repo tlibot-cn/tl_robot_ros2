@@ -242,24 +242,6 @@ void handle_get_joint_software_version_service(
   response->message = response->success ? version : "Failed to get joint software version";
 }
 
-void handle_get_nexmotion_lib_version_service(DriverNode& node,
-                                              const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                              std::shared_ptr<std_srvs::srv::Trigger::Response> response)
-{
-  (void)request;
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  std::string version;
-  tl::Result ret = tl::get_nexmotion_lib_version(node.session().fd(), version);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? version : "Failed to get nexmotion lib version, ret=" + std::to_string(ret);
-}
-
 void handle_get_drag_status_service(DriverNode& node, const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
                                     std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
@@ -409,9 +391,6 @@ void register_state_services(DriverNode& node)
   node.create_service<std_srvs::srv::Trigger>(
       "/tl_driver/get_library_version",
       std::bind(&handle_get_library_version_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
-  node.create_service<std_srvs::srv::Trigger>("/tl_driver/get_nexmotion_lib_version",
-                                              std::bind(&handle_get_nexmotion_lib_version_service, std::ref(node),
-                                                        std::placeholders::_1, std::placeholders::_2));
   node.create_service<tl_ros2_interface::srv::GetJointTemperature>(
       "/tl_driver/get_joint_temperature",
       std::bind(&handle_get_joint_temperature_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));

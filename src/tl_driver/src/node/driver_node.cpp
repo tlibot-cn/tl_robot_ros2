@@ -89,7 +89,6 @@ void DriverNode::register_entities()
   register_transform_services(*this);
   register_config_services(*this);
   register_io_services(*this);
-  register_job_services(*this);
   register_state_services(*this);
 
   // 话题pub

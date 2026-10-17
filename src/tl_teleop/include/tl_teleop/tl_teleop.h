@@ -19,7 +19,6 @@
 
 #include <tl_ros2_interface/msg/cartesian_pose.hpp>
 #include <tl_ros2_interface/srv/coord_transform.hpp>
-#include <tl_ros2_interface/srv/get_pos_transform.hpp>
 #include <tl_ros2_interface/srv/open_servo_j.hpp>
 #include <tl_ros2_interface/srv/set_current_mode.hpp>
 #include <tl_ros2_interface/srv/set_speed.hpp>
@@ -104,7 +103,6 @@ private:
   rclcpp::Client<tl_ros2_interface::srv::OpenServoJ>::SharedPtr open_servoj_client_;
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr close_servoj_client_;
   rclcpp::Client<tl_ros2_interface::srv::CoordTransform>::SharedPtr coord_transform_client_;
-  rclcpp::Client<tl_ros2_interface::srv::GetPosTransform>::SharedPtr get_rpy2quat_client_;
 
   // Topic publisher
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr servoj_pos_pub_;
@@ -122,7 +120,7 @@ private:
   bool init_servo();
   std::vector<double> get_arm_cartesian_pose();
   std::vector<double> get_inverse_kinematics(double x, double y, double z, double rx, double ry, double rz);
-  std::array<double, 4> get_rpy2quat_sdk(double rx, double ry, double rz);
+  static std::array<double, 4> rpy2quat(double rx, double ry, double rz);
   std::vector<double> clamp_joints(const std::vector<double>& joints);
   bool joints_safe(const std::vector<double>& new_joints);
   void servoJ_send(const std::vector<double>& joint_target);

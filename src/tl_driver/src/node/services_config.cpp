@@ -1,5 +1,5 @@
 /// @file services_config.cpp
-/// @brief 配置类服务：DH 参数/关节参数/工具/坐标系/全局点位/可达性的实现（由 driver_node.cpp 按域搬移，行为不变）。
+/// @brief 配置类服务：DH 查询/关节参数/工具/坐标系/可达性的实现（由 driver_node.cpp 按域搬移，行为不变）。
 
 #include "convert/msg_convert.hpp"
 #include "convert/units.hpp"
@@ -16,15 +16,11 @@
 #include "std_srvs/srv/trigger.hpp"
 #include "tl_ros2_interface/srv/get_coord_num.hpp"
 #include "tl_ros2_interface/srv/get_dh_param.hpp"
-#include "tl_ros2_interface/srv/get_global_pos.hpp"
 #include "tl_ros2_interface/srv/get_pos_reachable.hpp"
 #include "tl_ros2_interface/srv/get_robot_joint_param.hpp"
-#include "tl_ros2_interface/srv/restore_default_dh_param.hpp"
 #include "tl_ros2_interface/srv/set_axis_zero_pos.hpp"
 #include "tl_ros2_interface/srv/set_coord_num.hpp"
-#include "tl_ros2_interface/srv/set_dh_param.hpp"
 #include "tl_ros2_interface/srv/set_drag_mode.hpp"
-#include "tl_ros2_interface/srv/set_global_pos.hpp"
 #include "tl_ros2_interface/srv/set_robot_joint_param.hpp"
 #include "tl_ros2_interface/srv/set_tool_param.hpp"
 #include "tl_ros2_interface/srv/set_user_coord.hpp"
@@ -123,23 +119,6 @@ void handle_set_robot_joint_param_service(
     response->message =
         write_ok ? "Parameter written but power on failed" : "Failed to set robot joint param and power on failed";
   }
-}
-
-void handle_restore_default_dh_param_service(
-    DriverNode& node, const std::shared_ptr<tl_ros2_interface::srv::RestoreDefaultDHParam::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::RestoreDefaultDHParam::Response> response)
-{
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::Result ret = tl::restore_default_param_DH(node.session().fd(), request->robot_num);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message =
-      response->success ? "Restore default DH param successfully" : "Failed to restore default DH param";
 }
 
 void handle_set_default_cartesian_param_service(DriverNode& node,
@@ -346,33 +325,6 @@ void handle_get_pos_reachable_service(DriverNode& node,
   }
 }
 
-void handle_set_dh_param_service(DriverNode& node,
-                                 const std::shared_ptr<tl_ros2_interface::srv::SetDHParam::Request> request,
-                                 std::shared_ptr<tl_ros2_interface::srv::SetDHParam::Response> response)
-{
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  // 新 SDK: 标准DH参数 alpha/a/theta/d，逐字段映射到 SDK 的 tl::RobotDHParam
-  tl::RobotDHParam dh = convert::to_dh_param(request->param);
-
-  tl::Result ret = tl::set_robot_dh_param(node.session().fd(), dh);
-  if (ret == tl::Result::SUCCESS)
-  {
-    response->success = true;
-    response->message = "Set DH param successfully";
-  }
-  else
-  {
-    response->success = false;
-    response->message = "Failed to set DH param, ret=" + std::to_string(ret);
-  }
-}
-
 void handle_get_dh_param_service(DriverNode& node,
                                  const std::shared_ptr<tl_ros2_interface::srv::GetDHParam::Request> request,
                                  std::shared_ptr<tl_ros2_interface::srv::GetDHParam::Response> response)
@@ -401,70 +353,16 @@ void handle_get_dh_param_service(DriverNode& node,
   }
 }
 
-void handle_set_global_pos_service(DriverNode& node,
-                                   const std::shared_ptr<tl_ros2_interface::srv::SetGlobalPos::Request> request,
-                                   std::shared_ptr<tl_ros2_interface::srv::SetGlobalPos::Response> response)
-{
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (!convert::is_valid_gp_name(request->pos_name))
-  {
-    response->success = false;
-    response->message = "Invalid global pos name";
-    return;
-  }
-
-  tl::Result ret = tl::set_global_position(node.session().fd(), request->pos_name, request->pos_info);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Set global pos successfully" : "Failed to set global pos";
-}
-
-void handle_get_global_pos_service(DriverNode& node,
-                                   const std::shared_ptr<tl_ros2_interface::srv::GetGlobalPos::Request> request,
-                                   std::shared_ptr<tl_ros2_interface::srv::GetGlobalPos::Response> response)
-{
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (!convert::is_valid_gp_name(request->pos_name))
-  {
-    response->success = false;
-    response->message = "Invalid global pos name";
-    return;
-  }
-
-  std::vector<double> pos;
-  tl::Result ret = tl::get_global_position(node.session().fd(), request->pos_name, pos);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Get global pos successfully" : "Failed to get global pos";
-  response->pos = pos;
-}
-
 } // namespace
 
 void register_config_services(DriverNode& node)
 {
-  node.create_service<tl_ros2_interface::srv::RestoreDefaultDHParam>(
-      "/tl_driver/restore_default_dh_param", std::bind(&handle_restore_default_dh_param_service, std::ref(node),
-                                                       std::placeholders::_1, std::placeholders::_2));
   node.create_service<std_srvs::srv::Trigger>("/tl_driver/set_default_cartesian_param",
                                               std::bind(&handle_set_default_cartesian_param_service, std::ref(node),
                                                         std::placeholders::_1, std::placeholders::_2));
   node.create_service<tl_ros2_interface::srv::SetDragMode>(
       "/tl_driver/set_drag_mode",
       std::bind(&handle_set_drag_mode_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
-  node.create_service<tl_ros2_interface::srv::SetDHParam>(
-      "/tl_driver/set_dh_param",
-      std::bind(&handle_set_dh_param_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
   node.create_service<tl_ros2_interface::srv::GetDHParam>(
       "/tl_driver/get_dh_param",
       std::bind(&handle_get_dh_param_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
@@ -492,11 +390,5 @@ void register_config_services(DriverNode& node)
   node.create_service<tl_ros2_interface::srv::GetPosReachable>(
       "/tl_driver/get_pos_reachable",
       std::bind(&handle_get_pos_reachable_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
-  node.create_service<tl_ros2_interface::srv::SetGlobalPos>(
-      "/tl_driver/set_global_pos",
-      std::bind(&handle_set_global_pos_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
-  node.create_service<tl_ros2_interface::srv::GetGlobalPos>(
-      "/tl_driver/get_global_pos",
-      std::bind(&handle_get_global_pos_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
 }
 } // namespace tl_driver

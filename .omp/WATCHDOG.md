@@ -59,12 +59,12 @@
 - 关节向量的 6 与 7：`ndof_`（默认 6）、`arm_joints_`；6 轴时第 7 元素**补 0，不是丢掉**。
 - `MoveCmd::targetPosValue` 14 位：前 7 本体 + 后 7 外部轴，几轴填几位、其余置 0。
 - `get_current_position`（Coord 重载）返回 7 元素；6/7 轴分支分散在 `publish_joint_pose`、`publish_tcp_pose`。
-- 点位容器 14 位：`[0]`坐标系 `[1]`单位 `[2]`形态 `[3]`工具 `[4]`用户 `[5][6]`备用 `[7..13]`点位（`set_global_position`、`get_pos_reachable`）。
+- 点位容器 14 位：`[0]`坐标系 `[1]`单位 `[2]`形态 `[3]`工具 `[4]`用户 `[5][6]`备用 `[7..13]`点位（`get_pos_reachable`）。
 - **信号**：`resize(7, 0.0)`、`end() - 1` 截断、`size() < 6` 早退 → 核对调用方实际长度。
 
 ## 四、线程与回调组
 
-- `tl_driver` 三组均为 `MutuallyExclusive`：`service_group_`（全部 65 个服务）、`topic_group_`（4 个订阅）、`timer_group_`（状态发布定时器）；`MultiThreadedExecutor` 线程数 `max(4, hardware_concurrency)`。`timer_group_` 曾用 `Reentrant` 导致状态发布回调并发，`4757255` 改为互斥，**别改回**。
+- `tl_driver` 三组均为 `MutuallyExclusive`：`service_group_`（全部 47 个服务）、`topic_group_`（4 个订阅）、`timer_group_`（状态发布定时器）；`MultiThreadedExecutor` 线程数 `max(4, hardware_concurrency)`。`timer_group_` 曾用 `Reentrant` 导致状态发布回调并发，`4757255` 改为互斥，**别改回**。
 - 回调里不做阻塞：SDK 同步调用、`sleep`、等 future 都占住 executor 线程。
 - 控制循环（f710 250Hz、`tl_teleop` 100Hz）：循环体不得超周期；**控制循环内 `std::async` 的 future 析构会阻塞到任务完成**，反复给同一 future 赋值 = 隐性停顿；跨线程标志用 `std::atomic`。
 - 跨线程共享的 `std::vector`/`std::string`（如 `target_pose_`、`latest_joy_`）需锁或原子快照，禁止裸读写。
