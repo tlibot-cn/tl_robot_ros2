@@ -3,8 +3,11 @@
 
 // common
 #include <chrono>
+#include <exception>
+#include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 // ROS2
@@ -26,7 +29,7 @@ public:
   ~DriverNode();
 
   /// @brief 连接控制器并完成上电流程，由构造函数末尾调用。
-  /// @note 连接失败即 `exit(0)`（与拆分前一致；退出码缺陷见架构评审 P0-3）。
+  /// @note 连接或切入示教模式失败即以 `EXIT_FAILURE` 退出，便于 systemd/launch 识别。
   void init();
 
   /// @brief 按节点参数（arm_ip/arm_port/arm_port_aux）连接控制器。
@@ -59,8 +62,34 @@ public:
   template <typename ServiceT, typename CallbackT>
   typename rclcpp::Service<ServiceT>::SharedPtr create_service(const std::string& name, CallbackT&& callback)
   {
-    auto service = rclcpp::Node::create_service<ServiceT>(name, std::forward<CallbackT>(callback),
-                                                          rmw_qos_profile_services_default, service_group_);
+    // 异常绝不允许越过回调边界：rclcpp 不捕获服务回调异常，逃逸会终止整个进程。
+    using GuardedCallback =
+        std::function<void(std::shared_ptr<typename ServiceT::Request>, std::shared_ptr<typename ServiceT::Response>)>;
+    GuardedCallback guarded =
+        [logger = this->get_logger(), service_name = name, cb = std::forward<CallbackT>(callback)](
+            std::shared_ptr<typename ServiceT::Request> request,
+            std::shared_ptr<typename ServiceT::Response> response) mutable
+    {
+      try
+      {
+        cb(request, response);
+      }
+      catch (const std::exception& e)
+      {
+        RCLCPP_ERROR(logger, "[Service %s]: callback threw exception: %s", service_name.c_str(), e.what());
+        response->success = false;
+        response->message = std::string("Internal error: ") + e.what();
+      }
+      catch (...)
+      {
+        RCLCPP_ERROR(logger, "[Service %s]: callback threw unknown exception", service_name.c_str());
+        response->success = false;
+        response->message = "Internal error: unknown exception";
+      }
+    };
+
+    auto service = rclcpp::Node::create_service<ServiceT>(name, std::move(guarded), rmw_qos_profile_services_default,
+                                                          service_group_);
     services_.push_back(service);
     return service;
   }
@@ -94,7 +123,7 @@ private:
   /// @brief 按域注册全部服务与话题回调。
   void register_entities();
 
-  /// @brief 创建 100 Hz 状态发布定时器。
+  /// @brief 按 `publish_rate` 参数（默认 100 Hz）创建状态发布定时器。
   void create_state_timer();
 
   std::string arm_ip_;

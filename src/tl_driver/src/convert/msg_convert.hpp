@@ -26,9 +26,8 @@ enum class MotionKind
 /// @brief 校验全局点位名：长度 6、前缀 "GP"、编号 1..9999。
 /// @param[in] pos_name 待校验点位名
 /// @return 通过校验为 true
-/// @note 当前实现沿用 std::stoi，含非数字尾部的输入不会被拒绝、
-///       非数字首部的输入会抛 std::invalid_argument（架构评审 P0-1，修复另行进行）。
-bool is_valid_gp_name(const std::string& pos_name);
+/// @note 逐字符解析且 noexcept：非数字字符一律拒绝，不会抛异常。
+bool is_valid_gp_name(const std::string& pos_name) noexcept;
 
 /// @brief MoveCommand 消息（话题与 job/queue 服务共用）转 SDK 运动指令。
 /// @param[in] msg 运动指令消息（ROS 侧 m / rad / m·s⁻¹）

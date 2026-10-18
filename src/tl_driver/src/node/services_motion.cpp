@@ -222,9 +222,19 @@ void handle_queue_motion_set_status_service(
   // 关闭连续运动模式后设置为示教模式
   if (!request->status)
   {
-    if (tl::set_current_mode(node.session().fd(), tl::RobotMode::TEACH) == tl::Result::SUCCESS)
+    const bool queue_status_ok = response->success;
+    tl::Result mode_ret = tl::set_current_mode(node.session().fd(), tl::RobotMode::TEACH);
+    if (mode_ret != tl::Result::SUCCESS)
     {
-      node.session().power_off();
+      response->success = false;
+      response->message = queue_status_ok ? "Queue motion status set but failed to switch to teach mode"
+                                          : "Failed to set queue motion status and switch to teach mode";
+    }
+    else if (!node.session().power_off())
+    {
+      response->success = false;
+      response->message = queue_status_ok ? "Queue motion status set but failed to power off"
+                                          : "Failed to set queue motion status and power off";
     }
   }
 }

@@ -12,6 +12,15 @@
 
 ## [Unreleased]
 
+### 2026-10-18
+
+- tl_driver：修复 `/tl_driver/set_global_pos`、`/tl_driver/get_global_pos` 收到畸形点位名（如 `GPab12`）时 `std::stoi` 抛异常导致进程退出的问题；改为逐字符 `noexcept` 校验，`GP12ab` 等尾部垃圾同样拒绝。所有服务回调统一加异常边界，异常转为 `success=false` + `message`，不再越过回调终止进程
+- tl_driver：初始化连接或切入示教模式失败由 `exit(0)` 改为 `EXIT_FAILURE`，便于 systemd/launch/CI 识别启动失败
+- tl_driver：修正服务结果语义——`get_robot_joint_param`、`get_drag_status` 查询失败不再返回 `success=true`；`set_axis_zero_pos` 改用自身文案；`set_robot_joint_param` 的上下电失败、`queue_motion_set_status` 的示教模式切换/下电失败均回写 `success=false`
+- tl_driver：状态发布补齐 `switch` 默认分支（未知运行状态发布 `UNKNOWN`），按数据实际长度裁剪关节位姿并校验 TCP 位姿长度，避免发布空 `JointState` 或越界读取
+- tl_driver：新增 `publish_rate` 参数（默认 100 Hz，范围 1–1000；越界或类型错误均以非零码启动失败，不再 SIGABRT）；`arm_joints` 数量限制为 1–8，非法配置启动即失败
+- tl_driver：连接时任一端口失败会关闭另一已建立端口并清零 fd，避免重试时 fd 泄漏与控制器侧连接堆积
+
 ### 2026-10-17
 
 - **破坏性变更**：全部 ROS 接口统一为 REP 103 单位——关节角 rad、笛卡尔位置 m、线速度 m/s、关节速度 rad/s；控制器 / SDK 的 mm / 度 / % 由 `tl_driver` 在边界换算。受影响接口：`MoveCommand`（关节 rad、位置 m、MOVL 速度 m/s）、`/tl_driver/set_servoj_pos`（rad）、`ServolMove`（m、step m）、`CartesianPose`（`SetUserCoord` 改 m）、`ToolParam`（m、rad）、`RobotDHParam`（rad、m）、`RobotJointParam`（rad、rad/s、rad/s²）、`OpenServoJ`（rad/s 系列）、`CoordTransform`（rad、m）、`GetCurrentLineJointSpeed`（m/s、rad/s）。`set_global_pos` / `get_global_pos` / `get_pos_reachable` 的 14/21 位协议包保留控制器 mm + 单位标志位口径

@@ -666,7 +666,7 @@ ros2 service call /tl_driver/get_pos_reachable tl_ros2_interface/srv/GetPosReach
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
 | stamp | Time | 时间戳 |
-| run_state | string | 运行状态：`"STOP"` = 停止，`"PAUSE"` = 暂停，`"RUNNING"` = 运行中 |
+| run_state | string | 运行状态：`"STOP"` = 停止，`"PAUSE"` = 暂停，`"RUNNING"` = 运行中，`"UNKNOWN"` = SDK 返回未识别值 |
 #### 命令示例
 ```
 ros2 topic echo /arm_status
@@ -1506,8 +1506,9 @@ ros2 service call /tl_driver/set_drag_mode tl_ros2_interface/srv/SetDragMode "{m
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
-| success | bool | `true` = 拖拽已结束，`false` = 拖拽未结束 |
-| message | string | 包含状态信息 |
+| success | bool | `true` = 拖拽已结束，`false` = 拖拽未结束或查询失败 |
+| message | string | 包含状态信息；查询失败时含 `ret=` 错误码 |
+> **注意**：`success` 同时承担业务状态与调用状态。需要区分"未结束"与"查询失败"时，检查 `message` 是否以 `Failed to get drag status` 开头。
 #### 命令示例
 ```
 ros2 service call /tl_driver/get_drag_status std_srvs/srv/Trigger "{}"
@@ -1846,6 +1847,7 @@ ros2 service call /tl_driver/modbus_read tl_ros2_interface/srv/ModbusRead \
 |--------|------|------|
 | success | bool | `true` = 设置成功，`false` = 设置失败 |
 | message | string | 失败时包含错误描述 |
+> **注意**：`status: false` 时驱动还会切换到示教模式并下电；队列状态已设置但这两步失败时，`success` 也返回 `false`，`message` 指明具体失败步骤。
 #### 命令示例
 ```
 ros2 service call /tl_driver/queue_motion_set_status tl_ros2_interface/srv/QueueMotionSetStatus "{status: true}"

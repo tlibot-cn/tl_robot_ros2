@@ -280,8 +280,8 @@ void handle_get_drag_status_service(DriverNode& node, const std::shared_ptr<std_
   }
   else
   {
-    response->success = true;
-    response->message = "Failed to get drag status";
+    response->success = false;
+    response->message = "Failed to get drag status, ret=" + std::to_string(ret);
   }
 }
 

@@ -71,8 +71,8 @@ void handle_get_robot_joint_param_service(
   }
   else
   {
-    response->success = true;
-    response->message = "Falied to get robot joint param";
+    response->success = false;
+    response->message = "Failed to get robot joint param";
   }
 }
 
@@ -109,11 +109,20 @@ void handle_set_robot_joint_param_service(
 
   tl::Result ret = tl::set_robot_joint_param(node.session().fd(), request->id, param);
   response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Set robot joint param successfully" : "Falied to set robot joint param";
+  response->message = response->success ? "Set robot joint param successfully" : "Failed to set robot joint param";
 
-  // 设置参数后机械臂会下电
-  node.session().power_off();
-  node.session().power_on();
+  // 设置参数后机械臂会下电；上下电失败必须回写，避免控制器停在掉电状态而调用方以为成功
+  if (!node.session().power_off())
+  {
+    RCLCPP_WARN(node.get_logger(), "[SetRobotJointParam]: power_off failed after writing parameter");
+  }
+  if (!node.session().power_on())
+  {
+    const bool write_ok = response->success;
+    response->success = false;
+    response->message =
+        write_ok ? "Parameter written but power on failed" : "Failed to set robot joint param and power on failed";
+  }
 }
 
 void handle_restore_default_dh_param_service(
@@ -244,7 +253,7 @@ void handle_set_axis_zero_pos_service(DriverNode& node,
 
   tl::Result ret = tl::set_axis_zero_position(node.session().fd(), request->axis);
   response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Set user coordinate successfully" : "Failed to set user coordinate";
+  response->message = response->success ? "Set axis zero position successfully" : "Failed to set axis zero position";
 }
 
 void handle_set_coord_num_service(DriverNode& node,
@@ -333,7 +342,7 @@ void handle_get_pos_reachable_service(DriverNode& node,
   else
   {
     response->success = false;
-    response->message = "Fail to get pos reachable status" + std::to_string(ret);
+    response->message = "Failed to get pos reachable status, ret=" + std::to_string(ret);
   }
 }
 

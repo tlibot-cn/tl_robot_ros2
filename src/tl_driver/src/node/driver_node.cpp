@@ -1,4 +1,6 @@
 #include <chrono>
+#include <cmath>
+#include <cstdlib>
 #include <memory>
 #include <thread>
 
@@ -38,13 +40,34 @@ void DriverNode::declare_parameters()
   this->declare_parameter<std::vector<std::string>>("arm_joints",
                                                     {"joint1", "joint2", "joint3", "joint4", "joint5", "joint6"});
   this->declare_parameter("arm_type", "TCB605");
+  this->declare_parameter("publish_rate", 100.0);
 
   arm_ip_ = this->get_parameter("arm_ip").as_string();
   arm_port_ = this->get_parameter("arm_port").as_string();
   arm_port_aux_ = this->get_parameter("arm_port_aux").as_string();
   arm_type_ = this->get_parameter("arm_type").as_string();
   arm_joints_ = this->get_parameter("arm_joints").as_string_array();
-  ndof_ = arm_joints_.size();
+  publish_rate_ = this->get_parameter("publish_rate").as_double();
+  ndof_ = static_cast<int>(arm_joints_.size());
+
+  constexpr double kMinPublishRate = 1.0;
+  constexpr double kMaxPublishRate = 1000.0;
+  if (!std::isfinite(publish_rate_) || publish_rate_ < kMinPublishRate || publish_rate_ > kMaxPublishRate)
+  {
+    RCLCPP_FATAL(this->get_logger(), "publish_rate must be in [%.1f, %.1f] Hz, got %.3f", kMinPublishRate,
+                 kMaxPublishRate, publish_rate_);
+    rclcpp::shutdown();
+    exit(EXIT_FAILURE);
+  }
+
+  constexpr int kMinJoints = 1;
+  constexpr int kMaxJoints = 8;
+  if (ndof_ < kMinJoints || ndof_ > kMaxJoints)
+  {
+    RCLCPP_FATAL(this->get_logger(), "arm_joints size must be in [%d, %d], got %d", kMinJoints, kMaxJoints, ndof_);
+    rclcpp::shutdown();
+    exit(EXIT_FAILURE);
+  }
 }
 
 void DriverNode::create_callback_groups()
@@ -80,8 +103,8 @@ void DriverNode::register_entities()
 
 void DriverNode::create_state_timer()
 {
-  auto period =
-      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::duration<double>(1.0 / publish_rate_));
+  // 直接使用浮点周期，避免截断到整毫秒造成系统性频率偏差（如 60 Hz → 62.5 Hz）。
+  const auto period = std::chrono::duration<double>(1.0 / publish_rate_);
 
   state_publish_timer_ = this->create_wall_timer(
       period,
@@ -120,7 +143,7 @@ void DriverNode::init()
       RCLCPP_ERROR(this->get_logger(), "[Init]: failed to set teach mode, result=%s",
                    arm_client::result_to_string(ret));
       rclcpp::shutdown();
-      exit(0);
+      exit(EXIT_FAILURE);
     }
 
     // 清除控制器错误和报警
@@ -141,7 +164,7 @@ void DriverNode::init()
   else
   {
     rclcpp::shutdown();
-    exit(0);
+    exit(EXIT_FAILURE);
   }
 }
 } // namespace tl_driver

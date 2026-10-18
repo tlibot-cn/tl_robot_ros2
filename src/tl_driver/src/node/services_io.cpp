@@ -114,7 +114,7 @@ void handle_modbus_write_service(DriverNode& node,
   if (ret != tl::Result::SUCCESS)
   {
     response->success = false;
-    response->message = "Failed to set master paramter";
+    response->message = "Failed to set master parameter";
     return;
   }
 
@@ -155,7 +155,7 @@ void handle_modbus_read_service(DriverNode& node,
   if (ret != tl::Result::SUCCESS)
   {
     response->success = false;
-    response->message = "Failed to set master paramter";
+    response->message = "Failed to set master parameter";
     return;
   }
 

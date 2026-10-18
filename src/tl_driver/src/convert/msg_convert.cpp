@@ -7,14 +7,28 @@
 
 namespace tl_driver::convert
 {
-bool is_valid_gp_name(const std::string& pos_name)
+bool is_valid_gp_name(const std::string& pos_name) noexcept
 {
-  if (pos_name.length() != 6 || pos_name.substr(0, 2) != "GP")
+  // 不使用 std::stoi：非数字首部会抛异常穿透服务回调，非数字尾部会被静默放行。
+  constexpr std::size_t kNameLength = 6;
+  constexpr int kMinIndex = 1;
+  constexpr int kMaxIndex = 9999;
+
+  if (pos_name.size() != kNameLength || pos_name[0] != 'G' || pos_name[1] != 'P')
   {
     return false;
   }
-  const int num = std::stoi(pos_name.substr(2));
-  return (num >= 1 && num <= 9999);
+
+  int num = 0;
+  for (std::size_t i = 2; i < kNameLength; ++i)
+  {
+    if (pos_name[i] < '0' || pos_name[i] > '9')
+    {
+      return false;
+    }
+    num = num * 10 + (pos_name[i] - '0');
+  }
+  return num >= kMinIndex && num <= kMaxIndex;
 }
 
 tl::MoveCmd to_move_cmd(const tl_ros2_interface::msg::MoveCommand& msg, MotionKind kind)

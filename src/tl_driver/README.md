@@ -101,9 +101,13 @@ tl_driver:
     arm_ip: "192.168.1.13"          # 设置TCP连接时的IP  
     arm_port: "6001"                # 设置TCP连接时的端口  
     arm_port_aux: "7000"            # 设置机械臂连接时的辅助端口
-    arm_type: "TCB710"              # 机械臂型号
-    arm_joints: ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7"] # 关节名称
+    arm_type: "TCB710"              # 机械臂型号（仅作日志标识，不参与行为）
+    arm_joints: ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7"] # 关节名称（1～8 个，启动时校验）
+    publish_rate: 100.0             # 状态话题发布频率，单位 Hz，范围 1～1000，非法值启动即退出
 ```
+
+> `arm_port` / `arm_port_aux` 以字符串传给 SDK，不要写成整数。
+> `publish_rate` 在启动时读取一次并用于创建定时器，运行期修改参数不会改变已创建的定时器。参数类型必须是浮点数（写 `100.0`；写整数 `100` 会被 ROS 判为类型错误并启动失败）。
 ## tl_driver功能包架构说明
 ### 功能包文件总览
 ```

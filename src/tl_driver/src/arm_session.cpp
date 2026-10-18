@@ -35,8 +35,13 @@ bool ArmSession::is_powered() const
 
 bool ArmSession::power_on()
 {
-  tl::ServoState state = static_cast<tl::ServoState>(-1); // -1 哨兵值：查询失败时落入 default 分支
-  tl::get_servo_state(socket_fd_, state);
+  tl::ServoState state = static_cast<tl::ServoState>(-1);
+  tl::Result ret = tl::get_servo_state(socket_fd_, state);
+  if (ret != tl::Result::SUCCESS)
+  {
+    RCLCPP_ERROR(logger_, "[PowerOn]: failed to read servo state, ret=%s", arm_client::result_to_string(ret));
+    return false;
+  }
 
   switch (state)
   {
@@ -66,7 +71,13 @@ bool ArmSession::power_on()
       return false;
   }
 
-  tl::get_servo_state(socket_fd_, state);
+  ret = tl::get_servo_state(socket_fd_, state);
+  if (ret != tl::Result::SUCCESS)
+  {
+    RCLCPP_ERROR(logger_, "[PowerOn]: failed to read servo state after power on, ret=%s",
+                 arm_client::result_to_string(ret));
+    return false;
+  }
   RCLCPP_INFO(logger_, "[PowerOn]: servo_state = %d", static_cast<int>(state));
   if (state == tl::ServoState::RUNNING)
   {
@@ -82,25 +93,56 @@ bool ArmSession::power_on()
 
 bool ArmSession::power_off()
 {
-  tl::ServoState state = static_cast<tl::ServoState>(-1); // -1 哨兵值：查询失败时落入 default 分支
-  tl::get_servo_state(socket_fd_, state);
+  tl::ServoState state = static_cast<tl::ServoState>(-1);
+  tl::Result ret = tl::get_servo_state(socket_fd_, state);
+  if (ret != tl::Result::SUCCESS)
+  {
+    RCLCPP_ERROR(logger_, "[PowerOff]: failed to read servo state, ret=%s", arm_client::result_to_string(ret));
+    return false;
+  }
+
   switch (state)
   {
     case tl::ServoState::STOP:
+      RCLCPP_INFO(logger_, "[PowerOff]: servo already stopped");
+      is_powered_ = false;
+      return true;
     case tl::ServoState::ALARM:
-      break;
+      RCLCPP_WARN(logger_, "[PowerOff]: servo is in alarm state, cannot confirm power off");
+      return false;
     case tl::ServoState::READY:
       RCLCPP_INFO(logger_, "[PowerOff]: already power off");
+      is_powered_ = false;
       return true;
     case tl::ServoState::RUNNING:
-      tl::set_servo_poweroff(socket_fd_);
-      tl::get_servo_state(socket_fd_, state);
+    {
+      ret = tl::set_servo_poweroff(socket_fd_);
+      if (ret != tl::Result::SUCCESS)
+      {
+        RCLCPP_ERROR(logger_, "[PowerOff]: set_servo_poweroff failed, ret=%s", arm_client::result_to_string(ret));
+        return false;
+      }
+
+      ret = tl::get_servo_state(socket_fd_, state);
+      if (ret != tl::Result::SUCCESS)
+      {
+        RCLCPP_ERROR(logger_, "[PowerOff]: failed to read servo state after power off, ret=%s",
+                     arm_client::result_to_string(ret));
+        return false;
+      }
+      if (state != tl::ServoState::READY)
+      {
+        RCLCPP_ERROR(logger_, "[PowerOff]: power off not effective, servo_state = %d", static_cast<int>(state));
+        return false;
+      }
       RCLCPP_INFO(logger_, "[PowerOff]: successfully power off, servo_state = %d", static_cast<int>(state));
       is_powered_ = false;
       return true;
+    }
+    default:
+      RCLCPP_ERROR(logger_, "[PowerOff]: unknown servo state %d", static_cast<int>(state));
+      return false;
   }
-  RCLCPP_INFO(logger_, "[PowerOff]: fail to power off, servo_state = %d", static_cast<int>(state));
-  return false;
 }
 
 bool ArmSession::connect(const std::string& ip, const std::string& port, const std::string& port_aux)
@@ -114,17 +156,37 @@ bool ArmSession::connect(const std::string& ip, const std::string& port, const s
   socket_fd_ = tl::connect_robot(ip, port);
   socket_fd_aux_ = tl::connect_robot(ip, port_aux);
 
-  if (socket_fd_ <= 0)
+  if (socket_fd_ <= 0 || socket_fd_aux_ <= 0)
   {
-    RCLCPP_ERROR(logger_, "[Connect]: failed to connect to %s:%s", ip.c_str(), port.c_str());
-    socket_fd_ = 0;
-    is_connected_ = false;
-    return false;
-  }
+    if (socket_fd_ <= 0)
+    {
+      RCLCPP_ERROR(logger_, "[Connect]: failed to connect to %s:%s", ip.c_str(), port.c_str());
+    }
+    if (socket_fd_aux_ <= 0)
+    {
+      RCLCPP_ERROR(logger_, "[Connect]: failed to connect to %s:%s", ip.c_str(), port_aux.c_str());
+    }
 
-  if (socket_fd_aux_ <= 0)
-  {
-    RCLCPP_ERROR(logger_, "[Connect]: failed to connect to %s:%s", ip.c_str(), port_aux.c_str());
+    // 任一端口失败都必须关闭另一端口，否则重试会覆盖 fd，导致控制器侧连接堆积。
+    if (socket_fd_ > 0)
+    {
+      tl::Result ret = tl::disconnect_robot(socket_fd_);
+      if (ret != tl::Result::SUCCESS)
+      {
+        RCLCPP_WARN(logger_, "[Connect]: failed to close %s port, ret=%s", port.c_str(),
+                    arm_client::result_to_string(ret));
+      }
+    }
+    if (socket_fd_aux_ > 0)
+    {
+      tl::Result ret = tl::disconnect_robot(socket_fd_aux_);
+      if (ret != tl::Result::SUCCESS)
+      {
+        RCLCPP_WARN(logger_, "[Connect]: failed to close %s port, ret=%s", port_aux.c_str(),
+                    arm_client::result_to_string(ret));
+      }
+    }
+    socket_fd_ = 0;
     socket_fd_aux_ = 0;
     is_connected_ = false;
     return false;

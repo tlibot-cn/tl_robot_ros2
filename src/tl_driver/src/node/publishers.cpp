@@ -3,6 +3,7 @@
 
 #include "node/publishers.hpp"
 
+#include <algorithm>
 #include <utility>
 
 #include "arm_client.hpp"
@@ -56,22 +57,37 @@ void StatePublishers::publish_joint_pose(const std::vector<double>& joint_pose)
 {
   sensor_msgs::msg::JointState msg;
   msg.header.stamp = node_.now();
-  msg.name = joint_names_;
-  switch (ndof_)
+
+  // 按实际数据与关节名数量裁剪：6 轴时 SDK 末位为补 0，丢掉；数据不足时不越界。
+  const std::size_t count = std::min(joint_pose.size(), joint_names_.size());
+  if (count == 0)
   {
-    case 6:
-      msg.position.assign(joint_pose.begin(), joint_pose.end() - 1);
-      break;
-    case 7:
-      msg.position.assign(joint_pose.begin(), joint_pose.end());
-      break;
+    RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000,
+                         "[Pub]: empty joint pose or joint names, skip /joint_states");
+    return;
   }
+  if (joint_pose.size() < joint_names_.size())
+  {
+    RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000,
+                         "[Pub]: joint pose has %zu values, fewer than %zu joint names", joint_pose.size(),
+                         joint_names_.size());
+  }
+  // name 必须与 position 等长，否则 JointState 契约不成立。
+  msg.name.assign(joint_names_.begin(), joint_names_.begin() + count);
+  msg.position.assign(joint_pose.begin(), joint_pose.begin() + count);
 
   joint_state_pub_->publish(msg);
 }
 
 void StatePublishers::publish_tcp_pose(const std::vector<double>& tcp_pose)
 {
+  if (tcp_pose.size() < 6)
+  {
+    RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000,
+                         "[Pub]: tcp pose has %zu values, need at least 6, skip /tcp_pose", tcp_pose.size());
+    return;
+  }
+
   // SDK 返回：位置 mm、欧拉角弧度（rad）→ 统一转换为 ROS 标准单位：m 和 rad
   tl_ros2_interface::msg::CartesianPose msg;
   msg.header.stamp = node_.now();
@@ -91,7 +107,13 @@ void StatePublishers::publish_tcp_pose(const std::vector<double>& tcp_pose)
       msg.arm_angle = 0;
       break;
     case 7:
-      msg.arm_angle = tcp_pose[6];
+      msg.arm_angle = tcp_pose.size() > 6 ? tcp_pose[6] : 0.0;
+      break;
+    default:
+      msg.arm_angle = tcp_pose.size() > 6 ? tcp_pose[6] : 0.0;
+      RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000,
+                           "[Pub]: unsupported ndof=%d, arm_angle fallback to %s", ndof_,
+                           tcp_pose.size() > 6 ? "seventh value" : "0");
       break;
   }
 
@@ -122,6 +144,11 @@ void StatePublishers::publish_running_status()
       break;
     case tl::RunState::RUNNING:
       msg.run_state = "RUNNING";
+      break;
+    default:
+      msg.run_state = "UNKNOWN";
+      RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000, "[Pub]: unknown run state %d",
+                           static_cast<int>(running_status));
       break;
   }
 
