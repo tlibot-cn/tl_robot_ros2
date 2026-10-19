@@ -65,7 +65,7 @@ F710TeleopNode::F710TeleopNode()
   coord_transform_client_ = this->create_client<tl_ros2_interface::srv::CoordTransform>("/tl_driver/coord_transform");
   power_off_client_ = this->create_client<std_srvs::srv::Trigger>("/tl_driver/power_off");
 
-  // 仿真模式：提前初始化 KDL FK（jointStateCallback 首帧触发初始位姿）
+  // 仿真模式：提前初始化 KDL FK/IK（jointStateCallback 首帧触发初始位姿）
   if (simulation_mode_)
   {
     initKDLKinematics();
@@ -246,8 +246,21 @@ bool F710TeleopNode::cartesianToJointKDL(const std::vector<double>& cart_pose, s
   int ret = kdl_ik_solver_->CartToJnt(q_guess, target, q_out);
   if (ret != 0)
   {
-    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "KDL IK 求解失败, ret=%d", ret);
-    return false;
+    // LMA 在迭代无法继续时可能返回 -100/-101，解本身仍可用；用 FK 残差兜底判定
+    KDL::Frame actual;
+    if (kdl_fk_solver_->JntToCart(q_out, actual) != 0)
+    {
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "KDL IK 求解失败, ret=%d", ret);
+      return false;
+    }
+    const double pos_err = (actual.p - target.p).Norm();
+    const double rot_err = KDL::diff(actual.M, target.M).Norm();
+    if (!std::isfinite(pos_err) || !std::isfinite(rot_err) || pos_err > 1e-4 || rot_err > 1e-3)
+    {
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                           "KDL IK 未收敛, ret=%d, pos_err=%.6f m, rot_err=%.6f rad", ret, pos_err, rot_err);
+      return false;
+    }
   }
 
   joint_out.resize(ndof_);
@@ -291,9 +304,16 @@ void F710TeleopNode::initKDLKinematics()
     RCLCPP_WARN(this->get_logger(), "KDL: 无法获取 chain link0 -> %s", tip_link.c_str());
     return;
   }
+  if (static_cast<int>(kdl_chain_.getNrOfJoints()) != ndof_)
+  {
+    RCLCPP_ERROR(this->get_logger(), "KDL chain 关节数 %u 与 home_joints 长度 %d 不一致", kdl_chain_.getNrOfJoints(),
+                 ndof_);
+    return;
+  }
 
   kdl_fk_solver_ = std::make_unique<KDL::ChainFkSolverPos_recursive>(kdl_chain_);
-  kdl_ik_solver_ = std::make_unique<KDL::ChainIkSolverPos_LMA>(kdl_chain_);
+  // 250 Hz 控制循环内同步求解，限制最大迭代次数，避免不可达目标长期占用周期
+  kdl_ik_solver_ = std::make_unique<KDL::ChainIkSolverPos_LMA>(kdl_chain_, 1e-5, 50, 1e-15);
   kdl_ready_ = true;
   RCLCPP_INFO(this->get_logger(), "KDL FK/IK 就绪: %d 轴, tip=%s", ndof_, tip_link.c_str());
 }
@@ -730,12 +750,13 @@ void F710TeleopNode::controlLoop()
     cart_vel[5] = 0.0;
   }
 
+  std::vector<double> candidate_pose = target_pose_;
   bool has_input = false;
   for (int i = 0; i < 6; ++i)
   {
     if (std::abs(cart_vel[i]) > 1e-6)
     {
-      target_pose_[i] += cart_vel[i] * dt;
+      candidate_pose[i] += cart_vel[i] * dt;
       has_input = true;
     }
   }
@@ -751,30 +772,35 @@ void F710TeleopNode::controlLoop()
   {
     if (simulation_mode_)
     {
-      // 仿真：本地 KDL IK，结果由下一帧 set_servoj_pos 发布
+      // 仿真：本地 KDL IK；仅在求解成功后提交目标，避免不可达方向累计漂移
       std::vector<double> joint_cmd;
-      if (cartesianToJointKDL(target_pose_, joint_cmd))
+      if (cartesianToJointKDL(candidate_pose, joint_cmd))
       {
+        target_pose_ = candidate_pose;
         std::lock_guard<std::mutex> lock(joint_mutex_);
         last_joint_cmd_ = joint_cmd;
       }
     }
-    else if (!ik_pending_.load())
+    else
     {
-      // 真机：异步 IK 更新关节角
-      ik_pending_.store(true);
-      std::vector<double> target_copy = target_pose_;
-      async_future_ = std::async(std::launch::async,
-                                 [this, target_copy]()
-                                 {
-                                   std::vector<double> joint_cmd;
-                                   if (cartesianToJoint(target_copy, joint_cmd))
+      // 真机：目标持续累积（与改前一致），仅 IK 请求本身受 pending 限制
+      target_pose_ = candidate_pose;
+      if (!ik_pending_.load())
+      {
+        ik_pending_.store(true);
+        std::vector<double> target_copy = candidate_pose;
+        async_future_ = std::async(std::launch::async,
+                                   [this, target_copy]()
                                    {
-                                     std::lock_guard<std::mutex> lock(joint_mutex_);
-                                     last_joint_cmd_ = joint_cmd;
-                                   }
-                                   ik_pending_.store(false);
-                                 });
+                                     std::vector<double> joint_cmd;
+                                     if (cartesianToJoint(target_copy, joint_cmd))
+                                     {
+                                       std::lock_guard<std::mutex> lock(joint_mutex_);
+                                       last_joint_cmd_ = joint_cmd;
+                                     }
+                                     ik_pending_.store(false);
+                                   });
+      }
     }
   }
 }
