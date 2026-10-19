@@ -29,7 +29,7 @@ constexpr double kDegToRad = M_PI / 180.0;
 
 F710TeleopNode::F710TeleopNode()
     : rclcpp::Node("tl_teleop_f710_node"), latest_joy_(nullptr), speed_value_(50.0), stop_mode_(false),
-      target_pose_ready_(false), init_state_(0), kdl_fk_ready_(false)
+      target_pose_ready_(false), init_state_(0), kdl_ready_(false)
 {
   declareParameters();
   loadParameters();
@@ -54,8 +54,6 @@ F710TeleopNode::F710TeleopNode()
 
   // 发布 /tl_driver/set_servoj_pos（Float64MultiArray）
   servoj_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/tl_driver/set_servoj_pos", 10);
-  // 发布 /tl_driver/set_servol_pos（ServolMove，仿真模式用）
-  servol_pub_ = this->create_publisher<tl_ros2_interface::msg::ServolMove>("/tl_driver/set_servol_pos", 10);
 
   // 服务客户端
   set_mode_client_ = this->create_client<tl_ros2_interface::srv::SetCurrentMode>("/tl_driver/set_current_mode");
@@ -70,7 +68,7 @@ F710TeleopNode::F710TeleopNode()
   // 仿真模式：提前初始化 KDL FK（jointStateCallback 首帧触发初始位姿）
   if (simulation_mode_)
   {
-    initKDLFK();
+    initKDLKinematics();
   }
 
   // ServoJ 初始化定时器（1Hz）
@@ -182,17 +180,6 @@ void F710TeleopNode::publishServoj(const std::vector<double>& joint_pos)
   servoj_pub_->publish(msg);
 }
 
-void F710TeleopNode::publishServol()
-{
-  if (target_pose_.size() < 6)
-    return;
-  auto msg = tl_ros2_interface::msg::ServolMove();
-  msg.target_pose = target_pose_;
-  msg.step_size = 0.005; // 5 mm
-  msg.coord = 1;         // 基座标系
-  servol_pub_->publish(msg);
-}
-
 bool F710TeleopNode::cartesianToJoint(const std::vector<double>& cart_pose, std::vector<double>& joint_out)
 {
   if (!coord_transform_client_->wait_for_service(std::chrono::seconds(2)))
@@ -237,9 +224,41 @@ bool F710TeleopNode::cartesianToJoint(const std::vector<double>& cart_pose, std:
   return true;
 }
 
-// ========== KDL FK 初始化（仿真模式）==========
+bool F710TeleopNode::cartesianToJointKDL(const std::vector<double>& cart_pose, std::vector<double>& joint_out)
+{
+  if (!kdl_ik_solver_ || cart_pose.size() < 6)
+    return false;
 
-void F710TeleopNode::initKDLFK()
+  KDL::JntArray q_guess(ndof_);
+  {
+    std::lock_guard<std::mutex> lock(joint_mutex_);
+    if (static_cast<int>(last_joint_cmd_.size()) != ndof_)
+      return false;
+    for (int i = 0; i < ndof_; ++i)
+      q_guess(i) = last_joint_cmd_[i];
+  }
+
+  KDL::Frame target;
+  target.p = KDL::Vector(cart_pose[0], cart_pose[1], cart_pose[2]);
+  target.M = KDL::Rotation::RPY(cart_pose[3], cart_pose[4], cart_pose[5]);
+
+  KDL::JntArray q_out(ndof_);
+  int ret = kdl_ik_solver_->CartToJnt(q_guess, target, q_out);
+  if (ret != 0)
+  {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "KDL IK 求解失败, ret=%d", ret);
+    return false;
+  }
+
+  joint_out.resize(ndof_);
+  for (int i = 0; i < ndof_; ++i)
+    joint_out[i] = q_out(i);
+  return true;
+}
+
+// ========== KDL 运动学初始化（仿真模式）==========
+
+void F710TeleopNode::initKDLKinematics()
 {
   std::string urdf_path;
   try
@@ -254,14 +273,14 @@ void F710TeleopNode::initKDLFK()
 
   if (access(urdf_path.c_str(), F_OK) != 0)
   {
-    RCLCPP_WARN(this->get_logger(), "KDL FK: URDF 未找到: %s", urdf_path.c_str());
+    RCLCPP_WARN(this->get_logger(), "KDL: URDF 未找到: %s", urdf_path.c_str());
     return;
   }
 
   KDL::Tree tree;
   if (!kdl_parser::treeFromFile(urdf_path, tree))
   {
-    RCLCPP_WARN(this->get_logger(), "KDL FK: 无法解析 URDF");
+    RCLCPP_WARN(this->get_logger(), "KDL: 无法解析 URDF");
     return;
   }
 
@@ -269,13 +288,14 @@ void F710TeleopNode::initKDLFK()
   std::string tip_link = "link" + std::to_string(ndof_);
   if (!tree.getChain("link0", tip_link, kdl_chain_))
   {
-    RCLCPP_WARN(this->get_logger(), "KDL FK: 无法获取 chain link0 -> %s", tip_link.c_str());
+    RCLCPP_WARN(this->get_logger(), "KDL: 无法获取 chain link0 -> %s", tip_link.c_str());
     return;
   }
 
   kdl_fk_solver_ = std::make_unique<KDL::ChainFkSolverPos_recursive>(kdl_chain_);
-  kdl_fk_ready_ = true;
-  RCLCPP_INFO(this->get_logger(), "KDL FK 就绪: %d 轴, tip=%s", ndof_, tip_link.c_str());
+  kdl_ik_solver_ = std::make_unique<KDL::ChainIkSolverPos_LMA>(kdl_chain_);
+  kdl_ready_ = true;
+  RCLCPP_INFO(this->get_logger(), "KDL FK/IK 就绪: %d 轴, tip=%s", ndof_, tip_link.c_str());
 }
 
 // ========== 关节→笛卡尔（FK）==========
@@ -319,7 +339,7 @@ bool F710TeleopNode::homeJointsToPose(std::vector<double>& pose_out)
   }
 
   // 仿真：KDL 本地 FK
-  if (!kdl_fk_ready_)
+  if (!kdl_ready_)
   {
     RCLCPP_ERROR(this->get_logger(), "FK 未就绪");
     return false;
@@ -339,7 +359,7 @@ bool F710TeleopNode::homeJointsToPose(std::vector<double>& pose_out)
     return false;
   }
 
-  // ServolMove / CoordTransform 均为 m，KDL 原生也是 m
+  // CoordTransform 与 KDL 均为 m
   double x = frame_out.p.x();
   double y = frame_out.p.y();
   double z = frame_out.p.z();
@@ -521,7 +541,7 @@ bool F710TeleopNode::currentJointToPose(std::vector<double>& pose_out)
   }
 
   // 仿真：KDL 本地 FK
-  if (!kdl_fk_ready_)
+  if (!kdl_ready_)
     return false;
 
   KDL::JntArray q_in(ndof_);
@@ -652,14 +672,13 @@ void F710TeleopNode::controlLoop()
       std::lock_guard<std::mutex> lock(joint_mutex_);
       last_joint_cmd_ = home_joints_;
     }
-    // 仿真模式：立即发 ServolMove，否则 sim_bridge 不会收到回零指令
+    // 仿真模式：同步更新 target_pose_；home 关节指令由控制循环持续发布
     if (simulation_mode_)
     {
       std::vector<double> home_pose;
       if (homeJointsToPose(home_pose))
       {
         target_pose_ = home_pose;
-        publishServol();
         RCLCPP_INFO(this->get_logger(), "回零 -> [%.3f, %.3f, %.3f, %.2f, %.2f, %.2f]", target_pose_[0],
                     target_pose_[1], target_pose_[2], target_pose_[3], target_pose_[4], target_pose_[5]);
       }
@@ -727,13 +746,18 @@ void F710TeleopNode::controlLoop()
     publishServoj(last_joint_cmd_);
   }
 
-  // ========== 6. 有输入时更新关节角 / Servol ==========
+  // ========== 6. 有输入时更新关节角 ==========
   if (has_input)
   {
     if (simulation_mode_)
     {
-      // 仿真：发布 ServolMove（笛卡尔位姿），由 sim_bridge 做 IK
-      publishServol();
+      // 仿真：本地 KDL IK，结果由下一帧 set_servoj_pos 发布
+      std::vector<double> joint_cmd;
+      if (cartesianToJointKDL(target_pose_, joint_cmd))
+      {
+        std::lock_guard<std::mutex> lock(joint_mutex_);
+        last_joint_cmd_ = joint_cmd;
+      }
     }
     else if (!ik_pending_.load())
     {

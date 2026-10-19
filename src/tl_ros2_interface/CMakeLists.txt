@@ -26,7 +26,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/JobFileName.msg"
   "msg/RobotJointParam.msg"
   "msg/ObjectInfo.msg"
-  "msg/ServolMove.msg"
 
   #srv
   "srv/SetSpeed.srv"

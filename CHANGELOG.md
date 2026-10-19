@@ -12,6 +12,12 @@
 
 ## [Unreleased]
 
+### 2026-10-19
+
+- **破坏性变更**：移除 ServoL 功能——删除 `/tl_driver/set_servol_pos` 话题与 `tl_ros2_interface/msg/ServolMove`；`tl_driver` 订阅数 4→3、接口包 msg 12→11。笛卡尔直线伺服改由消费方本地 IK 后经 `/tl_driver/set_servoj_pos` 下发
+- tl_teleop_f710：仿真模式改为节点内 KDL IK，250 Hz 发布 `set_servoj_pos`；`sim_bridge` 仅转发关节角到 Gazebo position controller，不再依赖 ServoL
+- 文档/测试：同步删除 ServoL 章节、单位表、接口测试与未使用导入；架构评审文档记录移除结论
+
 ### 2026-10-18
 
 - tl_driver：所有服务回调统一加异常边界——回调内部抛异常时返回 `success=false` 与 `message`（`Internal error: ...`），不再越过回调终止驱动进程
