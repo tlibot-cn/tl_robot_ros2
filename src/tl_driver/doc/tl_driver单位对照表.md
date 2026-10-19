@@ -12,7 +12,6 @@
 | `/tl_driver/moveJ` | `MoveCommand`，`coord=0` | 关节 rad | 度 |
 | `/tl_driver/moveL` | `MoveCommand`，`coord=1/2/3` | m + rad；`velocity` m/s | mm + rad；`velocity` mm/s |
 | `/tl_driver/set_servoj_pos` | `data[7]` | rad（6 轴末位补 0） | 度 |
-| `/tl_driver/set_servol_pos` | `target_pose` / `step_size` | m + rad / m | mm + rad / mm |
 
 ## MoveCommand
 

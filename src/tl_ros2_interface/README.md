@@ -29,8 +29,7 @@ TL 系列机械臂 ROS2 接口说明
 * 4.8 [目标检测结果ObjectInfo_msg](#目标检测结果ObjectInfo_msg)
 * 4.9 [机器人DH参数RobotDHParam_msg](#机器人DH参数RobotDHParam_msg)
 * 4.10 [机械臂关节参数RobotJointParam_msg](#机械臂关节参数RobotJointParam_msg)
-* 4.11 [工具参数ToolParam_msg](#工具参数ToolParam_msg)
-* 4.12 [ServoL直线伺服ServolMove_msg](#servol直线伺服servolmove_msg)
+* 4.11 [工具参数ToolParam_msg](#工具参数toolparam_msg)
 * 5 [tl_ros2_interface服务（srv）说明](#tl_ros2_interface服务srv说明)
 * 5.1 [坐标转换CoordTransform_srv](#坐标转换CoordTransform_srv)
 * 5.2 [所有作业文件名GetAllJobFileName_srv](#所有作业文件名GetAllJobFileName_srv)
@@ -103,7 +102,6 @@ tl_ros2_interface/
 │   ├── ObjectInfo.msg
 │   ├── RobotDHParam.msg
 │   ├── RobotJointParam.msg
-│   ├── ServolMove.msg
 │   └── ToolParam.msg
 ├── srv/                  # 服务定义
 │   ├── CoordTransform.srv
@@ -154,11 +152,11 @@ tl_ros2_interface/
 ```
 
 ## tl_ros2_interface消息（msg）说明
-以下列出 msg 文件定义及字段说明。**12 个 msg 分三类，每个 `.msg` 头部注释里都标了用途，读之前先看那一行：**
+以下列出 msg 文件定义及字段说明。**11 个 msg 分三类，每个 `.msg` 头部注释里都标了用途，读之前先看那一行：**
 
 | 用途 | 数量 | msg |
 | :-- | :--: | :-- |
-| 话题载荷（在 publisher / subscriber 上出现） | 4 | `ArmStatus`、`CartesianPose`、`MoveCommand`、`ServolMove` |
+| 话题载荷（在 publisher / subscriber 上出现） | 3 | `ArmStatus`、`CartesianPose`、`MoveCommand` |
 | 仅作 srv 嵌套参数（不发布话题） | 7 | `JobFileName`、`ModbusMasterParam`、`ModbusRTUParam`、`ModbusTCPParam`、`RobotDHParam`、`RobotJointParam`、`ToolParam` |
 | 未接线（无话题、无 srv 引用，定义保留备用） | 1 | `ObjectInfo` |
 
@@ -352,19 +350,6 @@ __msg成员__
 - payload_mass_center_x: 负载质心 X（m）
 - payload_mass_center_y: 负载质心 Y（m）
 - payload_mass_center_z: 负载质心 Z（m）
-
-### ServoL直线伺服ServolMove_msg
-```
-float64[] target_pose     # [x, y, z, rx, ry, rz] 目标笛卡尔位姿
-float64 step_size         # 插值步长 (m)，相邻插值点之间的最大笛卡尔距离，默认 0.002
-int32 coord               # 坐标系：1=基座标系(Base) 2=工具坐标系(Tool) 3=用户坐标系(User)
-```
-__msg成员__
-- target_pose: 目标笛卡尔位姿 [x, y, z, rx, ry, rz]，位置 m、姿态 rad
-- step_size: 插值步长（m），默认 0.002
-- coord: 坐标系编号（1=基座标系，2=工具坐标系，3=用户坐标系）
-
-> 前置条件：需先调用 `open_servoj` 打开关节跟踪模式；每次收到该话题消息，节点自动获取当前位姿，插值并 IK 转为关节角后通过 servoj 发送。
 
 ## tl_ros2_interface服务（srv）说明
 下面列出 srv 文件的请求/响应字段及简要说明。

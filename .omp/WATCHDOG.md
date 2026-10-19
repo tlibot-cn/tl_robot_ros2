@@ -35,7 +35,6 @@
 | `/joint_states.position` | rad（SDK 返回度，驱动内批量转） | `publish_joint_pose` |
 | `/tcp_pose.position` | m（`convert::mm_to_m`）；`rpy` rad | `publish_tcp_pose` |
 | `/tl_driver/set_servoj_pos` | **rad**（驱动内 rad→度，6 轴末位补 0） | `handle_set_servoj_pos_topic` |
-| `/tl_driver/set_servol_pos.target_pose` | 位置 m + 姿态 rad；`step_size` m | `handle_set_servol_pos_topic` |
 | `MoveCommand.target_pos_value` | `coord=0` 关节 rad；`1/2/3` 为 `[X,Y,Z m, RX,RY,RZ rad]` | `handle_movej_topic` / `handle_movel_topic` |
 | `MoveCommand.velocity` | MOVJ 为 %；MOVL 为 m/s | `to_move_cmd` |
 | `ToolParam` 的 `x/y/z`、`a/b/c`、`payload_mass` | m / rad / kg | `handle_set_tool_param_service` |
@@ -46,8 +45,8 @@
 消费方换算（这些是 SDK/第三方边界，不是 ROS 接口口径）：
 
 - `tl_teleop`：`/tcp_pose`(m) ×1000 → PXREA SDK；`set_servoj_pos` 直接发 rad
-- `tl_teleop_f710_node`：KDL FK(m) 直接填 `ServolMove.target_pose`(m)；`/joint_states`(rad) 直接发 `set_servoj_pos`(rad)
-- `tl_teleop_f710_sim_bridge`：ServolMove(m) 直接进 KDL(m)
+- `tl_teleop_f710_node`：KDL FK/IK 全程 m / rad；仿真模式本地 IK 后经 `set_servoj_pos`(rad) 下发
+- `tl_teleop_f710_sim_bridge`：`set_servoj_pos`(rad) 原样转发到 Gazebo position controller
 - `tl_hardware_interface`：ros2_control(rad) 直接发 `set_servoj_pos`(rad)；`OpenServoJ` 约束参数为 rad/s
 
 **信号**：出现硬编码 `1000.0` / `180.0 / M_PI`、变量名带 `mm` 却参与 m 运算、新增跨层字段没有单位注释 → 逐一核对该通道两端。

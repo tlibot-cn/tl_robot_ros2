@@ -56,7 +56,6 @@ add_executable(tl_driver
   src/arm_client.cpp
   src/arm_session.cpp
   src/convert/msg_convert.cpp
-  src/math/quaternion.cpp
   src/node/driver_node.cpp
   src/node/publishers.cpp
   src/node/services_config.cpp
@@ -108,9 +107,6 @@ install(FILES
 # 纯逻辑层单元测试（不依赖机械臂与 SDK 动态库）
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
-
-  ament_add_gtest(test_quaternion test/test_quaternion.cpp src/math/quaternion.cpp)
-  target_include_directories(test_quaternion PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
   ament_add_gtest(test_units test/test_units.cpp)
   target_include_directories(test_units PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")

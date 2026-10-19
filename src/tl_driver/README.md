@@ -185,14 +185,12 @@ tl_driver:
 │   │   ├── services_transform.cpp # 坐标系服务（坐标系变换、当前坐标系读写）
 │   │   ├── services_motion.cpp  # 运动类服务（速度/点动/轨迹/队列/ServoJ 开关）
 │   │   ├── services_io.cpp      # IO 类服务（数字 IO、Modbus）
-│   │   ├── topics.cpp           # 话题订阅（moveJ/moveL/servoJ/servoL）
+│   │   ├── topics.cpp           # 话题订阅（moveJ/moveL/servoJ）
 │   │   └── publishers.{hpp,cpp} # StatePublishers：/joint_states、/tcp_pose、/arm_status 发布
 │   ├── convert/msg_convert.{hpp,cpp} # ROS 消息 ↔ SDK 结构转换与参数校验
-│   ├── math/quaternion.{hpp,cpp}  # 欧拉角/四元数互转与 slerp（纯函数）
 │   └── version.hpp.in         # 版本号模板，构建时由 CMake 生成 tl_driver/version.hpp
 └── test                       # 测试
     ├── test_all_interfaces.py   # 全接口测试脚本
-    ├── test_quaternion.cpp      # 四元数纯函数单元测试
     ├── test_units.cpp           # 单位换算单元测试
     ├── test_msg_convert.cpp     # 消息转换单元测试
     └── tl_driver_接口测试.md    # 接口测试说明文档

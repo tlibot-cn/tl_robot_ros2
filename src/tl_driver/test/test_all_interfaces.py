@@ -101,7 +101,6 @@ from tl_ros2_interface.msg import (
     ModbusMasterParam,
     ModbusTCPParam,
     ModbusRTUParam,
-    ServolMove,
 )
 from tl_ros2_interface.srv import (
     CoordTransform,

@@ -21,16 +21,16 @@
 - **F710 游戏手柄遥操作**：通过 Logitech F710 无线手柄（DirectInput 模式）控制机械臂末端在笛卡尔空间 6 自由度运动
 - **直接 ServoJ 控制（250Hz）**：节点自行 IK + 每 4ms 稳定输出一帧关节角，指令流从不中断，松手即停
 - **异步 IK 求解**：有摇杆输入时在独立线程中调用 `coord_transform` 服务做 IK，不阻塞 250Hz 控制循环
-- **真机/仿真双模式**：真机模式连接实体机械臂通过 ServoJ 关节跟踪驱动；仿真模式发布 `ServolMove`（笛卡尔位姿），由 sim_bridge 通过 KDL 本地 IK + Gazebo position controller 虚拟驱动
+- **真机/仿真双模式**：真机模式连接实体机械臂通过 ServoJ 关节跟踪驱动；仿真模式在节点内用 KDL 本地 IK 求解关节角，经 `/tl_driver/set_servoj_pos` 发布，由 sim_bridge 转发给 Gazebo position controller
 - **完整上电流程**：自动执行 `connect_arm → power_on → set_mode → set_speed → open_servoj`，含伺服状态检测和报警清错
 - **启动不移动**：订阅 `/joint_states` 首帧获取当前关节角作为初始指令，通过 FK 计算当前笛卡尔位姿，启动时**不移动到零位**
-- **回零**：按下 A 键直接发送 `home_joints` 关节角（度），异步 FK 更新笛卡尔位姿，不做多余 FK→IK 链
-- **6/7 轴自适应**：根据 `home_joints` 长度自动确定轴数；sim_bridge 从 URDF 动态检测（优先 7 轴）
+- **回零**：按下 A 键直接发送 `home_joints` 关节角（度），真机异步 FK / 仿真同步 FK 更新笛卡尔位姿，不做多余 FK→IK 链
+- **6/7 轴自适应**：根据 `home_joints` 长度自动确定轴数；仿真模式从 URDF 构建 KDL chain（优先 7 轴）
 - **多种臂型兼容**：通过 `arm_type` 参数切换型号，无需修改代码
 - **速度实时调节**：十字键上下实时调整运动速度（0-100），支持 LB/RB 切换姿态控制模式（偏航/翻滚/俯仰）
 - **暂停/恢复**：Back+Start 组合键切换停止/恢复（边缘检测防误触，恢复需摇杆归零）
 - **退出自动清理**：Ctrl+C 退出时自动关闭 ServoJ → 切回示教模式 → 下电
-- **仿真 KDL IK**：仿真模式下使用 KDL `ChainIkSolverPos_LMA` 库求解逆运动学，无需 MoveIt2 或 Python Pinocchio
+- **仿真 KDL IK**：仿真模式下节点内使用 KDL `ChainIkSolverPos_LMA` 求解逆运动学，无需 MoveIt2、Pinocchio 或 `tl_driver`
 
 ### 1.2 系统依赖关系
 
@@ -45,11 +45,10 @@ tl_teleop_f710 运行时依赖 **tl_driver** 功能包提供以下服务与话�
 | `/tl_driver/open_servoj` | 服务 | 开启 ServoJ 模式 |
 | `/tl_driver/close_servoj` | 服务 | 关闭 ServoJ 模式 |
 | `/tl_driver/coord_transform` | 服务 | 正/逆运动学求解，用于 FK 和 IK |
-| `/tl_driver/set_servoj_pos` | 话题 | 【发布】发送关节角指令（Float64MultiArray，真机）|
-| `/tl_driver/set_servol_pos` | 话题 | 【发布】发送笛卡尔位姿（ServolMove，仿真）|
+| `/tl_driver/set_servoj_pos` | 话题 | 【发布】发送关节角指令（Float64MultiArray，真机/仿真）|
 | `/tl_driver/power_off` | 服务 | 退出时下电 |
 
-> 真机模式下依赖上述全部 tl_driver 接口；仿真模式下不依赖 tl_driver，sim_bridge 使用 KDL 本地 IK 求解。
+> 真机模式下依赖上述全部 tl_driver 接口；仿真模式下不依赖 tl_driver 服务，节点用 KDL 本地 IK 计算关节角，经 `/tl_driver/set_servoj_pos` 由 sim_bridge 转发到 Gazebo。
 
 ### 1.3 适用型号
 
@@ -189,9 +188,9 @@ F710 → joy_node → /joy
 **仿真链路：**
 ```
 F710 → joy_node → /joy
-  → tl_teleop_f710_node (笛卡尔速度积分)
-  → /tl_driver/set_servol_pos (ServolMove, 笛卡尔位姿)
-  → tl_teleop_f710_sim_bridge (KDL IK → position controller)
+  → tl_teleop_f710_node (笛卡尔速度积分 + KDL IK)
+  → /tl_driver/set_servoj_pos (Float64MultiArray, 关节角)
+  → tl_teleop_f710_sim_bridge (转发 → position controller)
   → Gazebo → 仿真机械臂
 ```
 
@@ -200,9 +199,9 @@ F710 → joy_node → /joy
 | 组件 | 频率 | 说明 |
 |------|------|------|
 | `/joy` 话题回调 | 事件驱动 | 缓存摇杆数据 |
-| 主控制循环 | **250Hz (4ms)** | 读摇杆 → 笛卡尔速度积分 → 发上一帧关节角 → 异步 IK |
-| IK 求解 | 异步 `std::async` | 有摇杆输入时调用 `coord_transform` 服务做 IK（真机）|
-| ServolMove 发布 | 同步（仿真）| 仿真模式摇杆输入时发布 ServolMove 由 sim_bridge 处理 |
+| 主控制循环 | **250Hz (4ms)** | 读摇杆 → 笛卡尔速度积分 → 发上一帧关节角 → IK |
+| IK 求解 | 真机异步 / 仿真同步 | 真机调用 `coord_transform`；仿真用 KDL LMA 本地求解 |
+| 关节角发布 | 250Hz | 真机/仿真均发布 `/tl_driver/set_servoj_pos` |
 | 初始化定时器 | 1Hz | 状态机：connect → power_on → set_mode → set_speed → open_servoj |
 
 ### 控制循环流程（每 4ms）
@@ -211,11 +210,11 @@ F710 → joy_node → /joy
 1. 读摇杆
 2. Back+Start 边缘检测（上升沿触发）切换暂停/恢复
 3. 十字键速度调节
-4. A 键回零（直接发 home 关节角 + 异步 FK / 仿真立即 ServolMove）
+4. A 键回零（直接发 home 关节角 + 异步 FK / 仿真同步 FK）
 5. 笛卡尔速度积分 → 更新 target_pose_
 6. 发送上一帧关节角到 /tl_driver/set_servoj_pos  ← 每帧必发
 7. 有摇杆输入 ?
-   ├─ 仿真 → 发布 ServolMove（由 sim_bridge 做 KDL IK）
+   ├─ 仿真 → KDL LMA 本地 IK，更新下一帧关节角
    └─ 真机 → 异步 IK (std::async, reference_pos=[0]*7)
 ```
 
@@ -226,8 +225,7 @@ F710 → joy_node → /joy
 | 话题 | 类型 | 方向 | 说明 |
 |------|------|------|------|
 | `/joy` | `sensor_msgs/Joy` | 订阅 | 手柄输入 |
-| `/tl_driver/set_servoj_pos` | `std_msgs/Float64MultiArray` | **发布** | 关节角指令（rad，250Hz，真机）|
-| `/tl_driver/set_servol_pos` | `tl_ros2_interface/ServolMove` | **发布** | 笛卡尔位姿指令（仿真）|
+| `/tl_driver/set_servoj_pos` | `std_msgs/Float64MultiArray` | **发布** | 关节角指令（rad，250Hz，真机/仿真）|
 | `/joint_states` | `sensor_msgs/JointState` | 订阅 | 当前关节角（用于启动初始化）|
 
 ### 4.2 服务客户端
@@ -247,7 +245,7 @@ F710 → joy_node → /joy
 
 - 所有平移运动基于**基座标系（Base）**
 - 姿态旋转使用欧拉角 RPY，单位 rad
-- 位置单位 mm
+- 位置单位 m
 
 ## 5 注意事项
 
@@ -256,7 +254,7 @@ F710 → joy_node → /joy
 3. 速度 0-100，建议从 50 开始适应
 4. **Back+Start** 切换暂停/恢复（边缘检测，恢复需摇杆归零）
 5. 真机 IK 调用 coord_transform 传 `reference_pos=[0]*7`（匹配 Python 版行为）
-6. 仿真模式发布 `ServolMove` 笛卡尔位姿，由 sim_bridge 做 KDL IK
+6. 仿真模式由节点做 KDL IK，经 `set_servoj_pos` 发布关节角，sim_bridge 转发到 Gazebo
 7. Ctrl+C 退出自动：关闭 ServoJ → 切回示教模式 → 下电
 8. 仿真自动启动 `tl_gazebo` 的 `gazebo_6axis/7axis_f710_sim.launch.py`
 9. 修改配置后需重新编译：`colcon build --packages-select tl_teleop_f710`

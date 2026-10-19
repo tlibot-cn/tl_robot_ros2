@@ -104,15 +104,6 @@ ros2 topic pub -1 /tl_driver/moveL tl_ros2_interface/msg/MoveCommand "{
 ros2 topic pub -1 /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray "{data: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}"
 ```
 
-**`/tl_driver/set_servol_pos` — `tl_ros2_interface/msg/ServolMove`（servoL 笛卡尔直线伺服）**
-```bash
-ros2 topic pub -1 /tl_driver/set_servol_pos tl_ros2_interface/msg/ServolMove "{
-  target_pose: [300.0, 0.0, 200.0, 3.14, 0.0, 0.0],
-  step_size: 2.0,
-  coord: 1
-}"
-```
-
 ### 发布话题（读取机械臂状态）
 
 | # | 话题 | 类型 | 说明 |

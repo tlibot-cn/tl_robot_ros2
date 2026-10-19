@@ -61,7 +61,6 @@ def generate_launch_description():
                         executable="tl_teleop_f710_sim_bridge",
                         name="tl_teleop_f710_sim_bridge",
                         output="screen",
-                        parameters=[{"arm_type": arm_type}],
                     )
                 ],
             ),
