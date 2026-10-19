@@ -63,7 +63,7 @@
 
 ## 四、线程与回调组
 
-- `tl_driver` 三组均为 `MutuallyExclusive`：`service_group_`（全部 47 个服务）、`topic_group_`（4 个订阅）、`timer_group_`（状态发布定时器）；`MultiThreadedExecutor` 线程数 `max(4, hardware_concurrency)`。`timer_group_` 曾用 `Reentrant` 导致状态发布回调并发，`4757255` 改为互斥，**别改回**。
+- `tl_driver` 三组均为 `MutuallyExclusive`：`service_group_`（全部 47 个服务）、`topic_group_`（3 个订阅）、`timer_group_`（状态发布定时器）；`MultiThreadedExecutor` 线程数 `max(4, hardware_concurrency)`。`timer_group_` 曾用 `Reentrant` 导致状态发布回调并发，`4757255` 改为互斥，**别改回**。
 - 回调里不做阻塞：SDK 同步调用、`sleep`、等 future 都占住 executor 线程。
 - 控制循环（f710 250Hz、`tl_teleop` 100Hz）：循环体不得超周期；**控制循环内 `std::async` 的 future 析构会阻塞到任务完成**，反复给同一 future 赋值 = 隐性停顿；跨线程标志用 `std::atomic`。
 - 跨线程共享的 `std::vector`/`std::string`（如 `target_pose_`、`latest_joy_`）需锁或原子快照，禁止裸读写。
