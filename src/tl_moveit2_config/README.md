@@ -79,6 +79,12 @@ ros2 launch tl_driver tl_<arm_type>_driver.launch.py
 
 **第 2 步：启动 MoveIt2 真实硬件控制**
 
+在 tl_driver 输出类似如下信息之后
+
+![alt text](doc/image5.png)
+
+在另一个终端执行：
+
 ```bash
 ros2 launch tl_<arm_type>_config real_hardware_demo.launch.py
 ```
