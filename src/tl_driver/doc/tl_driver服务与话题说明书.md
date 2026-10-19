@@ -128,7 +128,7 @@
 | 温度 / 电压 / 电流 | ℃ / V / A | SDK 头未标注温度、电压；电流 SDK 头标 ‰，与本仓 A 口径不符 |
 
 - `MoveCommand.velocity`：MOVJ 为 %（0<v≤100）；MOVL 为 m/s（0<v≤1）。
-- `target_pos_type` 是点位类型（PosType），**不携带单位制**；全局点位容器的单位制标志见对应服务的 `pos` / `pos_info` 说明。
+- `target_pos_type` 是点位类型（PosType），**不携带单位制**；`target_pos_value` 的布局与单位换算规则见 `MoveCommand.msg` 文件头。
 - `/tl_driver/set_servoj_pos` 的 `data` 为 rad，**固定 7 元素**（6 轴末位补 0）。
 
 ---

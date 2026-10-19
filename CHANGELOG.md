@@ -14,7 +14,7 @@
 
 ### 2026-10-18
 
-- tl_driver：修复 `/tl_driver/set_global_pos`、`/tl_driver/get_global_pos` 收到畸形点位名（如 `GPab12`）时 `std::stoi` 抛异常导致进程退出的问题；改为逐字符 `noexcept` 校验，`GP12ab` 等尾部垃圾同样拒绝。所有服务回调统一加异常边界，异常转为 `success=false` + `message`，不再越过回调终止进程
+- tl_driver：所有服务回调统一加异常边界——回调内部抛异常时返回 `success=false` 与 `message`（`Internal error: ...`），不再越过回调终止驱动进程
 - tl_driver：初始化连接或切入示教模式失败由 `exit(0)` 改为 `EXIT_FAILURE`，便于 systemd/launch/CI 识别启动失败
 - tl_driver：修正服务结果语义——`get_robot_joint_param`、`get_drag_status` 查询失败不再返回 `success=true`；`set_axis_zero_pos` 改用自身文案；`set_robot_joint_param` 的上下电失败、`queue_motion_set_status` 的示教模式切换/下电失败均回写 `success=false`
 - tl_driver：状态发布补齐 `switch` 默认分支（未知运行状态发布 `UNKNOWN`），按数据实际长度裁剪关节位姿并校验 TCP 位姿长度，避免发布空 `JointState` 或越界读取
@@ -23,7 +23,7 @@
 
 ### 2026-10-17
 
-- **破坏性变更**：tl_driver 移除 18 个不属于 ROS 驱动职责的服务，服务数量 65 → 47。移除范围：纯数学变换（`get_quat2rpy` / `get_rpy2quat` / `get_rpy2r` / `get_tr2r` / `get_r2tr`）、控制器作业文件（`get_all_job_filename` / `job_run` / `job_delete` / `job_insert_moveJ` / `job_insert_moveL` / `job_insert_imove` / `job_insert_moveC`）、全局路点（`get_global_pos` / `set_global_pos`）、`get_nexmotion_lib_version`、`set_dh_param`、`restore_default_dh_param`、`log_download`；`is_valid_gp_name` 及对应单元测试一并删除。`tl_ros2_interface` 中的 srv 定义暂保留，供外部工具按需引用
+- **破坏性变更**：tl_driver 移除 18 个不属于 ROS 驱动职责的服务，服务数量 65 → 47。移除范围：纯数学变换（`get_quat2rpy` / `get_rpy2quat` / `get_rpy2r` / `get_tr2r` / `get_r2tr`）、控制器作业文件（`get_all_job_filename` / `job_run` / `job_delete` / `job_insert_moveJ` / `job_insert_moveL` / `job_insert_imove` / `job_insert_moveC`）、全局路点（`get_global_pos` / `set_global_pos`）、`get_nexmotion_lib_version`、`set_dh_param`、`restore_default_dh_param`、`log_download`。`tl_ros2_interface` 中的 srv 定义暂保留，供外部工具按需引用
 - tl_teleop：`get_rpy2quat` 改为本地数学转换，不再依赖驱动服务
 - tl_example / `test_all_interfaces.py`：同步移除已下线服务的调用；说明书删除对应章节，章节号保持不变以避免破坏既有引用
 - **破坏性变更**：全部 ROS 接口统一为 REP 103 单位——关节角 rad、笛卡尔位置 m、线速度 m/s、关节速度 rad/s；控制器 / SDK 的 mm / 度 / % 由 `tl_driver` 在边界换算。受影响接口：`MoveCommand`（关节 rad、位置 m、MOVL 速度 m/s）、`/tl_driver/set_servoj_pos`（rad）、`ServolMove`（m、step m）、`CartesianPose`（`SetUserCoord` 改 m）、`ToolParam`（m、rad）、`RobotDHParam`（rad、m）、`RobotJointParam`（rad、rad/s、rad/s²）、`OpenServoJ`（rad/s 系列）、`CoordTransform`（rad、m）、`GetCurrentLineJointSpeed`（m/s、rad/s）。`get_pos_reachable` 的 14 维协议包保留控制器 mm + 单位标志位口径
