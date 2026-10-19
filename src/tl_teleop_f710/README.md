@@ -25,7 +25,7 @@
 - **完整上电流程**：自动执行 `connect_arm → power_on → set_mode → set_speed → open_servoj`，含伺服状态检测和报警清错
 - **启动不移动**：订阅 `/joint_states` 首帧获取当前关节角作为初始指令，通过 FK 计算当前笛卡尔位姿，启动时**不移动到零位**
 - **回零**：按下 A 键直接发送 `home_joints` 关节角（度），真机异步 FK / 仿真同步 FK 更新笛卡尔位姿，不做多余 FK→IK 链
-- **6/7 轴自适应**：根据 `home_joints` 长度自动确定轴数；仿真模式从 URDF 构建 KDL chain（优先 7 轴）
+- **6/7 轴自适应**：根据 `home_joints` 长度自动确定轴数；仿真模式从 URDF 构建 KDL chain（按长度取 `link<N>`）
 - **多种臂型兼容**：通过 `arm_type` 参数切换型号，无需修改代码
 - **速度实时调节**：十字键上下实时调整运动速度（0-100），支持 LB/RB 切换姿态控制模式（偏航/翻滚/俯仰）
 - **暂停/恢复**：Back+Start 组合键切换停止/恢复（边缘检测防误触，恢复需摇杆归零）
@@ -170,10 +170,10 @@ tl_teleop_f710/
 ├── launch/                         # 4 个启动文件
 ├── include/tl_teleop_f710/
 │   ├── tl_teleop_f710_node.h       # 遥操作节点类
-│   └── tl_teleop_f710_sim_bridge.h # 仿真 IK 桥接节点类
+│   └── tl_teleop_f710_sim_bridge.h # 仿真桥接节点类（关节角转发）
 ├── src/
 │   ├── tl_teleop_f710_node.cpp     # ★ 主节点：250Hz ServoJ 控制
-│   └── tl_teleop_f710_sim_bridge.cpp # 仿真 KDL IK 桥接
+│   └── tl_teleop_f710_sim_bridge.cpp # 仿真桥接：set_servoj_pos → Gazebo
 └── udev/
 ```
 

@@ -1,6 +1,6 @@
 """天链机械臂 6 轴 + F710 手柄遥操作 — 通用 Gazebo 仿真启动文件 (C++)。
 
-IK 由仿真桥接节点内部使用 KDL 本地求解，无需 MoveIt2。
+IK 由 tl_teleop_f710_node 在仿真模式内部使用 KDL 本地求解，无需 MoveIt2。
 
 用法：
   ros2 launch tl_teleop_f710 tl_teleop_f710_6axis_gazebo.launch.py arm_type:=tcb605
