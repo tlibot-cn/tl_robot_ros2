@@ -56,8 +56,8 @@ ROS 侧统一 REP 103（m / rad / rad/s），控制器/SDK 侧 mm / 度 / %，�
 | `RobotDHParam` / `RobotJointParam` | rad、m；转速 rad/s；角加速度 rad/s² |
 | `GetCurrentLineJointSpeed` | m/s / rad/s |
 
-- 命令入参：关节/位姿向量对 6 轴**补 0 到 7 位，不是截断**；`MoveCmd::targetPosValue` 与全局点位容器为 **14 位**（前 7 本体 + 后 7 外部轴）。`/joint_states` 输出相反：6 轴只发 6 个位置（丢弃 SDK 的第 7 位）。
-- `GetGlobalPos` 的 **14/21 位**数组是控制器协议包，自带单位标志位，**保留 mm + 标志位，驱动不换算**；`SetGlobalPos` / `GetPosReachable` 固定 14 位。
+- 命令入参：关节/位姿向量对 6 轴**补 0 到 7 位，不是截断**；`MoveCmd::targetPosValue` 为 **14 位**（前 7 本体 + 后 7 外部轴）。`/joint_states` 输出相反：6 轴只发 6 个位置（丢弃 SDK 的第 7 位）。
+- `GetPosReachable` 的 `pos` 是 **14 位**控制器协议包（`[1]` 为单位制标志位），**按协议原样透传，驱动不换算**。
 - 消费方（`tl_teleop`、`tl_teleop_f710_node`、`tl_teleop_f710_sim_bridge`、`tl_hardware_interface`）**直接收发 REP 103 值**，不再做 m↔mm / rad↔度换算（`ab3f2b6`）；仅配置中的度值在读取时转 rad。
 - 历史事故：`/tcp_pose` 的 m↔mm 误用曾使 IK 目标差 1000 倍，控制器报 9754「目标位置不可达」。
 
