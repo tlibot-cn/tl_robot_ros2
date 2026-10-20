@@ -30,9 +30,11 @@ public:
   StatePublishers(rclcpp::Node& node, const ArmSession& session, std::vector<std::string> joint_names, int ndof);
 
   /// @brief 定时器入口：未连接时告警返回，否则发布运行状态、关节角与 TCP 位姿。
+  /// @note 仅可在 timer_group_ 内调用；内部复用成员消息，非线程安全。
   void publish_arm_state();
 
-  /// @brief 发布 /joint_states。
+private:
+  /// @brief 发布 /joint_states（仅由 publish_arm_state 调用）。
   /// @param[in] joint_pose 关节角 (rad)
   void publish_joint_pose(const std::vector<double>& joint_pose);
 
@@ -44,15 +46,21 @@ public:
   /// @param[in] fd 6001 端口 fd 快照（同一发布周期内复用，避免多次读取会话状态）
   void publish_running_status(int fd);
 
-private:
   rclcpp::Node& node_;
   const ArmSession& session_;
-  std::vector<std::string> joint_names_;
-  int ndof_;
+  const std::vector<std::string> joint_names_;
+  const int ndof_;
 
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   rclcpp::Publisher<tl_ros2_interface::msg::CartesianPose>::SharedPtr tcp_pose_pub_;
   rclcpp::Publisher<tl_ros2_interface::msg::ArmStatus>::SharedPtr running_status_pub_;
+
+  // 100 Hz 发布路径复用缓冲，避免每周期分配；仅在 timer_group_ 内使用。
+  std::vector<double> joint_pose_;
+  std::vector<double> tcp_pose_;
+  sensor_msgs::msg::JointState joint_state_msg_;
+  tl_ros2_interface::msg::CartesianPose tcp_pose_msg_;
+  tl_ros2_interface::msg::ArmStatus arm_status_msg_;
 };
 } // namespace tl_driver
 

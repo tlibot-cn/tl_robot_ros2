@@ -21,13 +21,17 @@ StatePublishers::StatePublishers(rclcpp::Node& node, const ArmSession& session, 
   tcp_pose_pub_ = node_.create_publisher<tl_ros2_interface::msg::CartesianPose>("/tcp_pose", 10);
 
   running_status_pub_ = node_.create_publisher<tl_ros2_interface::msg::ArmStatus>("/arm_status", 10);
+
+  // 静态字段只填一次；动态字段每周期覆盖，容量复用。发布路径不清空消息，frame_id 保持不变。
+  joint_state_msg_.name = joint_names_;
+  tcp_pose_msg_.header.frame_id = "base_link";
 }
 
 void StatePublishers::publish_arm_state()
 {
   if (!session_.is_connected())
   {
-    RCLCPP_WARN(node_.get_logger(), "[Pub]: arm is not connected");
+    RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000, "[Pub]: arm is not connected");
     return;
   }
 
@@ -36,29 +40,26 @@ void StatePublishers::publish_arm_state()
 
   publish_running_status(fd);
 
-  std::vector<double> joint_pose;
-  std::vector<double> tcp_pose;
+  joint_pose_.clear();
+  tcp_pose_.clear();
 
-  joint_pose.clear();
-  tcp_pose.clear();
-
-  if (tl::get_current_position(fd, tl::Coord::JOINT, joint_pose) == tl::Result::SUCCESS)
+  if (tl::get_current_position(fd, tl::Coord::JOINT, joint_pose_) == tl::Result::SUCCESS)
   {
     // 将角度转换为弧度(批量转换)
-    convert::joint_deg_to_rad(joint_pose, joint_pose.size());
+    convert::joint_deg_to_rad(joint_pose_, joint_pose_.size());
 
-    publish_joint_pose(joint_pose);
+    publish_joint_pose(joint_pose_);
   }
 
-  if (tl::get_current_position(fd, tl::Coord::BASE, tcp_pose) == tl::Result::SUCCESS)
+  if (tl::get_current_position(fd, tl::Coord::BASE, tcp_pose_) == tl::Result::SUCCESS)
   {
-    publish_tcp_pose(tcp_pose);
+    publish_tcp_pose(tcp_pose_);
   }
 }
 
 void StatePublishers::publish_joint_pose(const std::vector<double>& joint_pose)
 {
-  sensor_msgs::msg::JointState msg;
+  auto& msg = joint_state_msg_;
   msg.header.stamp = node_.now();
 
   // 按实际数据与关节名数量裁剪：6 轴时 SDK 末位为补 0，丢掉；数据不足时不越界。
@@ -75,8 +76,11 @@ void StatePublishers::publish_joint_pose(const std::vector<double>& joint_pose)
                          "[Pub]: joint pose has %zu values, fewer than %zu joint names", joint_pose.size(),
                          joint_names_.size());
   }
-  // name 必须与 position 等长，否则 JointState 契约不成立。
-  msg.name.assign(joint_names_.begin(), joint_names_.begin() + count);
+  // name 必须与 position 等长，否则 JointState 契约不成立；稳态下长度不变，跳过字符串拷贝。
+  if (msg.name.size() != count)
+  {
+    msg.name.assign(joint_names_.begin(), joint_names_.begin() + count);
+  }
   msg.position.assign(joint_pose.begin(), joint_pose.begin() + count);
 
   joint_state_pub_->publish(msg);
@@ -92,9 +96,8 @@ void StatePublishers::publish_tcp_pose(const std::vector<double>& tcp_pose)
   }
 
   // SDK 返回：位置 mm、欧拉角弧度（rad）→ 统一转换为 ROS 标准单位：m 和 rad
-  tl_ros2_interface::msg::CartesianPose msg;
+  auto& msg = tcp_pose_msg_;
   msg.header.stamp = node_.now();
-  msg.header.frame_id = "base_link";
 
   msg.position.x = convert::mm_to_m(tcp_pose[0]);
   msg.position.y = convert::mm_to_m(tcp_pose[1]);
@@ -129,13 +132,13 @@ void StatePublishers::publish_running_status(int fd)
   tl::Result ret = tl::get_robot_running_state(fd, running_status);
   if (ret != tl::Result::SUCCESS)
   {
-    RCLCPP_INFO(node_.get_logger(), "[Read Running Status]: failed to read running status, result=%s",
-                arm_client::result_to_string(ret));
+    RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000,
+                         "[Read Running Status]: failed to read running status, result=%s",
+                         arm_client::result_to_string(ret));
     return;
   }
 
-  tl_ros2_interface::msg::ArmStatus msg;
-
+  auto& msg = arm_status_msg_;
   msg.stamp = node_.now();
   switch (running_status)
   {
