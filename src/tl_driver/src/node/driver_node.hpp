@@ -12,6 +12,7 @@
 #include <vector>
 
 // ROS2
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rmw/qos_profiles.h>
 #include <rclcpp/rclcpp.hpp>
 
@@ -131,8 +132,12 @@ private:
   /// @brief 按域注册全部服务与话题回调。
   void register_entities();
 
-  /// @brief 按 `publish_rate` 参数（默认 100 Hz）创建状态发布定时器。
-  void create_state_timer();
+  /// @brief 参数更新回调：校验并应用 `publish_rate`（重建定时器，立即生效）。
+  rcl_interfaces::msg::SetParametersResult on_parameters_set(const std::vector<rclcpp::Parameter>& parameters);
+
+  /// @brief 按指定频率创建状态发布定时器；成功后替换旧定时器。
+  /// @param[in] rate 发布频率（Hz）
+  void create_state_timer(double rate);
 
   std::string arm_ip_;
   std::string arm_port_;
@@ -166,6 +171,7 @@ private:
   std::vector<rclcpp::SubscriptionBase::SharedPtr> subscriptions_;
 
   rclcpp::TimerBase::SharedPtr state_publish_timer_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr publish_rate_param_handle_;
 };
 
 } // namespace tl_driver

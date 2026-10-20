@@ -7,6 +7,7 @@
 #include <memory>
 #include <chrono>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "arm_sdk.hpp"
@@ -298,6 +299,7 @@ void handle_get_pos_reachable_service(DriverNode& node,
   if (!node.session().is_connected())
   {
     response->success = false;
+    response->reachable = false;
     response->message = "Arm is not connected";
     return;
   }
@@ -305,7 +307,17 @@ void handle_get_pos_reachable_service(DriverNode& node,
   if (request->move_type != "MOVJ" && request->move_type != "MOVL")
   {
     response->success = false;
+    response->reachable = false;
     response->message = "Invalid move type";
+    return;
+  }
+
+  constexpr std::size_t kProtocolPosSize = 14;
+  if (request->pos.size() != kProtocolPosSize)
+  {
+    response->success = false;
+    response->reachable = false;
+    response->message = "pos must have 14 elements";
     return;
   }
 
@@ -314,15 +326,17 @@ void handle_get_pos_reachable_service(DriverNode& node,
   std::vector<double> queryPos = request->pos;
 
   bool result = false;
-  tl::Result ret = tl::get_pos_reachable(node.session().fd(), queryPos, request->move_type, result);
+  tl::Result ret = tl::get_pos_reachable(node.session().fd(), std::move(queryPos), request->move_type, result);
   if (ret == tl::Result::SUCCESS)
   {
-    response->success = result;
-    response->message = response->success ? "Target pos is reachable" : "Target pos is not reachable";
+    response->success = true;
+    response->reachable = result;
+    response->message = result ? "Target pos is reachable" : "Target pos is not reachable";
   }
   else
   {
     response->success = false;
+    response->reachable = false;
     response->message = "Failed to get pos reachable status, ret=" + std::to_string(ret);
   }
 }

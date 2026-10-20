@@ -66,6 +66,7 @@
 - `tl_driver` 回调组均为 `MutuallyExclusive`：服务按域拆为 session/motion/transform/config/io/state 六组，`get_robot_state` 单独一组；另有 `topic_group_`（3 个订阅）与 `timer_group_`（状态发布定时器）；`MultiThreadedExecutor` 线程数 `max(10, hardware_concurrency)`。`timer_group_` 曾用 `Reentrant` 导致状态发布回调并发，`4757255` 改为互斥，**别改回**。
 - 回调里不做阻塞：SDK 同步调用、`sleep`、等 future 都占住 executor 线程。
 - 100 Hz 发布路径复用成员缓冲/消息（`StatePublishers`），不在回调内新建 vector/message；ServoJ 等高频路径禁止逐帧 `INFO`。
+- SDK 异步回调（`ArmClient`）只做缓冲更新与节流日志，禁止 `std::cout`；SDK 回调无 userdata，`ArmClient` 进程内单实例。
 - 控制循环（f710 250Hz、`tl_teleop` 100Hz）：循环体不得超周期；**控制循环内 `std::async` 的 future 析构会阻塞到任务完成**，反复给同一 future 赋值 = 隐性停顿；跨线程标志用 `std::atomic`。
 - 跨线程共享的 `std::vector`/`std::string`（如 `target_pose_`、`latest_joy_`）需锁或原子快照，禁止裸读写。
 

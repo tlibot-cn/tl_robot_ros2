@@ -8,10 +8,14 @@
 /// @note 7000 口状态帧异步通道（缓冲、回调、序号与等待）由 arm_client 承担。
 
 #include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <string>
 
 #include <rclcpp/logger.hpp>
 #include <rclcpp/logging.hpp>
+
+#include "arm_client.hpp"
 
 namespace tl_driver
 {
@@ -26,6 +30,9 @@ public:
   /// @brief 构造会话，不发起连接。
   /// @param[in] logger 日志器
   explicit ArmSession(rclcpp::Logger logger);
+
+  /// @brief 析构时若仍连接则断开（覆盖构造期异常退出的路径）。
+  ~ArmSession();
 
   /// @brief 连接 6001 与 7000 两个端口，并注册错误/告警与状态回调。
   /// @param[in] ip 控制器 IP
@@ -59,8 +66,19 @@ public:
   /// @brief 7000 端口 fd 快照：servoJ 全系列与机器人状态异步推送。
   int fd_aux() const;
 
+  /// @brief 当前状态帧序号，作为等待新帧的基准。
+  uint64_t robot_state_seq() const;
+
+  /// @brief 等待一帧机器人状态消息。
+  /// @param[in] start_seq 调用前的序号
+  /// @param[in] timeout 最长等待时间
+  /// @param[out] message 成功时写入状态消息原文
+  /// @return 收到新状态帧为 true，超时为 false
+  bool wait_robot_state(uint64_t start_seq, std::chrono::milliseconds timeout, std::string& message);
+
 private:
   rclcpp::Logger logger_;
+  arm_client::ArmClient client_;
 
   std::atomic<int> socket_fd_{0};
   std::atomic<int> socket_fd_aux_{0};

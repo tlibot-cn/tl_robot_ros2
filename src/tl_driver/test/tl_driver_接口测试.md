@@ -194,7 +194,7 @@ ros2 service call /tl_driver/get_motor_current tl_ros2_interface/srv/GetMotorCur
 ros2 service call /tl_driver/get_current_motor_torque tl_ros2_interface/srv/GetCurrentMotorTorque "{}"
 ros2 service call /tl_driver/get_current_line_joint_speed tl_ros2_interface/srv/GetCurrentLineJointSpeed "{}"
 ros2 service call /tl_driver/get_joint_software_version tl_ros2_interface/srv/GetJointSoftwareVersion "{axis_num: 1}"
-ros2 service call /tl_driver/get_pos_reachable tl_ros2_interface/srv/GetPosReachable "{pos: [0.0,0.0,0.0,0.0,0.0,0.0,0.0], move_type: 'MOVJ'}"
+ros2 service call /tl_driver/get_pos_reachable tl_ros2_interface/srv/GetPosReachable "{pos: [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0], move_type: 'MOVJ'}"
 ```
 
 ---

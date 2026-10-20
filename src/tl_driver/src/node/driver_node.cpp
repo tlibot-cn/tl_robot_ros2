@@ -1,7 +1,8 @@
 #include <chrono>
 #include <cmath>
-#include <cstdlib>
 #include <memory>
+#include <stdexcept>
+#include <string>
 #include <thread>
 
 #include "node/driver_node.hpp"
@@ -15,6 +16,17 @@
 
 namespace tl_driver
 {
+namespace
+{
+constexpr double kMinPublishRate = 1.0;
+constexpr double kMaxPublishRate = 1000.0;
+
+bool is_valid_publish_rate(double rate)
+{
+  return std::isfinite(rate) && rate >= kMinPublishRate && rate <= kMaxPublishRate;
+}
+} // namespace
+
 DriverNode::DriverNode() : rclcpp::Node("tl_driver"), session_(this->get_logger())
 {
   declare_parameters();
@@ -50,24 +62,71 @@ void DriverNode::declare_parameters()
   publish_rate_ = this->get_parameter("publish_rate").as_double();
   ndof_ = static_cast<int>(arm_joints_.size());
 
-  constexpr double kMinPublishRate = 1.0;
-  constexpr double kMaxPublishRate = 1000.0;
-  if (!std::isfinite(publish_rate_) || publish_rate_ < kMinPublishRate || publish_rate_ > kMaxPublishRate)
+  if (!is_valid_publish_rate(publish_rate_))
   {
-    RCLCPP_FATAL(this->get_logger(), "publish_rate must be in [%.1f, %.1f] Hz, got %.3f", kMinPublishRate,
-                 kMaxPublishRate, publish_rate_);
-    rclcpp::shutdown();
-    exit(EXIT_FAILURE);
+    throw std::invalid_argument("publish_rate must be in [1.0, 1000.0] Hz");
   }
 
   constexpr int kMinJoints = 1;
   constexpr int kMaxJoints = 8;
   if (ndof_ < kMinJoints || ndof_ > kMaxJoints)
   {
-    RCLCPP_FATAL(this->get_logger(), "arm_joints size must be in [%d, %d], got %d", kMinJoints, kMaxJoints, ndof_);
-    rclcpp::shutdown();
-    exit(EXIT_FAILURE);
+    throw std::invalid_argument("arm_joints size must be in [1, 8]");
   }
+
+  publish_rate_param_handle_ = this->add_on_set_parameters_callback(
+      [this](const std::vector<rclcpp::Parameter>& parameters)
+      {
+        return on_parameters_set(parameters);
+      });
+}
+
+rcl_interfaces::msg::SetParametersResult DriverNode::on_parameters_set(const std::vector<rclcpp::Parameter>& parameters)
+{
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+
+  for (const auto& parameter : parameters)
+  {
+    if (parameter.get_name() != "publish_rate")
+    {
+      continue;
+    }
+
+    if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE)
+    {
+      result.successful = false;
+      result.reason = "publish_rate must be a double";
+      return result;
+    }
+
+    const double rate = parameter.as_double();
+    if (!is_valid_publish_rate(rate))
+    {
+      result.successful = false;
+      result.reason = "publish_rate must be in [1.0, 1000.0] Hz";
+      return result;
+    }
+
+    if (rate != publish_rate_)
+    {
+      try
+      {
+        // 先建新定时器，成功后再提交频率并取消旧定时器；失败时旧频率继续生效。
+        create_state_timer(rate);
+      }
+      catch (const std::exception& e)
+      {
+        result.successful = false;
+        result.reason = std::string("failed to recreate timer: ") + e.what();
+        return result;
+      }
+      publish_rate_ = rate;
+      RCLCPP_INFO(this->get_logger(), "publish_rate updated to %.3f Hz", rate);
+    }
+  }
+
+  return result;
 }
 
 void DriverNode::create_callback_groups()
@@ -118,21 +177,29 @@ void DriverNode::register_entities()
   // 话题sub
   register_topics(*this);
 
-  create_state_timer();
+  create_state_timer(publish_rate_);
 }
 
-void DriverNode::create_state_timer()
+void DriverNode::create_state_timer(double rate)
 {
   // 直接使用浮点周期，避免截断到整毫秒造成系统性频率偏差（如 60 Hz → 62.5 Hz）。
-  const auto period = std::chrono::duration<double>(1.0 / publish_rate_);
+  const auto period = std::chrono::duration<double>(1.0 / rate);
 
-  state_publish_timer_ = this->create_wall_timer(
+  // 先创建新定时器，成功后再替换并取消旧定时器；创建失败时旧频率继续生效。
+  auto new_timer = this->create_wall_timer(
       period,
       [this]()
       {
         publishers_->publish_arm_state();
       },
       timer_group_);
+
+  auto old_timer = std::move(state_publish_timer_);
+  state_publish_timer_ = std::move(new_timer);
+  if (old_timer)
+  {
+    old_timer->cancel();
+  }
 }
 
 DriverNode::~DriverNode()
@@ -158,10 +225,8 @@ void DriverNode::init()
     tl::Result ret = tl::set_current_mode(fd, tl::RobotMode::TEACH);
     if (ret != tl::Result::SUCCESS)
     {
-      RCLCPP_ERROR(this->get_logger(), "[Init]: failed to set teach mode, result=%s",
-                   arm_client::result_to_string(ret));
-      rclcpp::shutdown();
-      exit(EXIT_FAILURE);
+      throw std::runtime_error(std::string("[Init]: failed to set teach mode, result=") +
+                               arm_client::result_to_string(ret));
     }
 
     // 清除控制器错误和报警
@@ -178,11 +243,8 @@ void DriverNode::init()
     RCLCPP_INFO(this->get_logger(), "上电延时2s...");
     std::this_thread::sleep_for(std::chrono::seconds(2));
     RCLCPP_INFO(this->get_logger(), "上电延时完成");
+    return;
   }
-  else
-  {
-    rclcpp::shutdown();
-    exit(EXIT_FAILURE);
-  }
+  throw std::runtime_error("failed to connect to " + arm_ip_ + ":" + arm_port_ + "," + arm_port_aux_);
 }
 } // namespace tl_driver

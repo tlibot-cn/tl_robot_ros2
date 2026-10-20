@@ -17,6 +17,9 @@
 - tl_driver：服务回调组按域拆分（session/motion/transform/config/io/state），`get_robot_state` 因等待状态帧（最长可达 61 s）单独成组，消除单次慢调用冻结其余服务的队头阻塞（架构评审 P1-1）
 - tl_driver：`get_robot_state` 增加入参校验——`channel` 限 1–9、`mode` 限 0/1、`mode=1` 时 `interval` 限 10–60000 ms；`stop=true` 只停止持续推送并立即返回，不再白等 5 s 超时
 - **破坏性变更**：tl_driver 移除 `/tl_driver/connect_arm` 与 `/tl_driver/disconnect_arm` 服务，服务数量 47 → 45（架构评审 D-10）。连接只在 `DriverNode::init()`（`spin()` 之前）建立，断开只在 `~DriverNode()`（`spin()` 返回后）执行；控制器掉线后的恢复方式为重启驱动节点
+- tl_driver：`/tl_driver/get_pos_reachable` 响应新增 `bool reachable`，`success` 改为表示查询本身是否成功；`pos` 长度必须为 14（接口变更，旧客户端需同步）
+- tl_driver：`publish_rate` 支持运行期 `ros2 param set /tl_driver publish_rate <Hz>`，立即重建定时器；越界值被拒绝并保持原频率
+- tl_driver：SDK 状态帧与错误/告警日志改走 rclcpp（默认 1 s 节流），不再直接写 stdout，`ros2 launch` 可按级别过滤
 - tl_driver：`/joint_states`、`/tcp_pose`、`/arm_status` 发布路径复用消息与缓冲，消除 100 Hz 周期内的重复分配；ServoJ 逐帧日志降为 DEBUG/每秒一条，状态读取失败改为 5 s WARN 节流，避免高频日志拖慢控制线程
 - tl_driver：`ArmSession` 会话状态改为原子类型，`fd()` / `fd_aux()` 返回一次性快照并断言 `fd > 0`，状态发布与多 SDK 调用路径复用同一快照（P0-2 剩余项）
 - tl_example：6 个示例（`ex_digital_io` / `ex_info_query` / `ex_move_control` / `ex_servoj` / `ex_teach_control` / `medical_demo`）删除 connect/disconnect 客户端与状态机步骤，依赖驱动启动自动连接

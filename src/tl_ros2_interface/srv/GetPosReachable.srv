@@ -4,5 +4,6 @@
 float64[] pos       # 长度 14，布局同全局点位：[0]坐标系 [1]单位制 [2]形态 [3]工具 [4]用户 [5][6]备用 [7-13]点位（位置 mm、角度按 [1]）
 string move_type    # 运动类型："MOVJ" 或 "MOVL"
 ---
-bool success
-string message
+bool success        # 查询本身是否成功（与可达性解耦）
+string message      # 成功/失败描述
+bool reachable      # success=true 时有效：true=可达，false=不可达

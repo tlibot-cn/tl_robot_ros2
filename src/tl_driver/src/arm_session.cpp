@@ -12,7 +12,15 @@
 
 namespace tl_driver
 {
-ArmSession::ArmSession(rclcpp::Logger logger) : logger_(logger) {}
+ArmSession::ArmSession(rclcpp::Logger logger) : logger_(logger), client_(logger) {}
+
+ArmSession::~ArmSession()
+{
+  if (is_connected())
+  {
+    disconnect();
+  }
+}
 
 int ArmSession::fd() const
 {
@@ -37,6 +45,16 @@ bool ArmSession::is_connected() const
 bool ArmSession::is_powered() const
 {
   return is_powered_.load(std::memory_order_acquire);
+}
+
+uint64_t ArmSession::robot_state_seq() const
+{
+  return client_.robot_state_seq();
+}
+
+bool ArmSession::wait_robot_state(uint64_t start_seq, std::chrono::milliseconds timeout, std::string& message)
+{
+  return client_.wait_robot_state(start_seq, timeout, message);
 }
 
 bool ArmSession::power_on()
@@ -203,12 +221,12 @@ bool ArmSession::connect(const std::string& ip, const std::string& port, const s
   socket_fd_.store(fd, std::memory_order_relaxed);
   socket_fd_aux_.store(fd_aux, std::memory_order_relaxed);
 
-  arm_client::register_error_callback(fd);
+  client_.register_error_callback(fd);
 
-  arm_client::register_error_callback(fd_aux);
+  client_.register_error_callback(fd_aux);
 
   // 新 SDK：机器人状态通过 robot_state_callback（7000 端口）接收，不再使用旧的 recv_message 机制
-  arm_client::start_robot_state_channel(fd_aux);
+  client_.start_robot_state_channel(fd_aux);
 
   // release：最后发布“已连接”，保证读者看到 true 时 fd 与回调/状态通道均已就绪。
   is_connected_.store(true, std::memory_order_release);
