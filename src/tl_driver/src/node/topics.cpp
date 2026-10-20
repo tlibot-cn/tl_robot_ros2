@@ -1,6 +1,8 @@
 /// @file topics.cpp
 /// @brief 话题订阅：moveJ/moveL/servoJ 的 handler 与订阅注册。
 
+#include <algorithm>
+#include <utility>
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
@@ -55,24 +57,34 @@ void handle_set_servoj_pos_topic(DriverNode& node, const std_msgs::msg::Float64M
 {
   if (!node.session().is_connected())
   {
-    RCLCPP_WARN(node.get_logger(), "[ServoJ]: arm is not connected");
+    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000, "[ServoJ]: arm is not connected");
     return;
   }
 
-  // ROS 侧为 rad，SDK 要求度；SDK 固定 7 元素，6 轴在末尾补 0
-  std::vector<double> pos = msg->data;
-  if (pos.size() == 6)
+  // ROS 侧为 rad，SDK 要求度；SDK 固定 7 元素，6 轴在末尾补 0。
+  const auto& data = msg->data;
+  if (data.size() != 6 && data.size() != 7)
   {
-    pos.push_back(0.0);
-  }
-  if (pos.size() != 7)
-  {
-    RCLCPP_WARN(node.get_logger(), "[ServoJ]: data must have 6 or 7 elements, got %zu", pos.size());
+    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000,
+                         "[ServoJ]: data must have 6 or 7 elements, got %zu", data.size());
     return;
   }
+  std::vector<double> pos(7, 0.0); // 一次分配；6 轴时第 7 位保持 0
+  std::copy(data.begin(), data.end(), pos.begin());
   convert::joint_rad_to_deg(pos, pos.size());
-  tl::Result ret = tl::set_servoJ_pos(node.session().fd_aux(), pos);
-  RCLCPP_INFO(node.get_logger(), "[ServoJ]: result=%s", arm_client::result_to_string(ret));
+  // SDK 按值接收：move 掉本次缓冲，避免再拷贝一份。
+  tl::Result ret = tl::set_servoJ_pos(node.session().fd_aux(), std::move(pos));
+  // 250 Hz 调用：成功降为可节流的 DEBUG，失败保留 WARN 但每秒最多一条。
+  if (ret == tl::Result::SUCCESS)
+  {
+    RCLCPP_DEBUG_THROTTLE(node.get_logger(), *node.get_clock(), 1000, "[ServoJ]: result=%s",
+                          arm_client::result_to_string(ret));
+  }
+  else
+  {
+    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000, "[ServoJ]: result=%s",
+                         arm_client::result_to_string(ret));
+  }
 }
 } // namespace
 

@@ -33,9 +33,9 @@ flowchart LR
 
 - **双端口**：`arm_port` 6001 用于请求/响应式 SDK 调用；`arm_port_aux` 7000 用于 servoJ 全系列 + 机器人状态异步推送。两个 fd 都必须连通，状态回调只在 aux 注册，错误/告警回调两个端口都注册。
 - **`tl_driver` 组成**：`DriverNode` 只做参数、回调组、实体创建；服务按域拆在 `src/node/services_*.cpp`，由 `src/node/registrars.hpp` 的 `register_*` 函数注册；话题在 `topics.cpp`。当前规模：**45 个服务、3 个订阅、3 个发布**。
-- **发布**：`/joint_states`（rad）、`/tcp_pose`（m/rad）、`/arm_status`（`STOP`/`PAUSE`/`RUNNING`），100 Hz wall timer。
+- **发布**：`/joint_states`（rad）、`/tcp_pose`（m/rad）、`/arm_status`（`STOP`/`PAUSE`/`RUNNING`），100 Hz wall timer。`StatePublishers` 复用成员缓冲与消息，**勿在发布回调内新建 vector/message**；ServoJ 日志不得逐帧 INFO。
 - **订阅**：`/tl_driver/moveJ`、`/tl_driver/moveL`、`/tl_driver/set_servoj_pos`（rad，6 或 7 元素，6 元素末尾补 0；转发 SDK 时为固定 7 元素）。`moveJ/moveL` **不等到位**，需要到位判定的一方轮询 `/arm_status`。
-- **线程模型**：`MultiThreadedExecutor`（`max(10, hardware_concurrency)`，至少覆盖 9 个回调组）；服务按域各一个 `MutuallyExclusive` 回调组（session/motion/transform/config/io/state），`get_robot_state` 因最长等待 5 s 单独成组；`topic_group_` / `timer_group_` 同样 `MutuallyExclusive`。`timer_group_` 曾因 `Reentrant` 导致状态发布并发，勿改回。
+- **线程模型**：`MultiThreadedExecutor`（`max(10, hardware_concurrency)`，至少覆盖 9 个回调组）；服务按域各一个 `MutuallyExclusive` 回调组（session/motion/transform/config/io/state），`get_robot_state` 因等待状态帧单独成组；`topic_group_` / `timer_group_` 同样 `MutuallyExclusive`。`timer_group_` 曾因 `Reentrant` 导致状态发布并发，勿改回。
 - **失败即退**：`DriverNode::init()` 连接失败或切入示教模式失败时 `rclcpp::shutdown()` + exit，不带病运行。
 - **硬件插件**：`TLHardwareInterface` 生命周期 `on_init → on_configure → on_activate → …`；`on_activate` 用当前关节位置初始化命令，避免跳到零位；`write()` 发 `/tl_driver/set_servoj_pos`。
 
