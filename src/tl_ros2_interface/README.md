@@ -485,11 +485,12 @@ string move_type
 ---
 bool success
 string message
+bool reachable
 ```
 - 输入目标位姿，返回是否可达
 - pos: 长度 14，布局同全局点位（控制器协议包，位置 mm、角度按 [1]）
 - move_type: 运动类型："MOVJ" 或 "MOVL"
-- 返回: success/message
+- 返回: success/reachable/message；`success` 表示查询是否成功，`reachable` 仅在查询成功时有效
 
 ### 位姿转换GetPosTransform_srv
 ```

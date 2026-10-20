@@ -127,7 +127,7 @@ void handle_get_robot_state_service(DriverNode& node,
     }
   }
 
-  const uint64_t start_seq = arm_client::robot_state_seq();
+  const uint64_t start_seq = node.session().robot_state_seq();
 
   // get_robot_state 需使用 7000 端口（fd_aux），回调亦注册在 7000 端口
   const int fd_aux = node.session().fd_aux();
@@ -154,7 +154,7 @@ void handle_get_robot_state_service(DriverNode& node,
           : std::chrono::milliseconds(5000);
 
   std::string state_message;
-  if (!arm_client::wait_robot_state(start_seq, timeout, state_message))
+  if (!node.session().wait_robot_state(start_seq, timeout, state_message))
   {
     response->success = false;
     response->message = "Timeout waiting for robot state";

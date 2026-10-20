@@ -26,6 +26,7 @@ message(STATUS "tl_driver: version ${TL_DRIVER_VERSION}")
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rcl_interfaces REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Development)
@@ -75,6 +76,7 @@ target_include_directories(tl_driver PRIVATE
 
 ament_target_dependencies(tl_driver
   rclcpp
+  rcl_interfaces
   std_srvs
   sensor_msgs
   tl_ros2_interface

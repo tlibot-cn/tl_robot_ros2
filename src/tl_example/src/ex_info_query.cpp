@@ -494,7 +494,12 @@ void tl_example::InfoQueryDemo::testInfoQuery()
     auto resp =
         callService<tl_ros2_interface::srv::GetPosReachable>(get_pos_reachable_cli_, req, "get_pos_reachable(MOVJ)");
     if (resp && resp->success)
-      RCLCPP_INFO(this->get_logger(), "      ✓ 目标可达");
+    {
+      if (resp->reachable)
+        RCLCPP_INFO(this->get_logger(), "      ✓ 目标可达");
+      else
+        RCLCPP_WARN(this->get_logger(), "      ✗ 目标不可达");
+    }
   }
   {
     // ② 直角坐标系（MOVL）：位置 [280, 90, 270] mm，姿态 [3.14, 0, 0] rad
@@ -512,7 +517,12 @@ void tl_example::InfoQueryDemo::testInfoQuery()
     auto resp =
         callService<tl_ros2_interface::srv::GetPosReachable>(get_pos_reachable_cli_, req, "get_pos_reachable(MOVL)");
     if (resp && resp->success)
-      RCLCPP_INFO(this->get_logger(), "      ✓ 目标可达");
+    {
+      if (resp->reachable)
+        RCLCPP_INFO(this->get_logger(), "      ✓ 目标可达");
+      else
+        RCLCPP_WARN(this->get_logger(), "      ✗ 目标不可达");
+    }
   }
 
   // [4.18] 查询机械臂运行状态（话题 /arm_status）

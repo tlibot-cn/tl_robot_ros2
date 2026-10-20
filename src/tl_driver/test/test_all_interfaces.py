@@ -339,7 +339,7 @@ class DriverQuickTest(Node):
 
         cli = self.wait_service("/tl_driver/get_pos_reachable", GetPosReachable)
         req = GetPosReachable.Request()
-        req.pos = [0.0] * 7
+        req.pos = [0.0] * 14
         req.move_type = "MOVJ"
         self.call_srv(cli, req, "get_pos_reachable")
 

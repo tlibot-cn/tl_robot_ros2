@@ -19,6 +19,7 @@
 |V1.10 | 2026-10-19 | 移除 ServoL：删除 `/tl_driver/set_servol_pos` 话题、`ServolMove` 消息及 15.4 发送跟踪笛卡尔位姿章节；笛卡尔直线伺服改由消费方本地 IK 后经 ServoJ 下发 |
 |V1.11 | 2026-10-20 | 移除 `/tl_driver/connect_arm` 与 `/tl_driver/disconnect_arm` 服务（服务数 47 → 45）：连接只在节点启动时建立、断开只在节点退出时执行；2.1/2.2 章节删除，章节号保留不复位 |
 |V1.12 | 2026-10-20 | `get_robot_state` 补充入参范围与 `stop=true` 立即返回语义；服务回调组按域拆分，该服务使用独立回调组 |
+|V1.13 | 2026-10-20 | `get_pos_reachable` 新增 `reachable` 字段（`success` 改为查询成功语义），`pos` 限 14 位 |
 
 </div>
 
@@ -522,8 +523,9 @@ ros2 service call /tl_driver/get_dh_param tl_ros2_interface/srv/GetDHParam
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
-| success | bool | `true` = 目标位姿可达，`false` = 不可达 |
-| message | string | 不可达时包含原因描述 |
+| success | bool | 查询本身是否成功；失败原因见 `message` |
+| message | string | 查询结果或失败原因 |
+| reachable | bool | `success=true` 时有效：`true` = 可达，`false` = 不可达 |
 #### 命令示例
 ```
 ros2 service call /tl_driver/get_pos_reachable tl_ros2_interface/srv/GetPosReachable \
