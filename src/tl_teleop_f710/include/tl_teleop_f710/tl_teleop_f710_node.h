@@ -89,9 +89,8 @@ private:
   bool prev_bs_{false}; // Back+Start 边缘检测
 
   // ========== ServoJ 初始化状态机 ==========
-  // 0=等待服务 1=connect_arm 2=power_on 3=set_mode 4=set_speed 5=open_servoj 6=完成
+  // 0=等待服务 1=power_on 2=set_mode 3=set_speed 4=open_servoj 5=完成
   int init_state_;
-  rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr connect_arm_client_;
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr power_on_client_;
   rclcpp::Client<tl_ros2_interface::srv::SetCurrentMode>::SharedPtr set_mode_client_;
   rclcpp::Client<tl_ros2_interface::srv::SetSpeed>::SharedPtr set_speed_client_;

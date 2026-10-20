@@ -22,7 +22,7 @@
 - **直接 ServoJ 控制（250Hz）**：节点自行 IK + 每 4ms 稳定输出一帧关节角，指令流从不中断，松手即停
 - **异步 IK 求解**：有摇杆输入时在独立线程中调用 `coord_transform` 服务做 IK，不阻塞 250Hz 控制循环
 - **真机/仿真双模式**：真机模式连接实体机械臂通过 ServoJ 关节跟踪驱动；仿真模式在节点内用 KDL 本地 IK 求解关节角，经 `/tl_driver/set_servoj_pos` 发布，由 sim_bridge 转发给 Gazebo position controller
-- **完整上电流程**：自动执行 `connect_arm → power_on → set_mode → set_speed → open_servoj`，含伺服状态检测和报警清错
+- **完整上电流程**：自动执行 `power_on → set_mode → set_speed → open_servoj`（连接由驱动启动时建立），含伺服状态检测和报警清错
 - **启动不移动**：订阅 `/joint_states` 首帧获取当前关节角作为初始指令，通过 FK 计算当前笛卡尔位姿，启动时**不移动到零位**
 - **回零**：按下 A 键直接发送 `home_joints` 关节角（度），真机异步 FK / 仿真同步 FK 更新笛卡尔位姿，不做多余 FK→IK 链
 - **6/7 轴自适应**：根据 `home_joints` 长度自动确定轴数；仿真模式从 URDF 构建 KDL chain（按长度取 `link<N>`）
@@ -38,7 +38,6 @@ tl_teleop_f710 运行时依赖 **tl_driver** 功能包提供以下服务与话�
 
 | 依赖项 | 类型 | 说明 |
 |--------|------|------|
-| `/tl_driver/connect_arm` | 服务 | 连接机械臂 |
 | `/tl_driver/power_on` | 服务 | 伺服上电（含状态检测、报警清错） |
 | `/tl_driver/set_current_mode` | 服务 | 切换到远程模式（模式 2） |
 | `/tl_driver/set_speed` | 服务 | 设置运动速度 |
@@ -232,7 +231,6 @@ F710 → joy_node → /joy
 
 | 服务 | 类型 | 用途 |
 |------|------|------|
-| `/tl_driver/connect_arm` | `std_srvs/Trigger` | 连接机械臂 |
 | `/tl_driver/power_on` | `std_srvs/Trigger` | 上电（含清错） |
 | `/tl_driver/set_current_mode` | `SetCurrentMode` | 设远程模式 |
 | `/tl_driver/set_speed` | `SetSpeed` | 设速度 |

@@ -8,7 +8,7 @@
 > source install/setup.bash
 > ros2 launch tl_driver tl_tcb610_driver.launch.py
 > ```
-> 测试前先 `ros2 service call /tl_driver/connect_arm std_srvs/srv/Trigger "{}"` 连接机械臂。
+> 连接由驱动节点启动时自动建立、退出时自动断开，无需手工调用连接/断开服务。
 
 ---
 
@@ -16,27 +16,23 @@
 
 | # | 接口名 | 类型 | 说明 |
 |---|--------|------|------|
-| 1 | `/tl_driver/connect_arm` | `std_srvs/srv/Trigger` | 连接机械臂 |
-| 2 | `/tl_driver/disconnect_arm` | `std_srvs/srv/Trigger` | 断开机械臂 |
-| 3 | `/tl_driver/power_on` | `std_srvs/srv/Trigger` | 上电使能 |
-| 4 | `/tl_driver/power_off` | `std_srvs/srv/Trigger` | 下电 |
-| 5 | `/tl_driver/clear_error` | `std_srvs/srv/Trigger` | 清除报警/错误 |
-| 6 | `/tl_driver/get_controller_id` | `std_srvs/srv/Trigger` | 获取控制器序列号 |
-| 7 | `/tl_driver/get_library_version` | `std_srvs/srv/Trigger` | 获取 SDK 库版本 |
-| 8 | `/tl_driver/set_default_cartesian_param` | `std_srvs/srv/Trigger` | 恢复默认笛卡尔参数 |
-| 9 | `/tl_driver/close_servoj` | `std_srvs/srv/Trigger` | 关闭关节跟踪模式 |
-| 10 | `/tl_driver/queue_motion_stop` | `std_srvs/srv/Trigger` | 队列运动停止 |
-| 11 | `/tl_driver/get_drag_status` | `std_srvs/srv/Trigger` | ⚠️ 获取拖拽状态（源码标注"用不了"） |
+| 1 | `/tl_driver/power_on` | `std_srvs/srv/Trigger` | 上电使能 |
+| 2 | `/tl_driver/power_off` | `std_srvs/srv/Trigger` | 下电 |
+| 3 | `/tl_driver/clear_error` | `std_srvs/srv/Trigger` | 清除报警/错误 |
+| 4 | `/tl_driver/get_controller_id` | `std_srvs/srv/Trigger` | 获取控制器序列号 |
+| 5 | `/tl_driver/get_library_version` | `std_srvs/srv/Trigger` | 获取 SDK 库版本 |
+| 6 | `/tl_driver/set_default_cartesian_param` | `std_srvs/srv/Trigger` | 恢复默认笛卡尔参数 |
+| 7 | `/tl_driver/close_servoj` | `std_srvs/srv/Trigger` | 关闭关节跟踪模式 |
+| 8 | `/tl_driver/queue_motion_stop` | `std_srvs/srv/Trigger` | 队列运动停止 |
+| 9 | `/tl_driver/get_drag_status` | `std_srvs/srv/Trigger` | ⚠️ 获取拖拽状态（源码标注"用不了"） |
 
 **测试指令（无参数服务通用格式）：**
 ```bash
-ros2 service call /tl_driver/connect_arm std_srvs/srv/Trigger "{}"
 ros2 service call /tl_driver/power_on std_srvs/srv/Trigger "{}"
 ros2 service call /tl_driver/power_off std_srvs/srv/Trigger "{}"
 ros2 service call /tl_driver/clear_error std_srvs/srv/Trigger "{}"
 ros2 service call /tl_driver/get_library_version std_srvs/srv/Trigger "{}"
 ros2 service call /tl_driver/get_controller_id std_srvs/srv/Trigger "{}"
-ros2 service call /tl_driver/disconnect_arm std_srvs/srv/Trigger "{}"
 ```
 
 ---
@@ -328,7 +324,7 @@ ros2 interface show tl_ros2_interface/srv/SetSpeed
 
 ## 测试顺序建议（安全优先）
 
-1. **连接类**：`connect_arm` → `get_library_version` → `get_controller_id` → `get_speed` → `get_current_mode` → `get_current_coord`
+1. **连接类**：`get_library_version` → `get_controller_id` → `get_speed` → `get_current_mode` → `get_current_coord`
 2. **状态类**：`get_joint_temperature` / `get_joint_voltage` / `get_motor_current` / `get_current_motor_torque` / `get_current_line_joint_speed`（只读，安全）
 3. **配置类**：`set_speed` / `set_current_mode` / `set_current_coord` / `set_drag_mode`
 4. **运动类**（⚠️ 先确认周围安全、上电后）：`power_on` → `moveJ`/`moveL` 话题 → `power_off`

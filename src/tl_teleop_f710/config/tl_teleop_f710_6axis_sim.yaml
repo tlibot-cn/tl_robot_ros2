@@ -2,7 +2,7 @@
   ros__parameters:
 
     # ===================== 仿真模式 =====================
-    # true 时跳过 ServoJ 初始化（connect_arm / power_on / set_mode 等）
+    # true 时跳过 ServoJ 初始化（power_on / set_mode 等）
     simulation_mode: true
 
     # ===================== 控制频率 =====================

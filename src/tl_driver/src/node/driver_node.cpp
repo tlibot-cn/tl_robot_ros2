@@ -123,20 +123,18 @@ DriverNode::~DriverNode()
   }
 }
 
-bool DriverNode::connect()
-{
-  return session_.connect(arm_ip_, arm_port_, arm_port_aux_);
-}
-
 void DriverNode::init()
 {
   RCLCPP_INFO(this->get_logger(), "Trying to connect to %s:%s,%s", arm_ip_.c_str(), arm_port_.c_str(),
               arm_port_aux_.c_str());
 
-  if (connect())
+  if (session_.connect(arm_ip_, arm_port_, arm_port_aux_))
   {
+    // init() 在 spin() 之前执行，此处取得的 fd 在本次初始化中不会变化。
+    const int fd = session_.fd();
+
     // 切换到示教模式
-    tl::Result ret = tl::set_current_mode(session_.fd(), tl::RobotMode::TEACH);
+    tl::Result ret = tl::set_current_mode(fd, tl::RobotMode::TEACH);
     if (ret != tl::Result::SUCCESS)
     {
       RCLCPP_ERROR(this->get_logger(), "[Init]: failed to set teach mode, result=%s",
@@ -146,7 +144,7 @@ void DriverNode::init()
     }
 
     // 清除控制器错误和报警
-    ret = tl::clear_error(session_.fd());
+    ret = tl::clear_error(fd);
     if (ret != tl::Result::SUCCESS)
     {
       RCLCPP_WARN(this->get_logger(), "[Init]: clear_error result=%s", arm_client::result_to_string(ret));

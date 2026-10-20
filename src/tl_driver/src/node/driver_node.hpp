@@ -32,10 +32,6 @@ public:
   /// @note 连接或切入示教模式失败即以 `EXIT_FAILURE` 退出，便于 systemd/launch 识别。
   void init();
 
-  /// @brief 按节点参数（arm_ip/arm_port/arm_port_aux）连接控制器。
-  /// @return 两个端口均连接成功为 true
-  bool connect();
-
   /// @brief 会话访问，供各域 handler 使用。
   /// @return 会话对象引用
   ArmSession& session() noexcept

@@ -6,7 +6,7 @@ test_all_interfaces.py
 
 参照 tx.cpp（C++ 版驱动快速自检）的分组与调用逻辑实现，覆盖：
 
-  §2  连接管理      connect_arm / power_on / power_off（disconnect_arm 不自动调用，需手动断开）
+  §2  连接管理      power_on / power_off（连接与断开由驱动节点启动/退出自动完成）
   §4  信息查询      get_speed / get_controller_id / get_robot_state / get_library_version /
                     get_robot_joint_param / get_joint_temperature / get_joint_voltage /
                     get_motor_current / get_joint_software_version /
@@ -23,7 +23,6 @@ test_all_interfaces.py
   §15 ServoJ       close_servoj
 
 危险接口（会触发运动、改动标定/IP、删除文件等）默认跳过，仅打印提示：
-  disconnect_arm（需用户手动断开）/
   moveJ / moveL / start_jogging / queue_motion_movej / open_servoj /
   track_playback / set_axis_zero_pos / set_robot_joint_param /
   set_controller_ip / set_default_cartesian_param
@@ -546,9 +545,8 @@ class DriverQuickTest(Node):
         self.logger.info("============================================================")
 
         # 核心服务就绪检查
-        cli_connect = self.wait_service("/tl_driver/connect_arm", Trigger)
         cli_version = self.wait_service("/tl_driver/get_library_version", Trigger)
-        if cli_connect is None or cli_version is None:
+        if cli_version is None:
             self.logger.error("tl_driver 核心服务未就绪，请先启动 tl_driver 节点")
             return
 
@@ -559,9 +557,8 @@ class DriverQuickTest(Node):
         self.call_trigger(cli_version, "get_library_version（库版本）")
         cli_id = self.wait_service("/tl_driver/get_controller_id", Trigger)
         self.call_trigger(cli_id, "get_controller_id（控制器序列号）")
-        self.call_trigger(cli_connect, "connect_arm（连接机械臂）")
 
-        self.test_topics()  # §4 话题（连接后才有数据）
+        self.test_topics()  # §4 话题（驱动启动后才有数据）
 
         # self.test_info_query()
         # self.test_basic_set()
@@ -574,8 +571,6 @@ class DriverQuickTest(Node):
         # self.test_dangerous()
 
         self.logger.info("\n========== 结束 ==========")
-        # disconnect_arm 不自动调用（由用户手动断开）
-        self.skip("disconnect_arm", "不自动调用，请手动断开")
 
         self.logger.info("\n============================================================")
         self.logger.info("  驱动快速自检完成")

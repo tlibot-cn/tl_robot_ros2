@@ -72,8 +72,6 @@ public:
     RCLCPP_INFO(this->get_logger(), "============================================================");
 
     // ── 服务客户端 ──
-    connect_cli_ = this->create_client<Trigger>("/tl_driver/connect_arm");
-    disconnect_cli_ = this->create_client<Trigger>("/tl_driver/disconnect_arm");
     power_on_cli_ = this->create_client<Trigger>("/tl_driver/power_on");
     power_off_cli_ = this->create_client<Trigger>("/tl_driver/power_off");
     set_mode_cli_ = this->create_client<SetCurrentMode>("/tl_driver/set_current_mode");
@@ -95,8 +93,6 @@ public:
 
 private:
   // ── ROS2 通信 ──
-  rclcpp::Client<Trigger>::SharedPtr connect_cli_;
-  rclcpp::Client<Trigger>::SharedPtr disconnect_cli_;
   rclcpp::Client<Trigger>::SharedPtr power_on_cli_;
   rclcpp::Client<Trigger>::SharedPtr power_off_cli_;
   rclcpp::Client<SetCurrentMode>::SharedPtr set_mode_cli_;
@@ -278,51 +274,40 @@ void tl_example::MoveControlDemo::run()
 {
   // ── 1. 检查核心服务就绪 ──
   RCLCPP_INFO(this->get_logger(), "\n========== 1. 检查核心服务就绪 ==========");
-  if (!waitService("connect_arm", connect_cli_) || !waitService("set_current_mode", set_mode_cli_) ||
-      !waitService("power_on", power_on_cli_) || !waitService("disconnect_arm", disconnect_cli_))
+  if (!waitService("set_current_mode", set_mode_cli_) || !waitService("power_on", power_on_cli_))
   {
     RCLCPP_ERROR(this->get_logger(), "tl_driver 核心服务未就绪，请先启动 tl_driver 节点");
     rclcpp::shutdown();
     return;
   }
 
-  // ── 2. 连接机械臂 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 2. 连接机械臂 ==========");
-  if (!callTrigger(connect_cli_, "connect_arm"))
-  {
-    RCLCPP_ERROR(this->get_logger(), "连接失败，退出测试");
-    rclcpp::shutdown();
-    return;
-  }
-
-  // ── 3. 切换示教模式 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 3. 切换示教模式 ==========");
+  // ── 2. 切换示教模式 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 2. 切换示教模式 ==========");
   {
     auto req = std::make_shared<SetCurrentMode::Request>();
     req->mode = 0; // 示教模式（0=示教，1=远程，2=运行）
     callService<SetCurrentMode>(set_mode_cli_, req, "set_current_mode(0)");
   }
 
-  // ── 4. 上电 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 4. 机械臂上电 ==========");
+  // ── 3. 上电 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 3. 机械臂上电 ==========");
   if (!callTrigger(power_on_cli_, "power_on"))
   {
     RCLCPP_ERROR(this->get_logger(), "上电失败，退出测试");
-    callTrigger(disconnect_cli_, "disconnect_arm（清理）");
     rclcpp::shutdown();
     return;
   }
 
-  // ── 5. 设置全局速度 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 5. 设置全局速度 ==========");
+  // ── 4. 设置全局速度 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 4. 设置全局速度 ==========");
   {
     auto req = std::make_shared<SetSpeed::Request>();
     req->speed = global_speed_;
     callService<SetSpeed>(set_speed_cli_, req, "set_speed");
   }
 
-  // ── 6. MoveJ 关节空间运动 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 6. MoveJ 运动控制（关节坐标，单位：rad）==========");
+  // ── 5. MoveJ 关节空间运动 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 5. MoveJ 运动控制（关节坐标，单位：rad）==========");
   {
     // 与 Python 示例一致：J1=20°, J2=10°, J3=-10°，其余 0
     MoveCommand msg = makeMoveCmd(0, {20.0 * kDegToRad, 10.0 * kDegToRad, -10.0 * kDegToRad, 0.0, 0.0, 0.0, 0.0});
@@ -334,8 +319,8 @@ void tl_example::MoveControlDemo::run()
     }
   }
 
-  // ── 7. MoveL 笛卡尔直线运动 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 7. MoveL 运动控制（直角坐标，m / rad）==========");
+  // ── 6. MoveL 笛卡尔直线运动 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 6. MoveL 运动控制（直角坐标，m / rad）==========");
   {
     // 与 Python 示例一致：位置(0.28, 0.09, 0.27)m，姿态(3.14, 0, 0)rad
     MoveCommand msg = makeMoveCmd(1, {0.28, 0.09, 0.27, 3.14, 0.0, 0.0});
@@ -348,13 +333,9 @@ void tl_example::MoveControlDemo::run()
     }
   }
 
-  // ── 8. 下电 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 8. 机械臂下电 ==========");
+  // ── 7. 下电 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 7. 机械臂下电 ==========");
   callTrigger(power_off_cli_, "power_off");
-
-  // ── 9. 断开连接 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 9. 断开连接 ==========");
-  callTrigger(disconnect_cli_, "disconnect_arm");
 
   RCLCPP_INFO(this->get_logger(), "\n============================================================");
   RCLCPP_INFO(this->get_logger(), "  运动控制测试完成，节点退出");
