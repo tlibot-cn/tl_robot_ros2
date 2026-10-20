@@ -14,11 +14,12 @@
 
 ### 2026-10-20
 
+- tl_driver：服务回调组按域拆分（session/motion/transform/config/io/state），`get_robot_state` 因等待状态帧（最长可达 61 s）单独成组，消除单次慢调用冻结其余服务的队头阻塞（架构评审 P1-1）
+- tl_driver：`get_robot_state` 增加入参校验——`channel` 限 1–9、`mode` 限 0/1、`mode=1` 时 `interval` 限 10–60000 ms；`stop=true` 只停止持续推送并立即返回，不再白等 5 s 超时
 - **破坏性变更**：tl_driver 移除 `/tl_driver/connect_arm` 与 `/tl_driver/disconnect_arm` 服务，服务数量 47 → 45（架构评审 D-10）。连接只在 `DriverNode::init()`（`spin()` 之前）建立，断开只在 `~DriverNode()`（`spin()` 返回后）执行；控制器掉线后的恢复方式为重启驱动节点
 - tl_driver：`ArmSession` 会话状态改为原子类型，`fd()` / `fd_aux()` 返回一次性快照并断言 `fd > 0`，状态发布与多 SDK 调用路径复用同一快照（P0-2 剩余项）
 - tl_example：6 个示例（`ex_digital_io` / `ex_info_query` / `ex_move_control` / `ex_servoj` / `ex_teach_control` / `medical_demo`）删除 connect/disconnect 客户端与状态机步骤，依赖驱动启动自动连接
 - tl_teleop_f710：ServoJ 初始化状态机删除 connect 步骤并重排状态编号；仿真模式完成态由 6 改为 5
-- 文档/测试：说明书 §2.1/2.2、接口测试清单、`test_all_interfaces.py`、`README.md`、`AGENTS.md` 同步移除两个服务；架构评审文档记录阶段 1 实施范围
 
 ### 2026-10-19
 

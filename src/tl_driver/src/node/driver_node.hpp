@@ -6,6 +6,7 @@
 #include <exception>
 #include <functional>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -84,6 +85,11 @@ public:
       }
     };
 
+    // 注册期必须先经 select_service_group() 选定域组；注册结束后该指针清空。
+    if (!service_group_)
+    {
+      throw std::logic_error("service callback group not selected for " + name);
+    }
     auto service = rclcpp::Node::create_service<ServiceT>(name, std::move(guarded), rmw_qos_profile_services_default,
                                                           service_group_);
     services_.push_back(service);
@@ -113,8 +119,14 @@ private:
   /// @brief 声明并读取节点参数。
   void declare_parameters();
 
-  /// @brief 创建服务/话题/定时器三个互斥回调组。
+  /// @brief 创建服务域/话题/定时器互斥回调组。
+  /// @note 服务按域各建一个 `MutuallyExclusive` 组，跨域可并行；`get_robot_state` 因等待
+  ///       状态帧（mode=1 最长 interval+1 s）单独成组，避免冻结其它服务（架构评审 P1-1）。
   void create_callback_groups();
+
+  /// @brief 设置后续 `create_service` 注册到哪个服务回调组（仅构造期使用）。
+  /// @param[in] group 服务回调组
+  void select_service_group(const rclcpp::CallbackGroup::SharedPtr& group);
 
   /// @brief 按域注册全部服务与话题回调。
   void register_entities();
@@ -135,7 +147,16 @@ private:
 
   std::unique_ptr<tl_driver::StatePublishers> publishers_;
 
+  // 构造期当前注册目标；注册每个域前由 select_service_group() 切换。
   rclcpp::CallbackGroup::SharedPtr service_group_;
+  rclcpp::CallbackGroup::SharedPtr session_service_group_;
+  rclcpp::CallbackGroup::SharedPtr motion_service_group_;
+  rclcpp::CallbackGroup::SharedPtr transform_service_group_;
+  rclcpp::CallbackGroup::SharedPtr config_service_group_;
+  rclcpp::CallbackGroup::SharedPtr io_service_group_;
+  rclcpp::CallbackGroup::SharedPtr state_service_group_;
+  rclcpp::CallbackGroup::SharedPtr robot_state_service_group_;
+
   rclcpp::CallbackGroup::SharedPtr topic_group_;
   rclcpp::CallbackGroup::SharedPtr timer_group_;
   rclcpp::SubscriptionOptions topic_options_;

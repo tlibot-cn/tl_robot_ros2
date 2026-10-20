@@ -29,9 +29,13 @@ void register_config_services(DriverNode& node);
 /// @param[in] node 驱动节点
 void register_io_services(DriverNode& node);
 
-/// @brief 注册状态查询类服务（机器人状态、关节参数与温度/电压/电流、力矩、版本、拖拽）。
+/// @brief 注册状态查询类服务（关节参数与温度/电压/电流、力矩、版本、拖拽、模式）。
 /// @param[in] node 驱动节点
 void register_state_services(DriverNode& node);
+
+/// @brief 单独注册 `get_robot_state`（最长达 5 s 等待，使用独立回调组）。
+/// @param[in] node 驱动节点
+void register_robot_state_service(DriverNode& node);
 
 /// @brief 注册运动订阅话题（moveJ/moveL/servoJ）。
 /// @param[in] node 驱动节点

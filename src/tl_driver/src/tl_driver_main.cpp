@@ -14,7 +14,10 @@
 int main(int argc, char **argv)
 {
   rclcpp::init(argc, argv);
-  auto thread_num = std::max(4u, std::thread::hardware_concurrency());
+  // 回调组共 9 个（6 个服务域 + get_robot_state + topic + timer）。线程数至少覆盖全部组，
+  // 保证慢服务占用线程时 100 Hz 状态发布仍有线程可用。
+  constexpr unsigned int kMinExecutorThreads = 10;
+  auto thread_num = std::max(kMinExecutorThreads, std::thread::hardware_concurrency());
   rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), thread_num, true);
 
   try

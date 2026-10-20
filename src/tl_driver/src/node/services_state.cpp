@@ -1,9 +1,10 @@
 /// @file services_state.cpp
 /// @brief 状态类服务：连接/上下电/清错/版本/温度/电压/电流/力矩/模式的实现（由 driver_node.cpp 按域搬移，行为不变）。
 
+#include <algorithm>
+#include <chrono>
 #include <functional>
 #include <memory>
-#include <chrono>
 #include <string>
 #include <vector>
 
@@ -74,6 +75,22 @@ void handle_get_robot_state_service(DriverNode& node,
     return;
   }
 
+  // SDK: channel 有效范围 1..9；mode 仅 0（单次）/1（持续）；interval 仅 mode=1 有效，范围 10..60000 ms。
+  // 非法请求直接拒绝，避免控制器不产生状态帧时白等 5 s（架构评审 P1-1）。
+  constexpr int kMinChannel = 1;
+  constexpr int kMaxChannel = 9;
+  if (request->channel < kMinChannel || request->channel > kMaxChannel)
+  {
+    response->success = false;
+    response->message = "channel must be in [1, 9]";
+    return;
+  }
+
+  constexpr int kQueryOnce = 0;
+  constexpr int kContinuous = 1;
+  constexpr int kMinIntervalMs = 10;
+  constexpr int kMaxIntervalMs = 60000;
+
   tl::RobotState param{};
   param.channel = request->channel;
   param.stop = request->stop;
@@ -93,10 +110,28 @@ void handle_get_robot_state_service(DriverNode& node,
     param.ioState = false;
   }
 
+  // stop 请求只下发停止命令，mode/interval 不参与；仅对查询请求校验。
+  if (!request->stop)
+  {
+    if (request->mode != kQueryOnce && request->mode != kContinuous)
+    {
+      response->success = false;
+      response->message = "mode must be 0 (query once) or 1 (continuous)";
+      return;
+    }
+    if (request->mode == kContinuous && (request->interval < kMinIntervalMs || request->interval > kMaxIntervalMs))
+    {
+      response->success = false;
+      response->message = "interval must be in [10, 60000] ms when mode=1";
+      return;
+    }
+  }
+
   const uint64_t start_seq = arm_client::robot_state_seq();
 
   // get_robot_state 需使用 7000 端口（fd_aux），回调亦注册在 7000 端口
-  tl::Result ret = tl::get_robot_state(node.session().fd_aux(), param);
+  const int fd_aux = node.session().fd_aux();
+  tl::Result ret = tl::get_robot_state(fd_aux, param);
   if (ret != tl::Result::SUCCESS)
   {
     response->success = false;
@@ -104,8 +139,22 @@ void handle_get_robot_state_service(DriverNode& node,
     return;
   }
 
+  // stop=true 只停止持续推送，控制器不回复状态帧；等待只会白等 5 s。
+  if (request->stop)
+  {
+    response->success = true;
+    response->message = "Stop robot state command sent";
+    return;
+  }
+
+  // mode=1 的首帧最早在 interval 之后到达，等待窗口必须覆盖 interval；mode=0 固定 5 s。
+  const auto timeout =
+      request->mode == kContinuous
+          ? std::chrono::milliseconds(std::max<int64_t>(5000, static_cast<int64_t>(request->interval) + 1000))
+          : std::chrono::milliseconds(5000);
+
   std::string state_message;
-  if (!arm_client::wait_robot_state(start_seq, std::chrono::seconds(5), state_message))
+  if (!arm_client::wait_robot_state(start_seq, timeout, state_message))
   {
     response->success = false;
     response->message = "Timeout waiting for robot state";
@@ -385,9 +434,6 @@ void register_state_services(DriverNode& node)
   node.create_service<tl_ros2_interface::srv::SetControllerIP>(
       "/tl_driver/set_controller_ip",
       std::bind(&handle_set_controller_ip_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
-  node.create_service<tl_ros2_interface::srv::GetRobotState>(
-      "/tl_driver/get_robot_state",
-      std::bind(&handle_get_robot_state_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
   node.create_service<std_srvs::srv::Trigger>(
       "/tl_driver/get_library_version",
       std::bind(&handle_get_library_version_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
@@ -418,5 +464,12 @@ void register_state_services(DriverNode& node)
   node.create_service<tl_ros2_interface::srv::GetCurrentMode>(
       "/tl_driver/get_current_mode",
       std::bind(&handle_get_current_mode_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+}
+
+void register_robot_state_service(DriverNode& node)
+{
+  node.create_service<tl_ros2_interface::srv::GetRobotState>(
+      "/tl_driver/get_robot_state",
+      std::bind(&handle_get_robot_state_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
 }
 } // namespace tl_driver

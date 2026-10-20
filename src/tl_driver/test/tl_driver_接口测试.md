@@ -187,7 +187,7 @@ ros2 service call /tl_driver/coord_transform tl_ros2_interface/srv/CoordTransfor
 
 **测试指令：**
 ```bash
-ros2 service call /tl_driver/get_robot_state tl_ros2_interface/srv/GetRobotState "{channel: 0, stop: false, mode: 0, interval: 100, io_state: false, position: 0, detail_motion_pos: false, pos_sum: 0, io_port: [], optional: []}"
+ros2 service call /tl_driver/get_robot_state tl_ros2_interface/srv/GetRobotState "{channel: 1, stop: false, mode: 0, interval: 100, io_state: false, position: 0, detail_motion_pos: false, pos_sum: 1, io_port: [], optional: []}"
 ros2 service call /tl_driver/get_joint_temperature tl_ros2_interface/srv/GetJointTemperature "{}"
 ros2 service call /tl_driver/get_joint_voltage tl_ros2_interface/srv/GetJointVoltage "{}"
 ros2 service call /tl_driver/get_motor_current tl_ros2_interface/srv/GetMotorCurrent "{}"
