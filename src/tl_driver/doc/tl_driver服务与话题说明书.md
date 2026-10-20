@@ -18,6 +18,7 @@
 |V1.9 | 2026-10-17 | 移除 18 个服务：纯数学变换（5）、作业文件（7）、全局路点（2）、`get_nexmotion_lib_version`、`set_dh_param`、`restore_default_dh_param`、`log_download`；对应章节已删除，章节号保留不复位以避免破坏既有引用 |
 |V1.10 | 2026-10-19 | 移除 ServoL：删除 `/tl_driver/set_servol_pos` 话题、`ServolMove` 消息及 15.4 发送跟踪笛卡尔位姿章节；笛卡尔直线伺服改由消费方本地 IK 后经 ServoJ 下发 |
 |V1.11 | 2026-10-20 | 移除 `/tl_driver/connect_arm` 与 `/tl_driver/disconnect_arm` 服务（服务数 47 → 45）：连接只在节点启动时建立、断开只在节点退出时执行；2.1/2.2 章节删除，章节号保留不复位 |
+|V1.12 | 2026-10-20 | `get_robot_state` 补充入参范围与 `stop=true` 立即返回语义；服务回调组按域拆分，该服务使用独立回调组 |
 
 </div>
 
@@ -272,8 +273,8 @@ ros2 service call /tl_driver/get_controller_id std_srvs/srv/Trigger "{}"
 **输入参数**
 | 参数名 | 类型 | 范围 | 说明 |
 |--------|------|------|------|
-| channel | int32 | — | 查询通道编号 |
-| stop | bool | — | `true` = 停止持续发送，`false` = 不停止 |
+| channel | int32 | 1～9 | 查询通道编号（超出范围直接返回失败，不再等待状态帧） |
+| stop | bool | — | `true` = 停止持续发送，`false` = 不停止；`true` 时立即返回，不等待状态帧 |
 | mode | int32 | 0 或 1 | 查询模式：`0` = 只回复一次，`1` = 持续回复 |
 | interval | int32 | 10～60000 | 持续回复时间间隔（mode=1时有效），单位：ms |
 | io_state | bool | — | `true` = 查询IO状态，`false` = 不查询 |
@@ -288,6 +289,8 @@ ros2 service call /tl_driver/get_controller_id std_srvs/srv/Trigger "{}"
 |--------|------|------|
 | success | bool | `true` = 查询成功，`false` = 查询失败 |
 | message | string | 成功时包含查询信息，失败时包含错误描述 |
+
+> **注意**：`channel` 必须为 1～9。`stop=true` 只下发停止命令并立即返回成功，不校验也不使用 `mode`/`interval`。非 stop 请求要求 `mode` 为 0/1；`mode=1` 时 `interval` 必须在 10～60000 ms，非法入参立即返回失败。`mode=0` 时若控制器未产生状态帧，服务最长等待 5 s；`mode=1` 的等待窗口为 `max(5 s, interval + 1 s)`，以覆盖首帧到达间隔。该服务使用独立回调组，不会阻塞其它服务。
 #### 命令示例
 ```
 ros2 service call /tl_driver/get_robot_state tl_ros2_interface/srv/GetRobotState \

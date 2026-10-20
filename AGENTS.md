@@ -35,7 +35,7 @@ flowchart LR
 - **`tl_driver` 组成**：`DriverNode` 只做参数、回调组、实体创建；服务按域拆在 `src/node/services_*.cpp`，由 `src/node/registrars.hpp` 的 `register_*` 函数注册；话题在 `topics.cpp`。当前规模：**45 个服务、3 个订阅、3 个发布**。
 - **发布**：`/joint_states`（rad）、`/tcp_pose`（m/rad）、`/arm_status`（`STOP`/`PAUSE`/`RUNNING`），100 Hz wall timer。
 - **订阅**：`/tl_driver/moveJ`、`/tl_driver/moveL`、`/tl_driver/set_servoj_pos`（rad，6 或 7 元素，6 元素末尾补 0；转发 SDK 时为固定 7 元素）。`moveJ/moveL` **不等到位**，需要到位判定的一方轮询 `/arm_status`。
-- **线程模型**：`MultiThreadedExecutor`（`max(4, hardware_concurrency)`）；`service_group_` / `topic_group_` / `timer_group_` **全部 `MutuallyExclusive`**。`timer_group_` 曾因 `Reentrant` 导致状态发布并发，勿改回。
+- **线程模型**：`MultiThreadedExecutor`（`max(10, hardware_concurrency)`，至少覆盖 9 个回调组）；服务按域各一个 `MutuallyExclusive` 回调组（session/motion/transform/config/io/state），`get_robot_state` 因最长等待 5 s 单独成组；`topic_group_` / `timer_group_` 同样 `MutuallyExclusive`。`timer_group_` 曾因 `Reentrant` 导致状态发布并发，勿改回。
 - **失败即退**：`DriverNode::init()` 连接失败或切入示教模式失败时 `rclcpp::shutdown()` + exit，不带病运行。
 - **硬件插件**：`TLHardwareInterface` 生命周期 `on_init → on_configure → on_activate → …`；`on_activate` 用当前关节位置初始化命令，避免跳到零位；`write()` 发 `/tl_driver/set_servoj_pos`。
 
@@ -152,7 +152,7 @@ ros2 launch tl_gazebo gazebo_tcb610_demo.launch.py          # Gazebo
 |---|---|
 | `src/tl_driver/src/tl_driver_main.cpp` | 驱动入口；`MultiThreadedExecutor` 线程数 |
 | `src/tl_driver/src/node/driver_node.{hpp,cpp}` | 参数、回调组、实体创建、`init()` 失败即退 |
-| `src/tl_driver/src/node/registrars.hpp` | 7 个域注册函数声明 |
+| `src/tl_driver/src/node/registrars.hpp` | 8 个注册函数声明（7 个服务域 + topics） |
 | `src/tl_driver/src/node/services_*.cpp` / `topics.cpp` / `publishers.cpp` | 服务、订阅、发布实现 |
 | `src/tl_driver/src/arm_session.{hpp,cpp}` / `arm_client.{hpp,cpp}` | 会话与 SDK 薄封装、状态帧通道 |
 | `src/tl_driver/src/convert/units.hpp` / `msg_convert.cpp` | 单位与消息换算 |

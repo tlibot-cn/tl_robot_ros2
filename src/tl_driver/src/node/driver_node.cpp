@@ -72,8 +72,15 @@ void DriverNode::declare_parameters()
 
 void DriverNode::create_callback_groups()
 {
-  // 多线程
-  service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  // 服务按域分组：同域内串行，跨域可并行（MultiThreadedExecutor）。
+  session_service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  motion_service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  transform_service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  config_service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  io_service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  state_service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  // get_robot_state 等待状态帧（mode=1 最长 interval+1 s），单独成组，避免阻塞其它服务。
+  robot_state_service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   topic_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   topic_options_.callback_group = topic_group_;
@@ -81,15 +88,29 @@ void DriverNode::create_callback_groups()
   timer_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 }
 
+void DriverNode::select_service_group(const rclcpp::CallbackGroup::SharedPtr& group)
+{
+  service_group_ = group;
+}
+
 void DriverNode::register_entities()
 {
-  // 服务
+  // 服务：每个域注册到各自的互斥回调组。
+  select_service_group(session_service_group_);
   register_session_services(*this);
+  select_service_group(motion_service_group_);
   register_motion_services(*this);
+  select_service_group(transform_service_group_);
   register_transform_services(*this);
+  select_service_group(config_service_group_);
   register_config_services(*this);
+  select_service_group(io_service_group_);
   register_io_services(*this);
+  select_service_group(state_service_group_);
   register_state_services(*this);
+  select_service_group(robot_state_service_group_);
+  register_robot_state_service(*this);
+  service_group_.reset(); // 注册结束，后续 create_service 未显式选组会抛异常
 
   // 话题pub
   publishers_ = std::make_unique<tl_driver::StatePublishers>(*this, session_, arm_joints_, ndof_);
