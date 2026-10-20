@@ -32,7 +32,7 @@ flowchart LR
 核心事实：
 
 - **双端口**：`arm_port` 6001 用于请求/响应式 SDK 调用；`arm_port_aux` 7000 用于 servoJ 全系列 + 机器人状态异步推送。两个 fd 都必须连通，状态回调只在 aux 注册，错误/告警回调两个端口都注册。
-- **`tl_driver` 组成**：`DriverNode` 只做参数、回调组、实体创建；服务按域拆在 `src/node/services_*.cpp`，由 `src/node/registrars.hpp` 的 `register_*` 函数注册；话题在 `topics.cpp`。当前规模：**47 个服务、3 个订阅、3 个发布**。
+- **`tl_driver` 组成**：`DriverNode` 只做参数、回调组、实体创建；服务按域拆在 `src/node/services_*.cpp`，由 `src/node/registrars.hpp` 的 `register_*` 函数注册；话题在 `topics.cpp`。当前规模：**45 个服务、3 个订阅、3 个发布**。
 - **发布**：`/joint_states`（rad）、`/tcp_pose`（m/rad）、`/arm_status`（`STOP`/`PAUSE`/`RUNNING`），100 Hz wall timer。
 - **订阅**：`/tl_driver/moveJ`、`/tl_driver/moveL`、`/tl_driver/set_servoj_pos`（rad，6 或 7 元素，6 元素末尾补 0；转发 SDK 时为固定 7 元素）。`moveJ/moveL` **不等到位**，需要到位判定的一方轮询 `/arm_status`。
 - **线程模型**：`MultiThreadedExecutor`（`max(4, hardware_concurrency)`）；`service_group_` / `topic_group_` / `timer_group_` **全部 `MutuallyExclusive`**。`timer_group_` 曾因 `Reentrant` 导致状态发布并发，勿改回。
@@ -121,7 +121,7 @@ ros2 launch tl_gazebo gazebo_tcb610_demo.launch.py          # Gazebo
 | 话题 / 服务 | snake_case，驱动侧统一 `/tl_driver/` 前缀 |
 | Python | 文件/函数/变量 snake_case，类 PascalCase；客户端 `_cli`、订阅 `_sub` |
 
-已知历史例外，勿“顺手修正”：`connect_service_` → `/tl_driver/connect_arm`；`poweron_service_` → `/tl_driver/power_on`；`poweroff_service_` → `/tl_driver/power_off`；`running_status_pub_` → `/arm_status`。
+已知历史例外，勿“顺手修正”：`poweron_service_` → `/tl_driver/power_on`；`poweroff_service_` → `/tl_driver/power_off`；`running_status_pub_` → `/arm_status`。
 
 ### C++ 模式
 

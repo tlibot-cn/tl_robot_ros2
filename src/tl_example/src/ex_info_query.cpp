@@ -91,10 +91,6 @@ public:
     trig_clis_["get_controller_id"] = create_client<Trigger>("/tl_driver/get_controller_id");
     trig_clis_["get_library_version"] = create_client<Trigger>("/tl_driver/get_library_version");
 
-    // ── 连接管理（获取真实数据需要先连接）──
-    trig_clis_["connect"] = create_client<Trigger>("/tl_driver/connect_arm");
-    trig_clis_["disconnect"] = create_client<Trigger>("/tl_driver/disconnect_arm");
-
     // ── 信息查询类服务 ──
     get_speed_cli_ = create_client<tl_ros2_interface::srv::GetSpeed>("/tl_driver/get_speed");
     get_robot_state_cli_ = create_client<tl_ros2_interface::srv::GetRobotState>("/tl_driver/get_robot_state");
@@ -296,22 +292,15 @@ private:
 void tl_example::InfoQueryDemo::run()
 {
   RCLCPP_INFO(this->get_logger(), "\n========== 1. 检查核心服务就绪 ==========");
-  if (!waitService("connect_arm", trig_clis_["connect"]) ||
-      !waitService("get_library_version", trig_clis_["get_library_version"]))
+  if (!waitService("get_library_version", trig_clis_["get_library_version"]))
   {
     RCLCPP_ERROR(this->get_logger(), "tl_driver 核心服务未就绪，请先启动 tl_driver 节点");
     rclcpp::shutdown();
     return;
   }
 
-  RCLCPP_INFO(this->get_logger(), "\n========== 连接机械臂（获取真实数据） ==========");
-  callTrigger("connect", "connect_arm");
-
   RCLCPP_INFO(this->get_logger(), "\n========== §4 信息查询（按说明书编号 4.1~4.20）==========");
   testInfoQuery();
-
-  RCLCPP_INFO(this->get_logger(), "\n========== 断开连接 ==========");
-  callTrigger("disconnect", "disconnect_arm");
 
   RCLCPP_INFO(this->get_logger(), "\n============================================================");
   RCLCPP_INFO(this->get_logger(), "  信息查询测试完成，节点退出");

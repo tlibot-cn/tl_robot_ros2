@@ -97,8 +97,6 @@ public:
     jog_refresh_ms_ = this->get_parameter("jog_refresh_ms").as_int();
 
     // ── 服务客户端 ──
-    connect_cli_ = this->create_client<Trigger>("/tl_driver/connect_arm");
-    disconnect_cli_ = this->create_client<Trigger>("/tl_driver/disconnect_arm");
     power_on_cli_ = this->create_client<Trigger>("/tl_driver/power_on");
     power_off_cli_ = this->create_client<Trigger>("/tl_driver/power_off");
     set_mode_cli_ = this->create_client<SetCurrentMode>("/tl_driver/set_current_mode");
@@ -123,8 +121,6 @@ public:
 
 private:
   // ── ROS2 通信 ──
-  rclcpp::Client<Trigger>::SharedPtr connect_cli_;
-  rclcpp::Client<Trigger>::SharedPtr disconnect_cli_;
   rclcpp::Client<Trigger>::SharedPtr power_on_cli_;
   rclcpp::Client<Trigger>::SharedPtr power_off_cli_;
   rclcpp::Client<SetCurrentMode>::SharedPtr set_mode_cli_;
@@ -328,26 +324,16 @@ void tl_example::TeachControlDemo::run()
 {
   // ── 1. 检查核心服务就绪 ──
   RCLCPP_INFO(this->get_logger(), "\n========== 1. 检查核心服务就绪 ==========");
-  if (!waitService("connect_arm", connect_cli_) || !waitService("set_current_mode", set_mode_cli_) ||
-      !waitService("power_on", power_on_cli_) || !waitService("start_jogging", start_jogging_cli_) ||
-      !waitService("disconnect_arm", disconnect_cli_))
+  if (!waitService("set_current_mode", set_mode_cli_) || !waitService("power_on", power_on_cli_) ||
+      !waitService("start_jogging", start_jogging_cli_))
   {
     RCLCPP_ERROR(this->get_logger(), "tl_driver 核心服务未就绪，请先启动 tl_driver 节点");
     rclcpp::shutdown();
     return;
   }
 
-  // ── 2. 连接机械臂 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 2. 连接机械臂 ==========");
-  if (!callTrigger(connect_cli_, "connect_arm"))
-  {
-    RCLCPP_ERROR(this->get_logger(), "连接失败，退出测试");
-    rclcpp::shutdown();
-    return;
-  }
-
-  // ── 3. 切换示教模式 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 3. 切换示教模式 ==========");
+  // ── 2. 切换示教模式 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 2. 切换示教模式 ==========");
   {
     auto req = std::make_shared<SetCurrentMode::Request>();
     req->mode = 0; // 示教模式（0=示教，1=远程，2=运行）
@@ -357,20 +343,19 @@ void tl_example::TeachControlDemo::run()
     }
   }
 
-  // ── 4. 机械臂上电 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 4. 机械臂上电 ==========");
+  // ── 3. 机械臂上电 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 3. 机械臂上电 ==========");
   if (!callTrigger(power_on_cli_, "power_on"))
   {
     RCLCPP_ERROR(this->get_logger(), "上电失败，退出测试");
-    callTrigger(disconnect_cli_, "disconnect_arm（清理）");
     rclcpp::shutdown();
     return;
   }
 
-  // ── 5. 关节坐标系点动（⚠ 真实运动）──
+  // ── 4. 关节坐标系点动（⚠ 真实运动）──
   // 说明：坐标系=0（关节）时，start_jogging 的 axis 1~7 代表关节轴号 J1~J7，
   //       即「几号轴就转几号关节」。
-  RCLCPP_INFO(this->get_logger(), "\n========== 5. 关节坐标系点动（⚠ 真实运动）==========");
+  RCLCPP_INFO(this->get_logger(), "\n========== 4. 关节坐标系点动（⚠ 真实运动）==========");
   RCLCPP_INFO(this->get_logger(), "  说明：坐标系=0（关节）时，axis 1~7 = 关节轴号 J1~J7");
   {
     auto req = std::make_shared<SetCurrentCoord::Request>();
@@ -385,10 +370,10 @@ void tl_example::TeachControlDemo::run()
           "关节 J" + std::to_string(jog_axis_) + (jog_dir_ ? " 正方向" : " 负方向") + "点动");
   printJointStateDeg("点动后（对比 J" + std::to_string(jog_axis_) + " 应发生变化）");
 
-  // ── 6. 直角坐标系点动（⚠ 真实运动）──
+  // ── 5. 直角坐标系点动（⚠ 真实运动）──
   // 说明：坐标系=1（直角）时，start_jogging 的 axis 含义变化：
   //       axis 1~3 = 位置 X/Y/Z（直线平移），axis 4~6 = 姿态 RX/RY/RZ（旋转）。
-  RCLCPP_INFO(this->get_logger(), "\n========== 6. 直角坐标系点动（⚠ 真实运动）==========");
+  RCLCPP_INFO(this->get_logger(), "\n========== 5. 直角坐标系点动（⚠ 真实运动）==========");
   RCLCPP_INFO(this->get_logger(), "  说明：坐标系=1（直角）时，axis 1~3 = 位置 X/Y/Z，axis 4~6 = 姿态 RX/RY/RZ");
   {
     auto req = std::make_shared<SetCurrentCoord::Request>();
@@ -411,13 +396,9 @@ void tl_example::TeachControlDemo::run()
     callService<SetCurrentCoord>(set_current_coord_cli_, req, "set_current_coord(0=关节，恢复)");
   }
 
-  // ── 7. 机械臂下电 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 7. 机械臂下电 ==========");
+  // ── 6. 机械臂下电 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 6. 机械臂下电 ==========");
   callTrigger(power_off_cli_, "power_off");
-
-  // ── 8. 断开连接 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 8. 断开连接 ==========");
-  callTrigger(disconnect_cli_, "disconnect_arm");
 
   RCLCPP_INFO(this->get_logger(), "\n============================================================");
   RCLCPP_INFO(this->get_logger(), "  点动（示教）测试完成，节点退出");

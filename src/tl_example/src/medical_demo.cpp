@@ -103,10 +103,6 @@ MedicalDemo::MedicalDemo(const rclcpp::NodeOptions& options) : Node("medical_dem
 
 void MedicalDemo::ensureClients()
 {
-  if (!connect_cli_)
-  {
-    connect_cli_ = this->create_client<Trigger>("/tl_driver/connect_arm");
-  }
   if (!set_speed_cli_)
   {
     set_speed_cli_ = this->create_client<SetSpeed>("/tl_driver/set_speed");
@@ -169,15 +165,11 @@ void MedicalDemo::stateMachine()
   {
     case State::INIT:
       ensureClients();
-      if (waitService(connect_cli_, "connect_arm", 2.0))
+      if (waitService(set_mode_cli_, "set_current_mode", 2.0))
       {
-        RCLCPP_INFO(this->get_logger(), "tl_driver 服务已就绪，开始连接机械臂...");
-        state_ = State::CONNECTING;
+        RCLCPP_INFO(this->get_logger(), "tl_driver 服务已就绪，开始切换示教模式...");
+        state_ = State::SET_MODE;
       }
-      break;
-
-    case State::CONNECTING:
-      startConnect();
       break;
 
     case State::SET_MODE:
@@ -202,31 +194,6 @@ void MedicalDemo::stateMachine()
 
     case State::DONE:
       break;
-  }
-}
-
-// ── CONNECTING ──
-
-void MedicalDemo::startConnect()
-{
-  auto req = std::make_shared<Trigger::Request>();
-  auto future =
-      connect_cli_->async_send_request(req, std::bind(&MedicalDemo::onConnectDone, this, std::placeholders::_1));
-  state_ = State::DONE; // 等待回调
-}
-
-void MedicalDemo::onConnectDone(rclcpp::Client<Trigger>::SharedFuture future)
-{
-  const auto& resp = future.get();
-  if (resp->success)
-  {
-    RCLCPP_INFO(this->get_logger(), "✓ 机械臂连接成功");
-    state_ = State::SET_MODE;
-  }
-  else
-  {
-    RCLCPP_ERROR(this->get_logger(), "✗ 连接失败: %s", resp->message.c_str());
-    RCLCPP_ERROR(this->get_logger(), "请确认机械臂状态后重试 (Ctrl-C 退出)");
   }
 }
 

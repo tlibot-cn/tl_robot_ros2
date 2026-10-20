@@ -185,7 +185,7 @@ src/
 
 - **直接 ServoJ 方案**：节点内部自行 IK 求解，以 **250Hz（4ms）** 周期稳定输出关节角到 `/tl_driver/set_servoj_pos`
 - **双模式**：真机模式通过 ServoJ 关节跟踪驱动；仿真模式通过 KDL `ChainIkSolverPos_LMA` 本地 IK + Gazebo position controller 驱动
-- **完整上电流程**：自动执行 `connect_arm → power_on → set_mode → set_speed → open_servoj`
+- **完整上电流程**：自动执行 `power_on → set_mode → set_speed → open_servoj`（连接由驱动启动时建立）
 - **安全机制**：Back+Start 紧急停止、工作空间软限位、摇杆死区滤波
 - **6/7 轴自适应**：根据 `home_joints` 长度自动确定轴数
 - **异步 IK**：有摇杆输入时 `std::async` 独立线程做 IK，不阻塞 250Hz 控制循环

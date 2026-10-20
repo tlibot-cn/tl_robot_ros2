@@ -60,7 +60,6 @@ F710TeleopNode::F710TeleopNode()
   set_speed_client_ = this->create_client<tl_ros2_interface::srv::SetSpeed>("/tl_driver/set_speed");
   open_servoj_client_ = this->create_client<tl_ros2_interface::srv::OpenServoJ>("/tl_driver/open_servoj");
   close_servoj_client_ = this->create_client<std_srvs::srv::Trigger>("/tl_driver/close_servoj");
-  connect_arm_client_ = this->create_client<std_srvs::srv::Trigger>("/tl_driver/connect_arm");
   power_on_client_ = this->create_client<std_srvs::srv::Trigger>("/tl_driver/power_on");
   coord_transform_client_ = this->create_client<tl_ros2_interface::srv::CoordTransform>("/tl_driver/coord_transform");
   power_off_client_ = this->create_client<std_srvs::srv::Trigger>("/tl_driver/power_off");
@@ -396,19 +395,18 @@ void F710TeleopNode::initServoj()
 {
   if (simulation_mode_)
   {
-    init_state_ = 6;
+    init_state_ = 5;
     return;
   }
-  if (init_state_ == 6)
+  if (init_state_ == 5)
     return;
 
   auto& clk = *this->get_clock();
 
-  // 状态 0：等待所有服务就绪
+  // 状态 0：等待所有服务就绪（连接已由 tl_driver 启动时建立）
   if (init_state_ == 0)
   {
-    if (!connect_arm_client_->wait_for_service(std::chrono::milliseconds(100)) ||
-        !power_on_client_->wait_for_service(std::chrono::milliseconds(100)) ||
+    if (!power_on_client_->wait_for_service(std::chrono::milliseconds(100)) ||
         !set_mode_client_->wait_for_service(std::chrono::milliseconds(100)) ||
         !set_speed_client_->wait_for_service(std::chrono::milliseconds(100)) ||
         !open_servoj_client_->wait_for_service(std::chrono::milliseconds(100)))
@@ -417,44 +415,35 @@ void F710TeleopNode::initServoj()
       return;
     }
     RCLCPP_INFO(this->get_logger(), "ServoJ 初始化中...");
-    connect_arm_client_->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>());
+    power_on_client_->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>());
     init_state_ = 1;
     return;
   }
 
-  // 状态 1：连接机械臂
+  // 状态 1：上电
   if (init_state_ == 1)
-  {
-    RCLCPP_INFO(this->get_logger(), "机械臂已连接");
-    power_on_client_->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>());
-    init_state_ = 2;
-    return;
-  }
-
-  // 状态 2：上电
-  if (init_state_ == 2)
   {
     RCLCPP_INFO(this->get_logger(), "伺服已上电");
     auto req = std::make_shared<tl_ros2_interface::srv::SetCurrentMode::Request>();
     req->mode = 2;
     set_mode_client_->async_send_request(req);
-    init_state_ = 3;
+    init_state_ = 2;
     return;
   }
 
-  // 状态 3：设置远程模式
-  if (init_state_ == 3)
+  // 状态 2：设置远程模式
+  if (init_state_ == 2)
   {
     RCLCPP_INFO(this->get_logger(), "远程模式已设置");
     auto req = std::make_shared<tl_ros2_interface::srv::SetSpeed::Request>();
     req->speed = servo_speed_;
     set_speed_client_->async_send_request(req);
-    init_state_ = 4;
+    init_state_ = 3;
     return;
   }
 
-  // 状态 4：设置 ServoJ 速度
-  if (init_state_ == 4)
+  // 状态 3：设置 ServoJ 速度
+  if (init_state_ == 3)
   {
     RCLCPP_INFO(this->get_logger(), "ServoJ 速度已设为 %.1f", servo_speed_);
     auto req = std::make_shared<tl_ros2_interface::srv::OpenServoJ::Request>();
@@ -462,15 +451,15 @@ void F710TeleopNode::initServoj()
     req->amax = std::vector<double>(7, servo_amax_);
     req->jmax = std::vector<double>(7, servo_jmax_);
     open_servoj_client_->async_send_request(req);
-    init_state_ = 5;
+    init_state_ = 4;
     return;
   }
 
-  // 状态 5：ServoJ 开启完成
-  if (init_state_ == 5)
+  // 状态 4：ServoJ 开启完成
+  if (init_state_ == 4)
   {
     RCLCPP_INFO(this->get_logger(), "ServoJ 已开启，等待 joint_states 初始化位姿...");
-    init_state_ = 6;
+    init_state_ = 5;
     // 初始化位姿由 jointStateCallback 首帧触发
     return;
   }
@@ -501,7 +490,7 @@ void F710TeleopNode::jointStateCallback(const sensor_msgs::msg::JointState::Shar
   }
 
   // 首帧到达且初始化完成 → 用当前关节角初始化位姿
-  if (joint_state_ready_ && init_state_ >= 6 && !target_pose_ready_)
+  if (joint_state_ready_ && init_state_ >= 5 && !target_pose_ready_)
   {
     // /joint_states 与 set_servoj_pos 均为 rad，直接作为初始指令（不移动）
     {
@@ -581,7 +570,8 @@ bool F710TeleopNode::currentJointToPose(std::vector<double>& pose_out)
 
 void F710TeleopNode::closeServoj()
 {
-  if (init_state_ < 5)
+  // 状态 4 = open_servoj 请求已发出；从该状态起关机都需要关闭 ServoJ 并恢复示教/下电。
+  if (init_state_ < 4)
     return;
   try
   {

@@ -25,9 +25,9 @@ namespace tl_example
  * 模拟医学检验科机械臂的典型操作流程：
  *   安全位 → 样本架 → 取样 → 试剂架 → 分装加样 → 检测仪器进样口 → 放样 → 安全位
  *
- * 状态机：INIT → CONNECTING → SET_MODE → POWER_ON → SET_SPEED → MOVING →
- *          POWER_OFF → DONE
- * 连接后切换到示教模式（mode=0），然后显式上电；结束时显式下电，不切换模式。
+ * 状态机：INIT → SET_MODE → POWER_ON → SET_SPEED → MOVING → POWER_OFF → DONE
+ * 连接由 tl_driver 启动时建立；本节点切换到示教模式（mode=0）后显式上电，
+ * 结束时显式下电，不切换模式。
  */
 class MedicalDemo : public rclcpp::Node
 {
@@ -57,9 +57,6 @@ private:
   // ── 状态机 ──
   void stateMachine();
 
-  void startConnect();
-  void onConnectDone(rclcpp::Client<Trigger>::SharedFuture future);
-
   void startSetMode();
   void onSetModeDone(rclcpp::Client<SetCurrentMode>::SharedFuture future);
 
@@ -79,7 +76,6 @@ private:
   // ── ROS2 通信 ──
   rclcpp::Publisher<MoveCommand>::SharedPtr movel_pub_;
   rclcpp::Subscription<ArmStatus>::SharedPtr arm_status_sub_;
-  rclcpp::Client<Trigger>::SharedPtr connect_cli_;
   rclcpp::Client<SetCurrentMode>::SharedPtr set_mode_cli_;
   rclcpp::Client<Trigger>::SharedPtr power_on_cli_;
   rclcpp::Client<Trigger>::SharedPtr power_off_cli_;
@@ -90,7 +86,6 @@ private:
   enum class State
   {
     INIT,
-    CONNECTING,
     SET_MODE,
     POWER_ON,
     SET_SPEED,
