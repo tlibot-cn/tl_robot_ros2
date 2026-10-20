@@ -246,8 +246,9 @@ void handle_set_coord_num_service(DriverNode& node,
     return;
   }
 
-  tl::Result ret = tl::set_tool_hand_number(node.session().fd(), request->tool_num);
-  tl::Result ret1 = tl::set_user_coord_number(node.session().fd(), request->user_num);
+  const int fd = node.session().fd();
+  tl::Result ret = tl::set_tool_hand_number(fd, request->tool_num);
+  tl::Result ret1 = tl::set_user_coord_number(fd, request->user_num);
   if (ret == tl::Result::SUCCESS && ret1 == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -273,8 +274,9 @@ void handle_get_coord_num_service(DriverNode& node,
   }
 
   int toolNum = -1, userNum = -1;
-  tl::Result ret = tl::get_tool_hand_number(node.session().fd(), toolNum);
-  tl::Result ret1 = tl::get_user_coord_number(node.session().fd(), userNum);
+  const int fd = node.session().fd();
+  tl::Result ret = tl::get_tool_hand_number(fd, toolNum);
+  tl::Result ret1 = tl::get_user_coord_number(fd, userNum);
   if (ret == tl::Result::SUCCESS && ret1 == tl::Result::SUCCESS)
   {
     response->success = true;

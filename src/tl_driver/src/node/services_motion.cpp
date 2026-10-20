@@ -215,7 +215,8 @@ void handle_queue_motion_set_status_service(
     return;
   }
 
-  tl::Result ret = tl::queue_motion_set_status(node.session().fd(), request->status);
+  const int fd = node.session().fd();
+  tl::Result ret = tl::queue_motion_set_status(fd, request->status);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Set queue motion status successfully" : "Failed to set queue motion status";
 
@@ -223,7 +224,7 @@ void handle_queue_motion_set_status_service(
   if (!request->status)
   {
     const bool queue_status_ok = response->success;
-    tl::Result mode_ret = tl::set_current_mode(node.session().fd(), tl::RobotMode::TEACH);
+    tl::Result mode_ret = tl::set_current_mode(fd, tl::RobotMode::TEACH);
     if (mode_ret != tl::Result::SUCCESS)
     {
       response->success = false;
@@ -252,7 +253,8 @@ void handle_queue_motion_movej_service(DriverNode& node,
 
   tl::MoveCmd cmd = convert::to_move_cmd(request->cmd, convert::MotionKind::kJoint);
 
-  tl::Result ret = tl::queue_motion_push_back_moveJ(node.session().fd(), cmd);
+  const int fd = node.session().fd();
+  tl::Result ret = tl::queue_motion_push_back_moveJ(fd, cmd);
   if (ret != tl::Result::SUCCESS)
   {
     response->success = false;
@@ -263,7 +265,7 @@ void handle_queue_motion_movej_service(DriverNode& node,
   // 新 SDK 签名: queue_motion_send_to_controller(socketFd, int size, bool isContinue = false)
   //   size=0 表示发送全部队列指令；isContinue=true 继续排队不运动，false 立即执行
   // 旧写法把 bool 传给了 size 参数，导致 is_continue=true 时只发送第 1 条，已修正
-  ret = tl::queue_motion_send_to_controller(node.session().fd(), 0, request->is_continue);
+  ret = tl::queue_motion_send_to_controller(fd, 0, request->is_continue);
   response->success = (ret == tl::Result::SUCCESS);
   response->message =
       response->success ? "Queue motion movej execute successfully" : "Failed to execute queue motion movej";
@@ -281,7 +283,8 @@ void handle_queue_motion_stop_service(DriverNode& node, const std::shared_ptr<st
   }
 
   bool status = false;
-  tl::Result ret = tl::queue_motion_get_status(node.session().fd(), status);
+  const int fd = node.session().fd();
+  tl::Result ret = tl::queue_motion_get_status(fd, status);
   if (ret != tl::Result::SUCCESS)
   {
     response->success = false;
@@ -295,7 +298,7 @@ void handle_queue_motion_stop_service(DriverNode& node, const std::shared_ptr<st
     return;
   }
 
-  ret = tl::queue_motion_stop_not_power_off(node.session().fd());
+  ret = tl::queue_motion_stop_not_power_off(fd);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Queue motion movej stop successfully" : "Failed to stop queue motion movej";
 }

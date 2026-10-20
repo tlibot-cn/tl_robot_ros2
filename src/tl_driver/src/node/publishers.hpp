@@ -41,7 +41,8 @@ public:
   void publish_tcp_pose(const std::vector<double>& tcp_pose);
 
   /// @brief 发布 /arm_status。
-  void publish_running_status();
+  /// @param[in] fd 6001 端口 fd 快照（同一发布周期内复用，避免多次读取会话状态）
+  void publish_running_status(int fd);
 
 private:
   rclcpp::Node& node_;
