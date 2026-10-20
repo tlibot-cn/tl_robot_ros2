@@ -58,8 +58,9 @@ void handle_get_digital_input_output_service(
 
   std::vector<int> digitalInput;
   std::vector<int> digitalOutput;
-  tl::Result ret = tl::get_digital_input(node.session().fd(), digitalInput);
-  tl::Result ret1 = tl::get_digital_output(node.session().fd(), digitalOutput);
+  const int fd = node.session().fd();
+  tl::Result ret = tl::get_digital_input(fd, digitalInput);
+  tl::Result ret1 = tl::get_digital_output(fd, digitalOutput);
   if (ret == tl::Result::SUCCESS && ret1 == tl::Result::SUCCESS)
   {
     response->success = true;
@@ -93,7 +94,8 @@ void handle_modbus_write_service(DriverNode& node,
     return;
   }
 
-  tl::Result ret = tl::modbus_set_master_parameter(node.session().fd(), request->master_id, master_param);
+  const int fd = node.session().fd();
+  tl::Result ret = tl::modbus_set_master_parameter(fd, request->master_id, master_param);
   if (ret != tl::Result::SUCCESS)
   {
     response->success = false;
@@ -101,7 +103,7 @@ void handle_modbus_write_service(DriverNode& node,
     return;
   }
 
-  ret = tl::modbus_open_master(node.session().fd(), request->master_id);
+  ret = tl::modbus_open_master(fd, request->master_id);
   if (ret != tl::Result::SUCCESS)
   {
     response->success = false;
@@ -110,7 +112,7 @@ void handle_modbus_write_service(DriverNode& node,
   }
 
   std::vector<int> data = request->data;
-  ret = tl::modbus_write_multiple_holding_registers(node.session().fd(), request->master_id, request->addr, data);
+  ret = tl::modbus_write_multiple_holding_registers(fd, request->master_id, request->addr, data);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Modbus write successfully" : "Failed to write Modbus";
 }
@@ -134,7 +136,8 @@ void handle_modbus_read_service(DriverNode& node,
     return;
   }
 
-  tl::Result ret = tl::modbus_set_master_parameter(node.session().fd(), request->master_id, master_param);
+  const int fd = node.session().fd();
+  tl::Result ret = tl::modbus_set_master_parameter(fd, request->master_id, master_param);
   if (ret != tl::Result::SUCCESS)
   {
     response->success = false;
@@ -142,7 +145,7 @@ void handle_modbus_read_service(DriverNode& node,
     return;
   }
 
-  ret = tl::modbus_open_master(node.session().fd(), request->master_id);
+  ret = tl::modbus_open_master(fd, request->master_id);
   if (ret != tl::Result::SUCCESS)
   {
     response->success = false;
@@ -151,8 +154,7 @@ void handle_modbus_read_service(DriverNode& node,
   }
 
   std::vector<int> data{};
-  ret = tl::modbus_read_holding_registers(node.session().fd(), request->master_id, request->addr, request->quantity,
-                                          data);
+  ret = tl::modbus_read_holding_registers(fd, request->master_id, request->addr, request->quantity, data);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Modbus read successfully" : "Failed to read Modbus";
   response->data = data;

@@ -31,7 +31,10 @@ void StatePublishers::publish_arm_state()
     return;
   }
 
-  publish_running_status();
+  // 本周期只取一次 fd 快照，三次 SDK 查询复用，避免判定与使用之间再次读取会话状态。
+  const int fd = session_.fd();
+
+  publish_running_status(fd);
 
   std::vector<double> joint_pose;
   std::vector<double> tcp_pose;
@@ -39,7 +42,7 @@ void StatePublishers::publish_arm_state()
   joint_pose.clear();
   tcp_pose.clear();
 
-  if (tl::get_current_position(session_.fd(), tl::Coord::JOINT, joint_pose) == tl::Result::SUCCESS)
+  if (tl::get_current_position(fd, tl::Coord::JOINT, joint_pose) == tl::Result::SUCCESS)
   {
     // 将角度转换为弧度(批量转换)
     convert::joint_deg_to_rad(joint_pose, joint_pose.size());
@@ -47,7 +50,7 @@ void StatePublishers::publish_arm_state()
     publish_joint_pose(joint_pose);
   }
 
-  if (tl::get_current_position(session_.fd(), tl::Coord::BASE, tcp_pose) == tl::Result::SUCCESS)
+  if (tl::get_current_position(fd, tl::Coord::BASE, tcp_pose) == tl::Result::SUCCESS)
   {
     publish_tcp_pose(tcp_pose);
   }
@@ -120,10 +123,10 @@ void StatePublishers::publish_tcp_pose(const std::vector<double>& tcp_pose)
   tcp_pose_pub_->publish(msg);
 }
 
-void StatePublishers::publish_running_status()
+void StatePublishers::publish_running_status(int fd)
 {
   tl::RunState running_status = tl::RunState::STOP;
-  tl::Result ret = tl::get_robot_running_state(session_.fd(), running_status);
+  tl::Result ret = tl::get_robot_running_state(fd, running_status);
   if (ret != tl::Result::SUCCESS)
   {
     RCLCPP_INFO(node_.get_logger(), "[Read Running Status]: failed to read running status, result=%s",
