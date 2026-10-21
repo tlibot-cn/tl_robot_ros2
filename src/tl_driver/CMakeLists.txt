@@ -26,6 +26,7 @@ message(STATUS "tl_driver: version ${TL_DRIVER_VERSION}")
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
 find_package(rcl_interfaces REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -59,6 +60,7 @@ add_executable(tl_driver
   src/arm_session.cpp
   src/convert/msg_convert.cpp
   src/convert/state_frame.cpp
+  src/node/actions_motion.cpp
   src/node/driver_node.cpp
   src/node/publishers.cpp
   src/node/services_config.cpp
@@ -78,6 +80,7 @@ target_include_directories(tl_driver PRIVATE
 
 ament_target_dependencies(tl_driver
   rclcpp
+  rclcpp_action
   rcl_interfaces
   std_srvs
   sensor_msgs

@@ -22,9 +22,11 @@
 
 namespace tl_driver
 {
-/// @brief 机械臂驱动节点：参数、回调组、实体创建与服务/话题注册。
+class MotionActionServers;
+
+/// @brief 机械臂驱动节点：参数、回调组、实体创建与服务/话题/action 注册。
 /// @note 回调实现按域分布：服务在 src/node/services_*.cpp，话题在 src/node/topics.cpp，
-///       由 node/registrars.hpp 声明的注册函数挂载。
+///       action 在 src/node/actions_motion.cpp，由 node/registrars.hpp 声明的注册函数挂载。
 class DriverNode : public rclcpp::Node
 {
 public:
@@ -35,9 +37,15 @@ public:
   /// @note 连接或切入示教模式失败即抛异常，由 main 返回 `EXIT_FAILURE`。
   void init();
 
-  /// @brief 会话访问，供各域 handler 使用。
+  /// @brief 会话访问，供各域 handler 与 action 服务使用。
   /// @return 会话对象引用
   ArmSession& session() noexcept
+  {
+    return session_;
+  }
+
+  /// @brief 会话只读访问（action feedback、诊断路径）。
+  const ArmSession& session() const noexcept
   {
     return session_;
   }
@@ -61,7 +69,25 @@ public:
     return state_stream_interval_ms_;
   }
 
-  /// @brief 读取状态流快照，供状态诊断使用。
+  /// @brief 是否有运动 action goal 正在执行。
+  bool motion_action_active() const;
+
+  /// @brief 记录外部运动指令，供 action goal 拒绝紧随其后的并发运动。
+  void note_external_motion();
+
+  /// @brief 运动 action 默认超时（秒）。
+  double motion_action_timeout() const noexcept
+  {
+    return motion_action_timeout_;
+  }
+
+  /// @brief 轨迹回放 action 默认超时（秒）。
+  double track_action_timeout() const noexcept
+  {
+    return track_action_timeout_;
+  }
+
+  /// @brief 读取状态流快照，供 action feedback 使用。
   /// @param[in] channel 1=ACS，2=MCS
   /// @param[out] out 快照
   /// @return 至少收到过一帧时为 true
@@ -142,14 +168,14 @@ private:
   /// @brief 声明并读取节点参数。
   void declare_parameters();
 
-  /// @brief 创建服务域/话题/定时器互斥回调组。
+  /// @brief 创建服务域/话题/定时器/action 互斥回调组。
   void create_callback_groups();
 
   /// @brief 设置后续 `create_service` 注册到哪个服务回调组（仅构造期使用）。
   /// @param[in] group 服务回调组
   void select_service_group(const rclcpp::CallbackGroup::SharedPtr& group);
 
-  /// @brief 按域注册全部服务与话题回调。
+  /// @brief 按域注册全部服务、话题与 action。
   void register_entities();
 
   /// @brief 参数更新回调：校验并应用 `publish_rate`（重建定时器，立即生效）。
@@ -179,10 +205,13 @@ private:
   double joint_dynamics_rate_{10.0};
   double joint_thermal_rate_{0.5};
   double io_state_rate_{10.0};
+  double motion_action_timeout_{60.0};
+  double track_action_timeout_{600.0};
 
   ArmSession session_;
 
   std::unique_ptr<tl_driver::StatePublishers> publishers_;
+  std::unique_ptr<tl_driver::MotionActionServers> actions_;
 
   // 构造期当前注册目标；注册每个域前由 select_service_group() 切换。
   rclcpp::CallbackGroup::SharedPtr service_group_;
@@ -199,6 +228,7 @@ private:
   rclcpp::CallbackGroup::SharedPtr dynamics_group_;
   rclcpp::CallbackGroup::SharedPtr thermal_group_;
   rclcpp::CallbackGroup::SharedPtr io_state_group_;
+  rclcpp::CallbackGroup::SharedPtr action_group_;
   rclcpp::SubscriptionOptions topic_options_;
 
   // 节点需持有服务/订阅对象，否则对象析构即注销

@@ -147,8 +147,15 @@ void handle_track_playback_service(DriverNode& node,
     response->message = "Arm is not connected";
     return;
   }
+  if (node.motion_action_active())
+  {
+    response->success = false;
+    response->message = "A motion action is active";
+    return;
+  }
 
   tl::Result ret = tl::track_record_playback(node.session().fd(), request->vel);
+  node.note_external_motion();
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Track playback successfully" : "Failed to playback track";
 }
@@ -161,6 +168,12 @@ void handle_open_servoj_service(DriverNode& node,
   {
     response->success = false;
     response->message = "Arm is not connected";
+    return;
+  }
+  if (node.motion_action_active())
+  {
+    response->success = false;
+    response->message = "A motion action is active";
     return;
   }
 
@@ -250,6 +263,12 @@ void handle_queue_motion_movej_service(DriverNode& node,
     response->message = "Arm is not connected";
     return;
   }
+  if (node.motion_action_active())
+  {
+    response->success = false;
+    response->message = "A motion action is active";
+    return;
+  }
 
   tl::MoveCmd cmd = convert::to_move_cmd(request->cmd, convert::MotionKind::kJoint);
 
@@ -266,6 +285,7 @@ void handle_queue_motion_movej_service(DriverNode& node,
   //   size=0 表示发送全部队列指令；isContinue=true 继续排队不运动，false 立即执行
   // 旧写法把 bool 传给了 size 参数，导致 is_continue=true 时只发送第 1 条，已修正
   ret = tl::queue_motion_send_to_controller(fd, 0, request->is_continue);
+  node.note_external_motion();
   response->success = (ret == tl::Result::SUCCESS);
   response->message =
       response->success ? "Queue motion movej execute successfully" : "Failed to execute queue motion movej";

@@ -14,9 +14,9 @@
 int main(int argc, char **argv)
 {
   rclcpp::init(argc, argv);
-  // 回调组共 9 个（6 个服务域 + get_robot_state + topic + timer）。线程数至少覆盖全部组，
-  // 保证慢服务占用线程时 100 Hz 状态发布仍有线程可用。
-  constexpr unsigned int kMinExecutorThreads = 10;
+  // 回调组共 13 个（6 个服务域 + topic + timer + stream watchdog + 3 个诊断定时器 + action）。
+  // 线程数至少覆盖全部组，保证慢查询（热状态可达 350 ms）占用线程时 100 Hz 状态发布仍有线程可用。
+  constexpr unsigned int kMinExecutorThreads = 16;
   auto thread_num = std::max(kMinExecutorThreads, std::thread::hardware_concurrency());
   rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), thread_num, true);
 

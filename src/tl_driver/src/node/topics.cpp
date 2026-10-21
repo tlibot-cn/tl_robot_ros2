@@ -27,10 +27,17 @@ void handle_movej_topic(DriverNode& node, const tl_ros2_interface::msg::MoveComm
     RCLCPP_WARN(node.get_logger(), "[MoveJ]: arm is not connected");
     return;
   }
+  if (node.motion_action_active())
+  {
+    RCLCPP_WARN(node.get_logger(), "[MoveJ]: ignored while a motion action is active");
+    return;
+  }
 
   tl::MoveCmd cmd = convert::to_move_cmd(*msg, convert::MotionKind::kJoint);
 
   tl::Result ret = tl::robot_movej(node.session().fd(), cmd);
+  // 即使返回超时，指令也可能已生效；无条件记录以覆盖紧随其后的 action goal。
+  node.note_external_motion();
 
   RCLCPP_INFO(node.get_logger(), "[MoveJ]: result=%s", arm_client::result_to_string(ret));
 }
@@ -42,10 +49,16 @@ void handle_movel_topic(DriverNode& node, const tl_ros2_interface::msg::MoveComm
     RCLCPP_WARN(node.get_logger(), "[MoveL]: arm is not connected");
     return;
   }
+  if (node.motion_action_active())
+  {
+    RCLCPP_WARN(node.get_logger(), "[MoveL]: ignored while a motion action is active");
+    return;
+  }
 
   tl::MoveCmd cmd = convert::to_move_cmd(*msg, convert::MotionKind::kLinear);
 
   tl::Result ret = tl::robot_movel(node.session().fd(), cmd);
+  node.note_external_motion();
 
   RCLCPP_INFO(node.get_logger(), "[MoveL]: result=%s", arm_client::result_to_string(ret));
 }
@@ -58,6 +71,12 @@ void handle_set_servoj_pos_topic(DriverNode& node, const std_msgs::msg::Float64M
   if (!node.session().is_connected())
   {
     RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000, "[ServoJ]: arm is not connected");
+    return;
+  }
+  if (node.motion_action_active())
+  {
+    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000,
+                         "[ServoJ]: ignored while a motion action is active");
     return;
   }
 
