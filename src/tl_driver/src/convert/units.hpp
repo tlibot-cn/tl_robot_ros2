@@ -17,42 +17,42 @@ constexpr double kDegToRad = kPi / 180.0;
 /// 电机轴转速 rpm → rad/s（1 rpm = 2π/60 rad/s）
 constexpr double kRpmToRadPerSec = 2.0 * kPi / 60.0;
 
-inline double mm_to_m(double mm)
+constexpr double mm_to_m(double mm)
 {
   return mm * kMmToM;
 }
 
-inline double m_to_mm(double m)
+constexpr double m_to_mm(double m)
 {
   return m / kMmToM;
 }
 
-inline double deg_to_rad(double deg)
+constexpr double deg_to_rad(double deg)
 {
   return deg * kDegToRad;
 }
 
-inline double rad_to_deg(double rad)
+constexpr double rad_to_deg(double rad)
 {
   return rad / kDegToRad;
 }
 
-inline double mm_s_to_m_s(double mm_s)
+constexpr double mm_s_to_m_s(double mm_s)
 {
   return mm_s * kMmToM;
 }
 
-inline double m_s_to_mm_s(double m_s)
+constexpr double m_s_to_mm_s(double m_s)
 {
   return m_s / kMmToM;
 }
 
-inline double rpm_to_rad_s(double rpm)
+constexpr double rpm_to_rad_s(double rpm)
 {
   return rpm * kRpmToRadPerSec;
 }
 
-inline double rad_s_to_rpm(double rad_s)
+constexpr double rad_s_to_rpm(double rad_s)
 {
   return rad_s / kRpmToRadPerSec;
 }
