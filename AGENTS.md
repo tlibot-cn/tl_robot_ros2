@@ -32,10 +32,10 @@ flowchart LR
 核心事实：
 
 - **双端口**：`arm_port` 6001 用于请求/响应式 SDK 调用；`arm_port_aux` 7000 用于 servoJ 全系列 + 机器人状态异步推送。两个 fd 都必须连通，状态回调只在 aux 注册，错误/告警回调两个端口都注册。
-- **`tl_driver` 组成**：`DriverNode` 只做参数、回调组、实体创建；服务按域拆在 `src/node/services_*.cpp`，由 `src/node/registrars.hpp` 的 `register_*` 函数注册；话题在 `topics.cpp`。当前规模：**45 个服务、3 个订阅、3 个发布**。`arm_client::ArmClient` 进程内只允许一个实例（SDK 回调无 userdata）；状态帧/错误日志走 rclcpp 并 1 s 节流。
-- **发布**：`/joint_states`（rad）、`/tcp_pose`（m/rad）、`/arm_status`（`STOP`/`PAUSE`/`RUNNING`），100 Hz wall timer。`StatePublishers` 复用成员缓冲与消息，**勿在发布回调内新建 vector/message**；ServoJ 日志不得逐帧 INFO。
+- **`tl_driver` 组成**：`DriverNode` 只做参数、回调组、实体创建；服务按域拆在 `src/node/services_*.cpp`，由 `src/node/registrars.hpp` 的 `register_*` 函数注册；话题在 `topics.cpp`，action 在 `actions_motion.cpp`。当前规模：**45 个服务、3 个订阅、6 个发布、3 个 action**。`arm_client::ArmClient` 进程内只允许一个实例（SDK 回调无 userdata）；状态帧/错误日志走 rclcpp 并 1 s 节流。
+- **发布**：`/joint_states`（rad）、`/tcp_pose`（m/rad）、`/arm_status`（`STOP`/`PAUSE`/`RUNNING`）100 Hz；`/tl_driver/joint_dynamics`（10 Hz）、`/tl_driver/joint_thermal`（0.5 Hz）、`/tl_driver/io_state`（10 Hz）。前两者默认由 7000 端口 ACS/MCS 连续流快照驱动（`state_source=stream`），`poll` 可回滚；`StatePublishers` 复用成员缓冲与消息，**勿在 100 Hz 发布回调内新建 vector/message**；ServoJ 日志不得逐帧 INFO。
 - **订阅**：`/tl_driver/moveJ`、`/tl_driver/moveL`、`/tl_driver/set_servoj_pos`（rad，6 或 7 元素，6 元素末尾补 0；转发 SDK 时为固定 7 元素）。`moveJ/moveL` **不等到位**，需要到位判定的一方轮询 `/arm_status`。
-- **线程模型**：`MultiThreadedExecutor`（`max(10, hardware_concurrency)`，至少覆盖 9 个回调组）；服务按域各一个 `MutuallyExclusive` 回调组（session/motion/transform/config/io/state），`get_robot_state` 因等待状态帧单独成组；`topic_group_` / `timer_group_` 同样 `MutuallyExclusive`。`timer_group_` 曾因 `Reentrant` 导致状态发布并发，勿改回。
+- **线程模型**：`MultiThreadedExecutor`（`max(16, hardware_concurrency)`，至少覆盖 13 个回调组）；服务按域各一个 `MutuallyExclusive` 回调组（session/motion/transform/config/io/state），`get_robot_state` 现只读缓存、随 state 域；`topic_group_` / `timer_group_` / `stream_group_` / 三个诊断定时器组 / `action_group_` 均为 `MutuallyExclusive`。`timer_group_` 曾因 `Reentrant` 导致状态发布并发，勿改回。
 - **失败即退**：`DriverNode::init()` 连接失败或切入示教模式失败时抛异常，由 `tl_driver_main.cpp` 捕获后返回 `EXIT_FAILURE`（析构会断开已建立的端口），不带病运行。
 - **硬件插件**：`TLHardwareInterface` 生命周期 `on_init → on_configure → on_activate → …`；`on_activate` 用当前关节位置初始化命令，避免跳到零位；`write()` 发 `/tl_driver/set_servoj_pos`。
 
@@ -64,7 +64,7 @@ ROS 侧统一 REP 103（m / rad / rad/s），控制器/SDK 侧 mm / 度 / %，�
 
 | 路径 | 用途 |
 |---|---|
-| `src/tl_ros2_interface/` | 11 个 `.msg` + 45 个 `.srv`，**必须最先构建**。`msg/` 不等于话题清单：3 个话题载荷、7 个仅作 srv 嵌套参数、`ObjectInfo` 未接线 |
+| `src/tl_ros2_interface/` | 14 个 `.msg` + 2 个 `.action` + 45 个 `.srv`，**必须最先构建**。`msg/` 不等于话题清单：6 个话题载荷、7 个仅作 srv 嵌套参数、`ObjectInfo` 未接线 |
 | `src/tl_driver/` | 驱动节点。`src/tl_driver_main.cpp`（入口）、`src/node/`（参数/回调组/注册）、`src/arm_session.*`、`src/arm_client.*`、`lib/`（预编译 SDK，只读） |
 | `src/tl_hardware/` | ros2_control `SystemInterface` 插件 |
 | `src/tl_teleop/` | VR 遥操作，100 Hz 控制线程；`lib/` 为 PXREA SDK，只读 |
@@ -152,10 +152,10 @@ ros2 launch tl_gazebo gazebo_tcb610_demo.launch.py          # Gazebo
 |---|---|
 | `src/tl_driver/src/tl_driver_main.cpp` | 驱动入口；`MultiThreadedExecutor` 线程数 |
 | `src/tl_driver/src/node/driver_node.{hpp,cpp}` | 参数、回调组、实体创建、`init()` 失败即退 |
-| `src/tl_driver/src/node/registrars.hpp` | 8 个注册函数声明（7 个服务域 + topics） |
-| `src/tl_driver/src/node/services_*.cpp` / `topics.cpp` / `publishers.cpp` | 服务、订阅、发布实现 |
-| `src/tl_driver/src/arm_session.{hpp,cpp}` / `arm_client.{hpp,cpp}` | 会话与 SDK 薄封装、状态帧通道 |
-| `src/tl_driver/src/convert/units.hpp` / `msg_convert.cpp` | 单位与消息换算 |
+| `src/tl_driver/src/node/registrars.hpp` | 7 个注册函数声明（6 个服务域 + topics） |
+| `src/tl_driver/src/node/services_*.cpp` / `topics.cpp` / `publishers.cpp` / `actions_motion.cpp` | 服务、订阅、发布、action 实现 |
+| `src/tl_driver/src/arm_session.{hpp,cpp}` / `arm_client.{hpp,cpp}` | 会话、SDK 薄封装与双通道状态快照 |
+| `src/tl_driver/src/convert/units.hpp` / `msg_convert.cpp` / `state_frame.cpp` | 单位、消息与状态帧 JSON 换算/解析 |
 | `src/tl_driver/config/*.yaml` | 各臂型 IP、端口、关节名 |
 | `src/tl_hardware/src/tl_hardware_interface.cpp` | ros2_control 插件实现 |
 | `src/tl_teleop/src/tl_teleop.cpp` | VR 遥操作与 100 Hz 循环 |
@@ -176,14 +176,15 @@ ros2 launch tl_gazebo gazebo_tcb610_demo.launch.py          # Gazebo
 
 ## Testing & QA
 
-- **自动化测试仅覆盖 `tl_driver` 的纯逻辑层**：2 个 gtest 二进制、13 个用例，全部在 `src/tl_driver/test/`：
+- **自动化测试仅覆盖 `tl_driver` 的纯逻辑层**：3 个 gtest 二进制、20 个用例，全部在 `src/tl_driver/test/`：
 
   | 文件 | 覆盖 |
   |---|---|
   | `test_units.cpp` | mm↔m、deg↔rad、mm/s↔m/s、rpm↔rad/s、关节角数量截断 |
   | `test_msg_convert.cpp` | `to_move_cmd`、Modbus 主站映射、DH 参数 |
+  | `test_state_frame.cpp` | ACS/MCS 状态帧 JSON 解析、嵌套布局、字符串数值、非法帧拒绝 |
 
-  测试直接编译 `src/convert/msg_convert.cpp`，**不链接 SDK**。
+  测试直接编译 `src/convert/msg_convert.cpp` / `state_frame.cpp`，**不链接 SDK**。
 
 - **其余包只有 ament lint 脚手架**（`ament_copyright`、`cpplint`、`flake8`、`pep257`、`xmllint`），没有行为测试；`tl_example` 甚至没有 `BUILD_TESTING` 块。`pyproject.toml` 虽配置 pytest，但**没有任何可被收集的 pytest 用例**。
 - **没有 E2E / launch_testing / 覆盖率配置**。
