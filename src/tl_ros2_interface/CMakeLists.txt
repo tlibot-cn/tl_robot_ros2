@@ -26,6 +26,13 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/JobFileName.msg"
   "msg/RobotJointParam.msg"
   "msg/ObjectInfo.msg"
+  "msg/JointDynamics.msg"
+  "msg/JointThermal.msg"
+  "msg/IoState.msg"
+
+  #action
+  "action/Move.action"
+  "action/PlayTrack.action"
 
   #srv
   "srv/SetSpeed.srv"

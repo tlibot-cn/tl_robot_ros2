@@ -1,0 +1,17 @@
+# 轨迹回放 action（/tl_driver/play_track）
+# 回放是秒级到分钟级的长任务；现有 track_playback 服务保留。
+# 控制器 SDK 没有回放停止接口，cancel 请求会被显式拒绝。
+
+# Goal
+int32 vel             # 回放速度百分比 1–100
+float64 timeout_sec   # 超时秒数；<=0 时使用节点参数 track_action_timeout
+
+---
+# Result
+bool success
+string message
+
+---
+# Feedback
+float64 progress      # 控制器不提供回放进度，固定为 -1
+string state          # RUNNING / STOP / PAUSE

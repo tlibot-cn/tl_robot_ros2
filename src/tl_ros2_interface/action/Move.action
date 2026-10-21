@@ -1,0 +1,18 @@
+# 一次性运动 action（/tl_driver/move_joint、/tl_driver/move_linear）
+# 现有 moveJ/moveL 话题保留：话题面向 fire-and-forget，action 面向需要进度与结果的客户端。
+# 控制器 SDK 没有通用运动停止接口，cancel 请求会被显式拒绝，不会伪装成取消成功。
+
+# Goal
+tl_ros2_interface/MoveCommand command   # 运动指令；target_pos_value 必须为 14 维
+float64 timeout_sec                     # 超时秒数；<=0 时使用节点参数 motion_action_timeout
+
+---
+# Result
+bool success
+string message
+
+---
+# Feedback
+float64 progress                        # 0.0–1.0；-1 表示当前坐标系无法计算
+tl_ros2_interface/CartesianPose current_pose  # 来自 MCS 状态流；无流时为零值
+string state                            # RUNNING / STOP / PAUSE
