@@ -12,6 +12,15 @@
 
 namespace tl_driver
 {
+namespace
+{
+// 状态流通道约定（架构评审 §14.2）：channel=1 返回 realPosACS，channel=2 返回 realPosMCS。
+constexpr int kAcsChannel = 1;
+constexpr int kMcsChannel = 2;
+constexpr int kAcsPosition = 0;
+constexpr int kMcsPosition = 1;
+} // namespace
+
 ArmSession::ArmSession(rclcpp::Logger logger) : logger_(logger), client_(logger) {}
 
 ArmSession::~ArmSession()
@@ -47,14 +56,53 @@ bool ArmSession::is_powered() const
   return is_powered_.load(std::memory_order_acquire);
 }
 
-uint64_t ArmSession::robot_state_seq() const
+bool ArmSession::start_state_stream(int interval_ms)
 {
-  return client_.robot_state_seq();
+  state_stream_requested_.store(true, std::memory_order_release);
+  const bool acs_ok = request_state_stream(kAcsChannel, interval_ms);
+  const bool mcs_ok = request_state_stream(kMcsChannel, interval_ms);
+  return acs_ok && mcs_ok;
 }
 
-bool ArmSession::wait_robot_state(uint64_t start_seq, std::chrono::milliseconds timeout, std::string& message)
+bool ArmSession::request_state_stream(int channel, int interval_ms)
 {
-  return client_.wait_robot_state(start_seq, timeout, message);
+  state_stream_requested_.store(true, std::memory_order_release);
+  const int position = channel == kAcsChannel ? kAcsPosition : kMcsPosition;
+  return client_.request_state_stream(fd_aux(), channel, position, interval_ms);
+}
+
+void ArmSession::stop_state_stream()
+{
+  // 仅在断开路径调用：控制器收到 stop=true 后该通道停止推送，
+  // 且实测无法可靠恢复，因此正常运行时不得调用。
+  // 直接读快照而不是 fd_aux()：后者在未连接时会断言。
+  if (!state_stream_requested_.exchange(false, std::memory_order_acq_rel))
+  {
+    return;
+  }
+  const int fd_aux = socket_fd_aux_.load(std::memory_order_acquire);
+  if (fd_aux <= 0)
+  {
+    return;
+  }
+  client_.stop_state_stream(fd_aux, kAcsChannel, kAcsPosition);
+  client_.stop_state_stream(fd_aux, kMcsChannel, kMcsPosition);
+}
+
+bool ArmSession::get_state_frame(int channel, arm_client::StateFrame& out) const
+{
+  return client_.get_state_frame(channel, out);
+}
+
+bool ArmSession::get_state_values(int channel, std::vector<double>& values, uint64_t& seq,
+                                  std::chrono::steady_clock::time_point& received_at) const
+{
+  return client_.get_state_values(channel, values, seq, received_at);
+}
+
+bool ArmSession::is_state_frame_fresh(int channel, std::chrono::milliseconds max_age) const
+{
+  return client_.is_state_frame_fresh(channel, max_age);
 }
 
 bool ArmSession::power_on()
@@ -244,6 +292,9 @@ bool ArmSession::disconnect()
     RCLCPP_INFO(logger_, "[Disconnect]: arm already disconnected");
     return true;
   }
+
+  // 先停连续反馈再断开端口；失败只记录，不阻塞断开。
+  stop_state_stream();
 
   is_connected_.store(false, std::memory_order_release);
 

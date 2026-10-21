@@ -75,94 +75,56 @@ void handle_get_robot_state_service(DriverNode& node,
     return;
   }
 
-  // SDK: channel 有效范围 1..9；mode 仅 0（单次）/1（持续）；interval 仅 mode=1 有效，范围 10..60000 ms。
-  // 非法请求直接拒绝，避免控制器不产生状态帧时白等 5 s（架构评审 P1-1）。
-  constexpr int kMinChannel = 1;
-  constexpr int kMaxChannel = 9;
-  if (request->channel < kMinChannel || request->channel > kMaxChannel)
-  {
-    response->success = false;
-    response->message = "channel must be in [1, 9]";
-    return;
-  }
-
-  constexpr int kQueryOnce = 0;
-  constexpr int kContinuous = 1;
-  constexpr int kMinIntervalMs = 10;
-  constexpr int kMaxIntervalMs = 60000;
-
-  tl::RobotState param{};
-  param.channel = request->channel;
-  param.stop = request->stop;
-  param.mode = request->mode;
-  param.interval = request->interval;
-  param.ioState = request->io_state;
-  param.position = request->position;
-  param.dataildmotionpos = request->detail_motion_pos;
-  param.posSum = request->pos_sum;
-  param.ioPort = request->io_port;
-  param.optional = request->optional;
-
-  // 新 SDK：io_state=true 但 io_port 为空会返回 PARAM_ERR(-3)，请求 IO 时必须指定端口
-  if (param.ioState && param.ioPort.empty())
-  {
-    RCLCPP_WARN(node.get_logger(), "[GetRobotState]: io_state=true but io_port empty, force io_state=false");
-    param.ioState = false;
-  }
-
-  // stop 请求只下发停止命令，mode/interval 不参与；仅对查询请求校验。
-  if (!request->stop)
-  {
-    if (request->mode != kQueryOnce && request->mode != kContinuous)
-    {
-      response->success = false;
-      response->message = "mode must be 0 (query once) or 1 (continuous)";
-      return;
-    }
-    if (request->mode == kContinuous && (request->interval < kMinIntervalMs || request->interval > kMaxIntervalMs))
-    {
-      response->success = false;
-      response->message = "interval must be in [10, 60000] ms when mode=1";
-      return;
-    }
-  }
-
-  const uint64_t start_seq = node.session().robot_state_seq();
-
-  // get_robot_state 需使用 7000 端口（fd_aux），回调亦注册在 7000 端口
-  const int fd_aux = node.session().fd_aux();
-  tl::Result ret = tl::get_robot_state(fd_aux, param);
-  if (ret != tl::Result::SUCCESS)
-  {
-    response->success = false;
-    response->message = "Failed to get robot state";
-    return;
-  }
-
-  // stop=true 只停止持续推送，控制器不回复状态帧；等待只会白等 5 s。
+  // 连续流由驱动内部管理；stop 不再接受外部控制（架构评审 §14.6）。
   if (request->stop)
   {
-    response->success = true;
-    response->message = "Stop robot state command sent";
+    response->success = false;
+    response->message = "State stream is managed internally";
     return;
   }
 
-  // mode=1 的首帧最早在 interval 之后到达，等待窗口必须覆盖 interval；mode=0 固定 5 s。
-  const auto timeout =
-      request->mode == kContinuous
-          ? std::chrono::milliseconds(std::max<int64_t>(5000, static_cast<int64_t>(request->interval) + 1000))
-          : std::chrono::milliseconds(5000);
-
-  std::string state_message;
-  if (!node.session().wait_robot_state(start_seq, timeout, state_message))
+  // 缓存模式不提供 IO/运动点位详情；静默忽略会让调用方误以为拿到了请求的数据。
+  if (request->io_state || request->detail_motion_pos || !request->io_port.empty())
   {
     response->success = false;
-    response->message = "Timeout waiting for robot state";
+    response->message = "io_state/detail_motion_pos/io_port are not supported by cached state mode";
     return;
   }
 
+  // position 决定缓存通道：0=ACS（channel 1），1=MCS（channel 2）。channel 字段保留但忽略。
+  if (request->position != 0 && request->position != 1)
+  {
+    response->success = false;
+    response->message = "Unsupported position";
+    return;
+  }
+  if (node.state_source() != "stream")
+  {
+    response->success = false;
+    response->message = "State stream disabled (state_source=poll)";
+    return;
+  }
+
+  const int channel = request->position == 0 ? 1 : 2;
+  const auto max_age = std::chrono::milliseconds(3 * node.state_stream_interval_ms());
+  if (!node.session().is_state_frame_fresh(channel, max_age))
+  {
+    response->success = false;
+    response->message = "No fresh cached state";
+    return;
+  }
+
+  arm_client::StateFrame frame;
+  if (!node.get_state_frame(channel, frame))
+  {
+    response->success = false;
+    response->message = "No cached state";
+    return;
+  }
+
+  // 缓存直接返回原始报文，不再调用 SDK、不再等待（P99 < 10 ms）。
   response->success = true;
-  response->message = state_message;
+  response->message = frame.raw;
 }
 
 void handle_get_library_version_service(DriverNode& node,
@@ -464,10 +426,6 @@ void register_state_services(DriverNode& node)
   node.create_service<tl_ros2_interface::srv::GetCurrentMode>(
       "/tl_driver/get_current_mode",
       std::bind(&handle_get_current_mode_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
-}
-
-void register_robot_state_service(DriverNode& node)
-{
   node.create_service<tl_ros2_interface::srv::GetRobotState>(
       "/tl_driver/get_robot_state",
       std::bind(&handle_get_robot_state_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));

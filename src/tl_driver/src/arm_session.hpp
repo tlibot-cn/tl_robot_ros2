@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include <rclcpp/logger.hpp>
 #include <rclcpp/logging.hpp>
@@ -66,15 +67,33 @@ public:
   /// @brief 7000 端口 fd 快照：servoJ 全系列与机器人状态异步推送。
   int fd_aux() const;
 
-  /// @brief 当前状态帧序号，作为等待新帧的基准。
-  uint64_t robot_state_seq() const;
+  /// @brief 启动 ACS（channel=1）/MCS（channel=2）双通道连续反馈。
+  /// @param[in] interval_ms 推送间隔 [10, 60000] ms
+  /// @return 两个通道的 SDK 请求均成功时为 true
+  /// @note 必须在 `start_robot_state_channel()`（connect 内）之后调用，否则回调不会收到帧。
+  bool start_state_stream(int interval_ms);
 
-  /// @brief 等待一帧机器人状态消息。
-  /// @param[in] start_seq 调用前的序号
-  /// @param[in] timeout 最长等待时间
-  /// @param[out] message 成功时写入状态消息原文
-  /// @return 收到新状态帧为 true，超时为 false
-  bool wait_robot_state(uint64_t start_seq, std::chrono::milliseconds timeout, std::string& message);
+  /// @brief 单独重启一个通道的连续反馈（看门狗使用）。
+  /// @param[in] channel 1=ACS，2=MCS
+  /// @param[in] interval_ms 推送间隔
+  /// @return SDK 请求成功时为 true
+  bool request_state_stream(int channel, int interval_ms);
+
+  /// @brief 停止两个通道的连续反馈（仅析构/断开路径）。
+  void stop_state_stream();
+
+  /// @brief 读取通道快照。
+  /// @param[in] channel 1=ACS，2=MCS
+  /// @param[out] out 快照
+  /// @return 至少收到过一帧时为 true
+  bool get_state_frame(int channel, arm_client::StateFrame& out) const;
+
+  /// @brief 只读取通道数值与帧元数据（100 Hz 发布路径）。
+  bool get_state_values(int channel, std::vector<double>& values, uint64_t& seq,
+                        std::chrono::steady_clock::time_point& received_at) const;
+
+  /// @brief 通道在 `max_age` 内是否收到过帧。
+  bool is_state_frame_fresh(int channel, std::chrono::milliseconds max_age) const;
 
 private:
   rclcpp::Logger logger_;
@@ -82,8 +101,9 @@ private:
 
   std::atomic<int> socket_fd_{0};
   std::atomic<int> socket_fd_aux_{0};
-  std::atomic<bool> is_connected_{false}; // 机械臂是否连接
-  std::atomic<bool> is_powered_{false};   // 机械臂是否上电(示教模式)
+  std::atomic<bool> is_connected_{false};           // 机械臂是否连接
+  std::atomic<bool> is_powered_{false};             // 机械臂是否上电(示教模式)
+  std::atomic<bool> state_stream_requested_{false}; // 是否已向控制器请求过连续状态流
 };
 } // namespace tl_driver
 

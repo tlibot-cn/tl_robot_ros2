@@ -32,6 +32,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Development)
 find_package(tl_ros2_interface REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 # 根据目标架构选择对应的动态库目录
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
@@ -57,6 +58,7 @@ add_executable(tl_driver
   src/arm_client.cpp
   src/arm_session.cpp
   src/convert/msg_convert.cpp
+  src/convert/state_frame.cpp
   src/node/driver_node.cpp
   src/node/publishers.cpp
   src/node/services_config.cpp
@@ -85,6 +87,7 @@ ament_target_dependencies(tl_driver
 
 target_link_libraries(tl_driver
   tl_host_lib
+  nlohmann_json::nlohmann_json
   Python3::Python
   pthread
   dl
@@ -119,6 +122,10 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )
   ament_target_dependencies(test_msg_convert tl_ros2_interface)
+
+  ament_add_gtest(test_state_frame test/test_state_frame.cpp src/convert/state_frame.cpp)
+  target_include_directories(test_state_frame PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+  target_link_libraries(test_state_frame nlohmann_json::nlohmann_json)
 endif()
 
 # 创建 libnrc_host.so 符号链接，兼容旧版 SONAME 引用

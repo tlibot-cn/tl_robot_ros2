@@ -33,10 +33,6 @@ void register_io_services(DriverNode& node);
 /// @param[in] node 驱动节点
 void register_state_services(DriverNode& node);
 
-/// @brief 单独注册 `get_robot_state`（最长达 5 s 等待，使用独立回调组）。
-/// @param[in] node 驱动节点
-void register_robot_state_service(DriverNode& node);
-
 /// @brief 注册运动订阅话题（moveJ/moveL/servoJ）。
 /// @param[in] node 驱动节点
 void register_topics(DriverNode& node);
