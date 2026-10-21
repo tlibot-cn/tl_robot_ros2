@@ -12,6 +12,17 @@
 
 ## [Unreleased]
 
+### 2026-10-21
+
+- tl_driver：实施状态话题化（架构评审 §14）——连接后在 7000 端口启动 ACS（`channel=1/position=0`）与 MCS（`channel=2/position=1`）双通道连续反馈，回调只解析并写通道快照；`/joint_states`、`/tcp_pose` 默认由快照驱动，不再每周期调用 `get_current_position`
+- tl_driver：新增参数 `state_source`（`stream`/`poll`，默认 `stream`）、`state_stream_interval_ms`（默认 10）、`joint_dynamics_rate`（默认 10）、`joint_thermal_rate`（默认 0.5）、`io_state_rate`（默认 10）；ACS/MCS 两个通道独立降级——单通道失效 3 s 后仅该通道回退同步查询（20 Hz），恢复 1 s 后切回
+- tl_driver：新增话题 `/tl_driver/joint_dynamics`（10 Hz）、`/tl_driver/joint_thermal`（0.5 Hz）、`/tl_driver/io_state`（10 Hz），均为 reliable + transient_local + depth 1
+- **行为变更**：`/tl_driver/get_robot_state` 不再调用 SDK 或等待状态帧，`position=0/1` 返回最近缓存报文；缓存超过 3×`state_stream_interval_ms` 未更新返回 `"No fresh cached state"`，`state_source=poll` 返回 `"State stream disabled"`，`stop=true` 返回 `success=false, "State stream is managed internally"`，`position` 非 0/1 返回 `"Unsupported position"`
+- tl_driver：1 Hz 状态流看门狗，通道超过 3×interval 无新帧时重发 `mode=1`，连续 3 次失败记录故障告警
+- tl_ros2_interface：新增 `JointDynamics.msg`、`JointThermal.msg`、`IoState.msg` 与 `Move.action`、`PlayTrack.action`
+- tl_driver：实施 Action 适用面（架构评审 §15）——新增 `/tl_driver/move_joint`、`/tl_driver/move_linear`、`/tl_driver/play_track` action；现有 `moveJ`/`moveL` 话题与 `track_playback` 服务保留；cancel 因 SDK 无通用停止接口而显式拒绝
+- tl_driver：action 执行串行化（同一时刻仅一个运动 goal），goal 带 `timeout_sec`（<=0 用节点参数 `motion_action_timeout`/`track_action_timeout`），`move_*` feedback 提供进度与 MCS 当前位姿
+
 ### 2026-10-20
 
 - tl_driver：服务回调组按域拆分（session/motion/transform/config/io/state），`get_robot_state` 因等待状态帧（最长可达 61 s）单独成组，消除单次慢调用冻结其余服务的队头阻塞（架构评审 P1-1）

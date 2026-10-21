@@ -104,9 +104,17 @@ tl_driver:
     arm_type: "TCB710"              # 机械臂型号（仅作日志标识，不参与行为）
     arm_joints: ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7"] # 关节名称（1～8 个，启动时校验）
     publish_rate: 100.0             # 状态话题发布频率，单位 Hz，范围 1～1000，非法值启动即退出
+    state_source: "stream"          # "stream"=7000 端口连续状态流；"poll"=旧的同步查询（回滚开关）
+    state_stream_interval_ms: 10    # 连续状态流间隔，范围 10～60000 ms
+    joint_dynamics_rate: 10.0       # /tl_driver/joint_dynamics 频率，0=关闭
+    joint_thermal_rate: 0.5         # /tl_driver/joint_thermal 频率，0～1，0=关闭
+    io_state_rate: 10.0             # /tl_driver/io_state 频率，0=关闭
+    motion_action_timeout: 60.0     # move_joint/move_linear 默认超时，秒
+    track_action_timeout: 600.0     # play_track 默认超时，秒
 ```
 
 > `arm_port` / `arm_port_aux` 以字符串传给 SDK，不要写成整数。
+> `state_source` 等新增参数只在启动时读取（运行期 `ros2 param set` 会被明确拒绝）；回滚到旧同步查询路径时用 `state_source:=poll`，此时位姿话题为 20 Hz。单个状态通道失效时只降级该通道。
 > `publish_rate` 支持运行期修改：`ros2 param set /tl_driver publish_rate 50.0` 会立即重建定时器；非法值（非有限数或超出 1～1000 Hz）会被拒绝并保持原频率。参数类型必须是浮点数（写 `100.0`；写整数 `100` 会被 ROS 判为类型错误并启动失败）。
 ## tl_driver功能包架构说明
 ### 功能包文件总览
@@ -178,7 +186,9 @@ tl_driver:
 │   ├── arm_session.{hpp,cpp}  # 会话：双端口连接、上下电
 │   ├── node                     # 节点层
 │   │   ├── driver_node.{hpp,cpp}  # DriverNode：参数、回调组、实体创建与服务/话题注册
-│   │   ├── registrars.hpp       # 7 个注册函数声明（6 个服务域 + 话题）
+│   │   ├── registrars.hpp       # 注册函数声明（服务域 + 话题）
+│   │   ├── actions_motion.cpp   # action server（move_joint/move_linear/play_track）
+│   │   ├── publishers.{hpp,cpp} # 状态流/诊断话题发布
 │   │   ├── services_session.cpp # 会话类服务（连接/上下电/清错）
 │   │   ├── services_state.cpp   # 状态类服务（机器人状态/版本/温度/电压/电流/力矩/模式）
 │   │   ├── services_config.cpp  # 配置类服务（DH 查询/关节参数/工具/坐标系/可达性）
@@ -186,8 +196,9 @@ tl_driver:
 │   │   ├── services_motion.cpp  # 运动类服务（速度/点动/轨迹/队列/ServoJ 开关）
 │   │   ├── services_io.cpp      # IO 类服务（数字 IO、Modbus）
 │   │   ├── topics.cpp           # 话题订阅（moveJ/moveL/servoJ）
-│   │   └── publishers.{hpp,cpp} # StatePublishers：/joint_states、/tcp_pose、/arm_status 发布
+│   │   └── publishers.{hpp,cpp} # StatePublishers：位姿/状态与诊断话题发布
 │   ├── convert/msg_convert.{hpp,cpp} # ROS 消息 ↔ SDK 结构转换与参数校验
+│   ├── convert/state_frame.{hpp,cpp} # 7000 端口状态帧 JSON 解析
 │   └── version.hpp.in         # 版本号模板，构建时由 CMake 生成 tl_driver/version.hpp
 └── test                       # 测试
     ├── test_all_interfaces.py   # 全接口测试脚本
@@ -201,3 +212,5 @@ tl_driver功能包的服务和话题较多，可以通过如下指令了解其�
 ![image](doc/tl_driver3.png)  
 ![image](doc/tl_driver4.png)  
 主要为套用API实现的一些机械臂本体的功能，其详细介绍和使用在此不详细展开，可以通过专门的文档《[tl_driver服务与话题说明书](doc/tl_driver服务与话题说明书.md)》进行查看。
+
+状态话题化后，`/joint_states` 与 `/tcp_pose` 默认由 7000 端口 ACS/MCS 连续流驱动；诊断量走 `/tl_driver/joint_dynamics`、`/tl_driver/joint_thermal`、`/tl_driver/io_state`。长运动客户端可使用 `/tl_driver/move_joint`、`/tl_driver/move_linear`、`/tl_driver/play_track` action；现有 `moveJ`/`moveL` 话题与 `track_playback` 服务保持不变，action 的 cancel 因 SDK 无停止接口而一律拒绝。
