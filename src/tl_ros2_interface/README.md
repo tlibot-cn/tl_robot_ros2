@@ -30,6 +30,9 @@ TL 系列机械臂 ROS2 接口说明
 * 4.9 [机器人DH参数RobotDHParam_msg](#机器人DH参数RobotDHParam_msg)
 * 4.10 [机械臂关节参数RobotJointParam_msg](#机械臂关节参数RobotJointParam_msg)
 * 4.11 [工具参数ToolParam_msg](#工具参数toolparam_msg)
+* 4.12 [关节动力学JointDynamics_msg](#关节动力学jointdynamics_msg)
+* 4.13 [关节热状态JointThermal_msg](#关节热状态jointthermal_msg)
+* 4.14 [数字IO状态IoState_msg](#数字io状态iostate_msg)
 * 5 [tl_ros2_interface服务（srv）说明](#tl_ros2_interface服务srv说明)
 * 5.1 [坐标转换CoordTransform_srv](#坐标转换CoordTransform_srv)
 * 5.2 [所有作业文件名GetAllJobFileName_srv](#所有作业文件名GetAllJobFileName_srv)
@@ -102,7 +105,13 @@ tl_ros2_interface/
 │   ├── ObjectInfo.msg
 │   ├── RobotDHParam.msg
 │   ├── RobotJointParam.msg
-│   └── ToolParam.msg
+│   ├── ToolParam.msg
+│   ├── JointDynamics.msg
+│   ├── JointThermal.msg
+│   └── IoState.msg
+├── action/               # Action 定义
+│   ├── Move.action
+│   └── PlayTrack.action
 ├── srv/                  # 服务定义
 │   ├── CoordTransform.srv
 │   ├── GetAllJobFileName.srv
@@ -152,13 +161,14 @@ tl_ros2_interface/
 ```
 
 ## tl_ros2_interface消息（msg）说明
-以下列出 msg 文件定义及字段说明。**11 个 msg 分三类，每个 `.msg` 头部注释里都标了用途，读之前先看那一行：**
+以下列出 msg 文件定义及字段说明。**14 个 msg 与 2 个 action，每个文件头部注释里都标了用途，读之前先看那一行：**
 
-| 用途 | 数量 | msg |
+| 用途 | 数量 | 定义 |
 | :-- | :--: | :-- |
-| 话题载荷（在 publisher / subscriber 上出现） | 3 | `ArmStatus`、`CartesianPose`、`MoveCommand` |
+| 话题载荷（在 publisher / subscriber 上出现） | 6 | `ArmStatus`、`CartesianPose`、`MoveCommand`、`JointDynamics`、`JointThermal`、`IoState` |
 | 仅作 srv 嵌套参数（不发布话题） | 7 | `JobFileName`、`ModbusMasterParam`、`ModbusRTUParam`、`ModbusTCPParam`、`RobotDHParam`、`RobotJointParam`、`ToolParam` |
 | 未接线（无话题、无 srv 引用，定义保留备用） | 1 | `ObjectInfo` |
+| Action | 2 | `Move`（`move_joint`/`move_linear`）、`PlayTrack`（`play_track`） |
 
 其中 `CartesianPose`、`MoveCommand` 兼有两重身份：既发布/订阅话题，也作为 srv 嵌套参数（`SetUserCoord.pos`、`JobInsertMove.cmd`、`QueueMotionMoveJ.cmd`）。
 
@@ -350,6 +360,39 @@ __msg成员__
 - payload_mass_center_x: 负载质心 X（m）
 - payload_mass_center_y: 负载质心 Y（m）
 - payload_mass_center_z: 负载质心 Z（m）
+
+### 关节动力学JointDynamics_msg
+```
+std_msgs/Header header
+float64 line_speed
+float64[] joint_speed
+float64[] joint_speed_sync
+float64[] motor_current
+float64[] motor_current_sync
+int32[] motor_torque
+int32[] motor_torque_sync
+```
+- `/tl_driver/joint_dynamics` 载荷，默认 10 Hz
+- 单位：`line_speed` m/s、速度 rad/s、电流 A、力矩为 % 额定扭矩（不是 N·m）
+
+### 关节热状态JointThermal_msg
+```
+std_msgs/Header header
+float64[] temperature
+float64[] joint_voltage
+float64[] positioner_voltage
+```
+- `/tl_driver/joint_thermal` 载荷，默认 0.5 Hz（可关闭）
+- 单位：°C / V
+
+### 数字IO状态IoState_msg
+```
+std_msgs/Header header
+int32[] digital_input
+int32[] digital_output
+```
+- `/tl_driver/io_state` 载荷，默认 10 Hz
+- 值：0=低，1=高
 
 ## tl_ros2_interface服务（srv）说明
 下面列出 srv 文件的请求/响应字段及简要说明。
@@ -922,6 +965,43 @@ int32 mode
 ```
 - 查询当前运行模式
 - 返回: success/message/mode（当前模式：0-示教 1-远程 2-运行）
+
+## tl_ros2_interface动作（action）说明
+
+### 运动Move_action
+```
+tl_ros2_interface/MoveCommand command
+float64 timeout_sec
+---
+bool success
+string message
+---
+float64 progress
+tl_ros2_interface/CartesianPose current_pose
+string state
+```
+- goal: `command` 与 `/tl_driver/moveJ`、`/tl_driver/moveL` 同结构，`target_pos_value` 必须 14 位、`target_pos_type` 必须 0；`timeout_sec<=0` 使用节点默认超时
+- feedback: `progress`（0–1，坐标系 2/3 无法估算时为 -1）、`current_pose`（MCS 状态流）、`state`（RUNNING/STOP/PAUSE）
+- result: `success`/`message`
+- cancel：控制器 SDK 无通用停止接口，驱动一律拒绝，不会返回“取消成功”
+- 并发：刚通过 `/tl_driver/moveJ`、`/tl_driver/moveL` 话题下发运动后 500 ms 内的 goal 会被拒绝
+- 完成校验：`move_joint` 仅接受 `coord=0`、`move_linear` 仅接受 `coord=1`；前者用 ACS、后者用 MCS 校验，到达容差 1° / 2 mm
+
+### 轨迹回放PlayTrack_action
+```
+int32 vel
+float64 timeout_sec
+---
+bool success
+string message
+---
+float64 progress
+string state
+```
+- goal: `vel` 回放速度百分比 1–100
+- feedback: `progress` 固定 -1（控制器不提供回放进度）、`state`
+- result: `success`/`message`
+- cancel：同样拒绝（无可用的回放停止接口）
 
 ## 说明与后续
 - 若需更详细的字段含义或示例用法，可提交 issue 或说明需要的具体消息/服务，文档将补充字段示例与使用场景。
