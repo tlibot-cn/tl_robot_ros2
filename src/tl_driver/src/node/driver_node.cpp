@@ -5,6 +5,7 @@
 #include <string>
 #include <thread>
 
+#include "node/actions_motion.hpp"
 #include "node/driver_node.hpp"
 #include "node/registrars.hpp"
 #include "tl_driver/version.hpp"
@@ -24,6 +25,7 @@ constexpr int kMinStreamIntervalMs = 10;
 constexpr int kMaxStreamIntervalMs = 60000;
 constexpr double kMaxAuxRate = 100.0;
 constexpr double kMaxThermalRate = 1.0;
+constexpr double kMaxActionTimeoutSec = 3600.0;
 
 bool is_valid_publish_rate(double rate)
 {
@@ -67,6 +69,8 @@ void DriverNode::declare_parameters()
   this->declare_parameter("joint_dynamics_rate", 10.0);
   this->declare_parameter("joint_thermal_rate", 0.5);
   this->declare_parameter("io_state_rate", 10.0);
+  this->declare_parameter("motion_action_timeout", 60.0);
+  this->declare_parameter("track_action_timeout", 600.0);
 
   arm_ip_ = this->get_parameter("arm_ip").as_string();
   arm_port_ = this->get_parameter("arm_port").as_string();
@@ -79,6 +83,8 @@ void DriverNode::declare_parameters()
   joint_dynamics_rate_ = this->get_parameter("joint_dynamics_rate").as_double();
   joint_thermal_rate_ = this->get_parameter("joint_thermal_rate").as_double();
   io_state_rate_ = this->get_parameter("io_state_rate").as_double();
+  motion_action_timeout_ = this->get_parameter("motion_action_timeout").as_double();
+  track_action_timeout_ = this->get_parameter("track_action_timeout").as_double();
   ndof_ = static_cast<int>(arm_joints_.size());
 
   if (!is_valid_publish_rate(publish_rate_))
@@ -100,6 +106,12 @@ void DriverNode::declare_parameters()
   if (!is_valid_rate(joint_thermal_rate_, kMaxThermalRate))
   {
     throw std::invalid_argument("joint_thermal_rate must be in [0, 1] Hz");
+  }
+  if (!std::isfinite(motion_action_timeout_) || motion_action_timeout_ <= 0.0 ||
+      motion_action_timeout_ > kMaxActionTimeoutSec || !std::isfinite(track_action_timeout_) ||
+      track_action_timeout_ <= 0.0 || track_action_timeout_ > kMaxActionTimeoutSec)
+  {
+    throw std::invalid_argument("action timeouts must be in (0, 3600] seconds");
   }
 
   constexpr int kMinJoints = 1;
@@ -187,6 +199,9 @@ void DriverNode::create_callback_groups()
   dynamics_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   thermal_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   io_state_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+
+  // action 的 execute 在独立工作线程中运行；goal/cancel 回调仍单独成组，避免占用服务组。
+  action_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 }
 
 void DriverNode::select_service_group(const rclcpp::CallbackGroup::SharedPtr& group)
@@ -234,6 +249,8 @@ void DriverNode::register_entities()
         },
         stream_group_);
   }
+
+  actions_ = std::make_unique<tl_driver::MotionActionServers>(*this, action_group_);
 }
 
 void DriverNode::create_state_timer(double rate)
@@ -255,6 +272,19 @@ void DriverNode::create_state_timer(double rate)
   if (old_timer)
   {
     old_timer->cancel();
+  }
+}
+
+bool DriverNode::motion_action_active() const
+{
+  return actions_ && actions_->is_motion_active();
+}
+
+void DriverNode::note_external_motion()
+{
+  if (actions_)
+  {
+    actions_->note_external_motion();
   }
 }
 
@@ -333,6 +363,9 @@ void DriverNode::check_state_stream()
 
 DriverNode::~DriverNode()
 {
+  // 先停 action 工作线程，避免析构过程中仍访问节点/会话。
+  actions_.reset();
+
   if (session_.is_connected())
   {
     session_.power_off();
