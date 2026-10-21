@@ -20,10 +20,19 @@ namespace
 {
 constexpr double kMinPublishRate = 1.0;
 constexpr double kMaxPublishRate = 1000.0;
+constexpr int kMinStreamIntervalMs = 10;
+constexpr int kMaxStreamIntervalMs = 60000;
+constexpr double kMaxAuxRate = 100.0;
+constexpr double kMaxThermalRate = 1.0;
 
 bool is_valid_publish_rate(double rate)
 {
   return std::isfinite(rate) && rate >= kMinPublishRate && rate <= kMaxPublishRate;
+}
+
+bool is_valid_rate(double rate, double max_rate)
+{
+  return std::isfinite(rate) && rate >= 0.0 && rate <= max_rate;
 }
 } // namespace
 
@@ -53,6 +62,11 @@ void DriverNode::declare_parameters()
                                                     {"joint1", "joint2", "joint3", "joint4", "joint5", "joint6"});
   this->declare_parameter("arm_type", "TCB605");
   this->declare_parameter("publish_rate", 100.0);
+  this->declare_parameter("state_source", "stream");
+  this->declare_parameter("state_stream_interval_ms", 10);
+  this->declare_parameter("joint_dynamics_rate", 10.0);
+  this->declare_parameter("joint_thermal_rate", 0.5);
+  this->declare_parameter("io_state_rate", 10.0);
 
   arm_ip_ = this->get_parameter("arm_ip").as_string();
   arm_port_ = this->get_parameter("arm_port").as_string();
@@ -60,11 +74,32 @@ void DriverNode::declare_parameters()
   arm_type_ = this->get_parameter("arm_type").as_string();
   arm_joints_ = this->get_parameter("arm_joints").as_string_array();
   publish_rate_ = this->get_parameter("publish_rate").as_double();
+  state_source_ = this->get_parameter("state_source").as_string();
+  state_stream_interval_ms_ = this->get_parameter("state_stream_interval_ms").as_int();
+  joint_dynamics_rate_ = this->get_parameter("joint_dynamics_rate").as_double();
+  joint_thermal_rate_ = this->get_parameter("joint_thermal_rate").as_double();
+  io_state_rate_ = this->get_parameter("io_state_rate").as_double();
   ndof_ = static_cast<int>(arm_joints_.size());
 
   if (!is_valid_publish_rate(publish_rate_))
   {
     throw std::invalid_argument("publish_rate must be in [1.0, 1000.0] Hz");
+  }
+  if (state_source_ != "stream" && state_source_ != "poll")
+  {
+    throw std::invalid_argument("state_source must be 'stream' or 'poll'");
+  }
+  if (state_stream_interval_ms_ < kMinStreamIntervalMs || state_stream_interval_ms_ > kMaxStreamIntervalMs)
+  {
+    throw std::invalid_argument("state_stream_interval_ms must be in [10, 60000]");
+  }
+  if (!is_valid_rate(joint_dynamics_rate_, kMaxAuxRate) || !is_valid_rate(io_state_rate_, kMaxAuxRate))
+  {
+    throw std::invalid_argument("joint_dynamics_rate / io_state_rate must be in [0, 100] Hz");
+  }
+  if (!is_valid_rate(joint_thermal_rate_, kMaxThermalRate))
+  {
+    throw std::invalid_argument("joint_thermal_rate must be in [0, 1] Hz");
   }
 
   constexpr int kMinJoints = 1;
@@ -90,7 +125,10 @@ rcl_interfaces::msg::SetParametersResult DriverNode::on_parameters_set(const std
   {
     if (parameter.get_name() != "publish_rate")
     {
-      continue;
+      // 其余参数在构造期读取并确定定时器/回调组；运行期修改不会生效，明确拒绝而不是假装成功。
+      result.successful = false;
+      result.reason = parameter.get_name() + " is read-only after startup";
+      return result;
     }
 
     if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE)
@@ -138,13 +176,17 @@ void DriverNode::create_callback_groups()
   config_service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   io_service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   state_service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  // get_robot_state 等待状态帧（mode=1 最长 interval+1 s），单独成组，避免阻塞其它服务。
-  robot_state_service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   topic_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   topic_options_.callback_group = topic_group_;
 
   timer_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+
+  // 诊断话题与看门狗各自成组：热状态单次查询可达 150–350 ms，不能阻塞 100 Hz 位姿发布。
+  stream_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  dynamics_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  thermal_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  io_state_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 }
 
 void DriverNode::select_service_group(const rclcpp::CallbackGroup::SharedPtr& group)
@@ -167,17 +209,31 @@ void DriverNode::register_entities()
   register_io_services(*this);
   select_service_group(state_service_group_);
   register_state_services(*this);
-  select_service_group(robot_state_service_group_);
-  register_robot_state_service(*this);
   service_group_.reset(); // 注册结束，后续 create_service 未显式选组会抛异常
 
   // 话题pub
-  publishers_ = std::make_unique<tl_driver::StatePublishers>(*this, session_, arm_joints_, ndof_);
+  StatePublishConfig publish_config;
+  publish_config.stream_enabled = state_source_ == "stream";
+  publish_config.stream_interval_ms = state_stream_interval_ms_;
+  publish_config.ndof = ndof_;
+  publishers_ = std::make_unique<tl_driver::StatePublishers>(*this, session_, arm_joints_, publish_config);
 
   // 话题sub
   register_topics(*this);
 
   create_state_timer(publish_rate_);
+  create_aux_timers();
+
+  if (state_source_ == "stream")
+  {
+    stream_watchdog_timer_ = this->create_wall_timer(
+        std::chrono::seconds(1),
+        [this]()
+        {
+          check_state_stream();
+        },
+        stream_group_);
+  }
 }
 
 void DriverNode::create_state_timer(double rate)
@@ -202,6 +258,79 @@ void DriverNode::create_state_timer(double rate)
   }
 }
 
+void DriverNode::create_aux_timers()
+{
+  const auto make_timer = [this](double rate, std::function<void()> callback,
+                                 const rclcpp::CallbackGroup::SharedPtr& group) -> rclcpp::TimerBase::SharedPtr
+  {
+    if (rate <= 0.0)
+    {
+      return rclcpp::TimerBase::SharedPtr{};
+    }
+    return this->create_wall_timer(std::chrono::duration<double>(1.0 / rate), std::move(callback), group);
+  };
+
+  dynamics_timer_ = make_timer(
+      joint_dynamics_rate_,
+      [this]()
+      {
+        publishers_->publish_dynamics();
+      },
+      dynamics_group_);
+  thermal_timer_ = make_timer(
+      joint_thermal_rate_,
+      [this]()
+      {
+        publishers_->publish_thermal();
+      },
+      thermal_group_);
+  io_state_timer_ = make_timer(
+      io_state_rate_,
+      [this]()
+      {
+        publishers_->publish_io();
+      },
+      io_state_group_);
+}
+
+void DriverNode::check_state_stream()
+{
+  if (state_source_ != "stream" || !session_.is_connected())
+  {
+    return;
+  }
+
+  const auto max_age = std::chrono::milliseconds(3 * state_stream_interval_ms_);
+  for (int channel : {1, 2})
+  {
+    if (session_.is_state_frame_fresh(channel, max_age))
+    {
+      if (stream_request_failures_[channel] >= 3)
+      {
+        RCLCPP_INFO(this->get_logger(), "[StateStream]: channel %d recovered", channel);
+      }
+      stream_request_failures_[channel] = 0;
+      continue;
+    }
+
+    // 计数在“仍无新帧”时递增；请求返回 SUCCESS 不代表控制器真的推送，不能据此清零。
+    ++stream_request_failures_[channel];
+    if (stream_request_failures_[channel] == 3)
+    {
+      RCLCPP_WARN(this->get_logger(),
+                  "[StateStream]: channel %d has no fresh frames; retrying mode=1 every 5 s "
+                  "(dependent topic falls back to polling)",
+                  channel);
+    }
+
+    // 前 3 s 每秒重试，之后每 5 s 重试一次，避免链路已断时刷屏。
+    if (stream_request_failures_[channel] <= 3 || stream_request_failures_[channel] % 5 == 0)
+    {
+      session_.request_state_stream(channel, state_stream_interval_ms_);
+    }
+  }
+}
+
 DriverNode::~DriverNode()
 {
   if (session_.is_connected())
@@ -218,6 +347,22 @@ void DriverNode::init()
 
   if (session_.connect(arm_ip_, arm_port_, arm_port_aux_))
   {
+    // 连续状态流：ACS（channel=1）/MCS（channel=2）。失败不阻塞启动，1 Hz 看门狗会重试。
+    if (state_source_ == "stream")
+    {
+      if (session_.start_state_stream(state_stream_interval_ms_))
+      {
+        RCLCPP_INFO(this->get_logger(), "[StateStream]: ACS/MCS streams started at %d ms interval",
+                    state_stream_interval_ms_);
+      }
+      else
+      {
+        RCLCPP_WARN(this->get_logger(),
+                    "[StateStream]: failed to start state streams; watchdog will retry, or use "
+                    "state_source:=poll");
+      }
+    }
+
     // init() 在 spin() 之前执行，此处取得的 fd 在本次初始化中不会变化。
     const int fd = session_.fd();
 

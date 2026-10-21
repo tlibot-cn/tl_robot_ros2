@@ -1,5 +1,5 @@
 /// @file arm_client.cpp
-/// @brief `ArmClient` 的实现：回调转发、状态帧缓冲与日志节流。
+/// @brief `ArmClient` 的实现：回调转发、双通道状态快照与日志节流。
 
 #include "arm_client.hpp"
 
@@ -10,6 +10,7 @@
 #include <rclcpp/logging.hpp>
 
 #include "arm_sdk.hpp"
+#include "convert/state_frame.hpp"
 
 namespace tl_driver::arm_client
 {
@@ -77,27 +78,94 @@ void ArmClient::start_robot_state_channel(int fd_aux)
   }
 }
 
-uint64_t ArmClient::robot_state_seq() const
+bool ArmClient::request_state_stream(int fd_aux, int channel, int position, int interval_ms)
 {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return seq_;
+  tl::RobotState param{};
+  param.channel = channel;
+  param.position = position;
+  param.mode = 1; // 连续反馈
+  param.interval = interval_ms;
+  param.stop = false;
+
+  const tl::Result ret = tl::get_robot_state(fd_aux, param);
+  if (ret != tl::Result::SUCCESS)
+  {
+    RCLCPP_WARN_THROTTLE(logger_, clock_, 1000, "[SDK]: channel %d stream request failed, result=%s", channel,
+                         result_to_string(ret));
+    return false;
+  }
+  return true;
 }
 
-bool ArmClient::wait_robot_state(uint64_t start_seq, std::chrono::milliseconds timeout, std::string& message)
+bool ArmClient::stop_state_stream(int fd_aux, int channel, int position)
 {
-  std::unique_lock<std::mutex> lock(mutex_);
-  const bool received = cv_.wait_for(lock, timeout,
-                                     [this, start_seq]()
-                                     {
-                                       return seq_ > start_seq;
-                                     });
-  if (!received)
+  tl::RobotState param{};
+  param.channel = channel;
+  param.position = position;
+  param.mode = 1;
+  param.stop = true;
+
+  const tl::Result ret = tl::get_robot_state(fd_aux, param);
+  if (ret != tl::Result::SUCCESS)
+  {
+    RCLCPP_WARN(logger_, "[SDK]: channel %d stream stop failed, result=%s", channel, result_to_string(ret));
+    return false;
+  }
+  return true;
+}
+
+bool ArmClient::get_state_frame(int channel, StateFrame& out) const
+{
+  if (channel < 1 || channel >= static_cast<int>(frames_.size()))
   {
     return false;
   }
 
-  message = last_msg_;
+  std::lock_guard<std::mutex> lock(frame_mutex_);
+  if (frames_[channel].seq == 0)
+  {
+    return false;
+  }
+  out = frames_[channel];
   return true;
+}
+
+bool ArmClient::get_state_values(int channel, std::vector<double>& values, uint64_t& seq,
+                                 std::chrono::steady_clock::time_point& received_at) const
+{
+  if (channel < 1 || channel >= static_cast<int>(frames_.size()))
+  {
+    return false;
+  }
+
+  std::lock_guard<std::mutex> lock(frame_mutex_);
+  const StateFrame& frame = frames_[channel];
+  if (frame.seq == 0)
+  {
+    return false;
+  }
+
+  // 通道 1 只承载 ACS，通道 2 只承载 MCS（§14.2）。
+  values = channel == 1 ? frame.acs : frame.mcs;
+  seq = frame.seq;
+  received_at = frame.received_at;
+  return true;
+}
+
+bool ArmClient::is_state_frame_fresh(int channel, std::chrono::milliseconds max_age) const
+{
+  if (channel < 1 || channel >= static_cast<int>(frames_.size()))
+  {
+    return false;
+  }
+
+  std::lock_guard<std::mutex> lock(frame_mutex_);
+  const StateFrame& frame = frames_[channel];
+  if (frame.seq == 0)
+  {
+    return false;
+  }
+  return std::chrono::steady_clock::now() - frame.received_at <= max_age;
 }
 
 void ArmClient::error_callback(int message_type, const char *message, int message_code)
@@ -130,16 +198,25 @@ void ArmClient::on_error(int message_type, const char *message, int message_code
 
 void ArmClient::on_state(const char *state)
 {
+  convert::RobotStateFrameData parsed;
+  if (state == nullptr || !convert::parse_robot_state_frame(state, parsed))
   {
-    std::lock_guard<std::mutex> lock(mutex_);
-    last_msg_ = state != nullptr ? state : "";
-    ++seq_;
+    // 非状态报文或未知布局：回调线程不得抛异常；节流记录避免刷屏。
+    if (should_log(last_state_log_ns_, std::chrono::seconds(1)))
+    {
+      RCLCPP_WARN(logger_, "[SDK]: unparsable robot state frame: %s", state != nullptr ? state : "");
+    }
+    return;
   }
-  cv_.notify_all();
 
-  if (should_log(last_state_log_ns_, std::chrono::seconds(1)))
   {
-    RCLCPP_INFO(logger_, "[SDK]: robot_state = %s", state != nullptr ? state : "");
+    std::lock_guard<std::mutex> lock(frame_mutex_);
+    StateFrame& frame = frames_[parsed.channel];
+    frame.raw = state;
+    frame.acs = std::move(parsed.acs);
+    frame.mcs = std::move(parsed.mcs);
+    frame.received_at = std::chrono::steady_clock::now();
+    ++frame.seq;
   }
 }
 

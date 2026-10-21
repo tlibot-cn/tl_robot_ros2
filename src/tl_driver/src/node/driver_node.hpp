@@ -2,6 +2,7 @@
 #define TL_DRIVER__DRIVER_NODE_HPP_
 
 // common
+#include <array>
 #include <chrono>
 #include <exception>
 #include <functional>
@@ -23,7 +24,7 @@ namespace tl_driver
 {
 /// @brief 机械臂驱动节点：参数、回调组、实体创建与服务/话题注册。
 /// @note 回调实现按域分布：服务在 src/node/services_*.cpp，话题在 src/node/topics.cpp，
-///       由 node/registrars.hpp 声明的注册函数挂载；对外 ROS 接口与拆分前逐字一致。
+///       由 node/registrars.hpp 声明的注册函数挂载。
 class DriverNode : public rclcpp::Node
 {
 public:
@@ -31,7 +32,7 @@ public:
   ~DriverNode();
 
   /// @brief 连接控制器并完成上电流程，由构造函数末尾调用。
-  /// @note 连接或切入示教模式失败即以 `EXIT_FAILURE` 退出，便于 systemd/launch 识别。
+  /// @note 连接或切入示教模式失败即抛异常，由 main 返回 `EXIT_FAILURE`。
   void init();
 
   /// @brief 会话访问，供各域 handler 使用。
@@ -46,6 +47,27 @@ public:
   int ndof() const noexcept
   {
     return ndof_;
+  }
+
+  /// @brief 状态数据源（`stream` / `poll`）。
+  const std::string& state_source() const noexcept
+  {
+    return state_source_;
+  }
+
+  /// @brief 连续状态流间隔（ms），用于帧龄判定。
+  int state_stream_interval_ms() const noexcept
+  {
+    return state_stream_interval_ms_;
+  }
+
+  /// @brief 读取状态流快照，供状态诊断使用。
+  /// @param[in] channel 1=ACS，2=MCS
+  /// @param[out] out 快照
+  /// @return 至少收到过一帧时为 true
+  bool get_state_frame(int channel, arm_client::StateFrame& out) const
+  {
+    return session_.get_state_frame(channel, out);
   }
 
   /// @brief 创建服务并持有其生命周期，供各域 register_*_services 使用。
@@ -121,8 +143,6 @@ private:
   void declare_parameters();
 
   /// @brief 创建服务域/话题/定时器互斥回调组。
-  /// @note 服务按域各建一个 `MutuallyExclusive` 组，跨域可并行；`get_robot_state` 因等待
-  ///       状态帧（mode=1 最长 interval+1 s）单独成组，避免冻结其它服务（架构评审 P1-1）。
   void create_callback_groups();
 
   /// @brief 设置后续 `create_service` 注册到哪个服务回调组（仅构造期使用）。
@@ -139,14 +159,26 @@ private:
   /// @param[in] rate 发布频率（Hz）
   void create_state_timer(double rate);
 
-  std::string arm_ip_;
-  std::string arm_port_;
-  std::string arm_port_aux_;
+  /// @brief 按配置创建诊断话题定时器（频率为 0 时不创建）。
+  void create_aux_timers();
+
+  /// @brief 1 Hz 状态流看门狗：通道超时未更新时重发 mode=1 请求。
+  void check_state_stream();
+
+  std::string arm_ip_{"192.168.1.13"};
+  std::string arm_port_{"6001"};
+  std::string arm_port_aux_{"7000"};
   std::string arm_type_;
 
   std::vector<std::string> arm_joints_;
   double publish_rate_{100.0};
-  int ndof_{6};
+  int ndof_{0};
+
+  std::string state_source_{"stream"};
+  int state_stream_interval_ms_{10};
+  double joint_dynamics_rate_{10.0};
+  double joint_thermal_rate_{0.5};
+  double io_state_rate_{10.0};
 
   ArmSession session_;
 
@@ -160,10 +192,13 @@ private:
   rclcpp::CallbackGroup::SharedPtr config_service_group_;
   rclcpp::CallbackGroup::SharedPtr io_service_group_;
   rclcpp::CallbackGroup::SharedPtr state_service_group_;
-  rclcpp::CallbackGroup::SharedPtr robot_state_service_group_;
 
   rclcpp::CallbackGroup::SharedPtr topic_group_;
   rclcpp::CallbackGroup::SharedPtr timer_group_;
+  rclcpp::CallbackGroup::SharedPtr stream_group_;
+  rclcpp::CallbackGroup::SharedPtr dynamics_group_;
+  rclcpp::CallbackGroup::SharedPtr thermal_group_;
+  rclcpp::CallbackGroup::SharedPtr io_state_group_;
   rclcpp::SubscriptionOptions topic_options_;
 
   // 节点需持有服务/订阅对象，否则对象析构即注销
@@ -171,7 +206,14 @@ private:
   std::vector<rclcpp::SubscriptionBase::SharedPtr> subscriptions_;
 
   rclcpp::TimerBase::SharedPtr state_publish_timer_;
+  rclcpp::TimerBase::SharedPtr dynamics_timer_;
+  rclcpp::TimerBase::SharedPtr thermal_timer_;
+  rclcpp::TimerBase::SharedPtr io_state_timer_;
+  rclcpp::TimerBase::SharedPtr stream_watchdog_timer_;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr publish_rate_param_handle_;
+
+  // 看门狗连续失败计数，仅由 stream_group_ 内的 1 Hz 定时器读写。
+  std::array<int, 3> stream_request_failures_{0, 0, 0};
 };
 
 } // namespace tl_driver
