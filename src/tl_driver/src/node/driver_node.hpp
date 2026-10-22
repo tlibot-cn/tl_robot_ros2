@@ -169,10 +169,10 @@ private:
   /// @brief 按域注册全部服务、话题与 action。
   void register_entities();
 
-  /// @brief 参数更新回调：校验并应用 `publish_rate`（重建定时器，立即生效）。
+  /// @brief 参数更新回调：所有参数均在构造期读取，运行期修改一律拒绝。
   rcl_interfaces::msg::SetParametersResult on_parameters_set(const std::vector<rclcpp::Parameter>& parameters);
 
-  /// @brief 按指定频率创建状态发布定时器；成功后替换旧定时器。
+  /// @brief 按启动参数创建状态发布定时器。
   /// @param[in] rate 发布频率（Hz）
   void create_state_timer(double rate);
 
@@ -232,7 +232,7 @@ private:
   rclcpp::TimerBase::SharedPtr status_query_timer_;
   rclcpp::TimerBase::SharedPtr speed_query_timer_;
   rclcpp::TimerBase::SharedPtr stream_watchdog_timer_;
-  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr publish_rate_param_handle_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr read_only_param_handle_;
 
   // 看门狗连续失败计数，仅由 stream_group_ 内的 1 Hz 定时器读写。
   std::array<int, 3> stream_request_failures_{0, 0, 0};
