@@ -18,6 +18,8 @@ namespace
 constexpr std::chrono::seconds kStreamFallbackAfter{3};
 constexpr std::chrono::seconds kStreamRecoverAfter{1};
 constexpr std::chrono::milliseconds kPollPeriod{50}; // 20 Hz
+// 连续 3 次查询失败（约 300 ms）即认为缓存过期，停止发布旧状态而不是冻结在最后一次成功值。
+constexpr int kMaxRunningStatusFailures = 3;
 constexpr int kAcsChannel = 1;
 constexpr int kMcsChannel = 2;
 } // namespace
@@ -45,6 +47,12 @@ StatePublishers::StatePublishers(rclcpp::Node& node, const ArmSession& session, 
   tcp_pose_msg_.header.frame_id = "base_link";
 }
 
+StatePublishers::~StatePublishers()
+{
+  // 任何析构路径（包括 DriverNode 构造抛异常）都必须先 join，避免 std::thread 析构 terminate。
+  stop_stream_thread();
+}
+
 void StatePublishers::publish_arm_state()
 {
   if (!session_.is_connected())
@@ -53,10 +61,9 @@ void StatePublishers::publish_arm_state()
     return;
   }
 
-  // 本周期只取一次 fd 快照，多次 SDK 查询复用，避免判定与使用之间再次读取会话状态。
-  const int fd = session_.fd();
-
-  publish_running_status(fd);
+  // 只发布 10 Hz 查询缓存的运行状态。健康流路径不调用 SDK；
+  // 下面的 poll 模式与通道失效回退仍会同步查询，受 20 Hz 上限约束。
+  publish_running_status();
 
   const auto now = std::chrono::steady_clock::now();
   // 回退轮询限制在 20 Hz：断链时单次同步查询可能阻塞数秒，不能以 100 Hz 打满 timer_group_。
@@ -66,6 +73,7 @@ void StatePublishers::publish_arm_state()
   {
     if (poll_due)
     {
+      const int fd = session_.fd();
       poll_joint(fd);
       poll_tcp(fd);
       last_poll_ = now;
@@ -73,47 +81,97 @@ void StatePublishers::publish_arm_state()
     return;
   }
 
+  // stream 模式：/joint_states 与 /tcp_pose 由 7000 帧通知驱动的独立线程发布。
+  // 这里只按帧龄维护通道健康状态，并在流失效后驱动 poll 回退。
   const auto max_age = std::chrono::milliseconds(3 * config_.stream_interval_ms);
+  update_channel_health(acs_health_, !session_.is_state_frame_fresh(kAcsChannel, max_age), "ACS /joint_states");
+  update_channel_health(mcs_health_, !session_.is_state_frame_fresh(kMcsChannel, max_age), "MCS /tcp_pose");
 
-  // 两个通道独立选择数据源：单通道失效只回退该通道，另一通道继续走流。
-  if (acs_health_.stream_active)
+  if (!poll_due)
   {
-    const StreamResult result = publish_joint_stream();
-    update_channel_health(acs_health_, result == StreamResult::kUnavailable, "ACS /joint_states");
+    return;
   }
-  else
+
+  const int fd = session_.fd();
+  if (!acs_health_.stream_active)
   {
-    update_channel_health(acs_health_, !session_.is_state_frame_fresh(kAcsChannel, max_age), "ACS /joint_states");
-    if (poll_due)
+    poll_joint(fd);
+  }
+  if (!mcs_health_.stream_active)
+  {
+    poll_tcp(fd);
+  }
+  last_poll_ = now;
+}
+
+void StatePublishers::start_stream_thread()
+{
+  if (!config_.stream_enabled || stream_thread_.joinable())
+  {
+    return;
+  }
+  stream_thread_stop_.store(false, std::memory_order_relaxed);
+  stream_thread_ = std::thread(&StatePublishers::stream_publish_loop, this);
+}
+
+void StatePublishers::stop_stream_thread()
+{
+  stream_thread_stop_.store(true, std::memory_order_relaxed);
+  if (stream_thread_.joinable())
+  {
+    stream_thread_.join();
+  }
+}
+
+void StatePublishers::stream_publish_loop()
+{
+  constexpr auto kWait = std::chrono::milliseconds(20);
+  // shutdown 后不再发布，避免析构 join 之前仍向 DDS 写入。
+  while (rclcpp::ok() && !stream_thread_stop_.load(std::memory_order_relaxed))
+  {
+    // 没有新帧时按 20 ms 超时醒来，仅用于检查停止标志；不轮询 SDK。
+    session_.wait_state_update(stream_notify_seen_, kWait);
+    if (stream_thread_stop_.load(std::memory_order_relaxed))
     {
-      poll_joint(fd);
+      break;
     }
+    publish_stream_updates();
+  }
+}
+
+void StatePublishers::publish_stream_updates()
+{
+  if (!session_.is_connected())
+  {
+    return;
   }
 
-  if (mcs_health_.stream_active)
+  // 锁只覆盖“填消息 + DDS 发布”的短临界区；拿不到锁说明另一条发布路径正在写同一组缓冲，
+  // 跳过本帧即可（下一次帧通知会带最新 seq 重试）。
+  std::unique_lock<std::mutex> publish_lock(publish_mutex_, std::try_to_lock);
+  if (!publish_lock.owns_lock())
   {
-    const StreamResult result = publish_tcp_stream();
-    update_channel_health(mcs_health_, result == StreamResult::kUnavailable, "MCS /tcp_pose");
-  }
-  else
-  {
-    update_channel_health(mcs_health_, !session_.is_state_frame_fresh(kMcsChannel, max_age), "MCS /tcp_pose");
-    if (poll_due)
-    {
-      poll_tcp(fd);
-    }
+    RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000,
+                         "[Pub]: publish buffer busy (concurrent publish), skip stream frame");
+    return;
   }
 
-  if (poll_due)
+  // 单通道恢复/失效互不影响；两个发布函数内部按 seq 去重并检查帧龄。
+  if (acs_health_.stream_active.load(std::memory_order_relaxed))
   {
-    last_poll_ = now;
+    publish_joint_stream();
+  }
+  if (mcs_health_.stream_active.load(std::memory_order_relaxed))
+  {
+    publish_tcp_stream();
   }
 }
 
 void StatePublishers::poll_joint(int fd)
 {
-  joint_pose_.clear();
-  const tl::Result ret = tl::get_current_position(fd, tl::Coord::JOINT, joint_pose_);
+  // 查询用局部缓冲：同步调用可能阻塞数百毫秒，不能持发布锁执行。
+  std::vector<double> joint_pose;
+  const tl::Result ret = tl::get_current_position(fd, tl::Coord::JOINT, joint_pose);
   if (ret != tl::Result::SUCCESS)
   {
     RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000,
@@ -122,14 +180,15 @@ void StatePublishers::poll_joint(int fd)
   }
 
   // 同步查询返回度；批量转换为弧度。
-  convert::joint_deg_to_rad(joint_pose_, joint_pose_.size());
-  publish_joint_pose(joint_pose_);
+  convert::joint_deg_to_rad(joint_pose, joint_pose.size());
+  std::lock_guard<std::mutex> publish_lock(publish_mutex_);
+  publish_joint_pose(joint_pose, node_.now());
 }
 
 void StatePublishers::poll_tcp(int fd)
 {
-  tcp_pose_.clear();
-  const tl::Result ret = tl::get_current_position(fd, tl::Coord::BASE, tcp_pose_);
+  std::vector<double> tcp_pose;
+  const tl::Result ret = tl::get_current_position(fd, tl::Coord::BASE, tcp_pose);
   if (ret != tl::Result::SUCCESS)
   {
     RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000, "[Pub]: failed to poll TCP pose, result=%s",
@@ -138,56 +197,63 @@ void StatePublishers::poll_tcp(int fd)
   }
 
   // 同步查询的 rpy 已是 rad，位置为 mm。
-  publish_tcp_pose(tcp_pose_);
+  std::lock_guard<std::mutex> publish_lock(publish_mutex_);
+  publish_tcp_pose(tcp_pose, node_.now());
 }
 
-StatePublishers::StreamResult StatePublishers::publish_joint_stream()
+void StatePublishers::publish_joint_stream()
 {
   uint64_t seq = 0;
   std::chrono::steady_clock::time_point received_at;
   if (!session_.get_state_values(kAcsChannel, joint_pose_, seq, received_at) || joint_pose_.empty())
   {
-    return StreamResult::kUnavailable;
+    return;
   }
 
   const auto max_age = std::chrono::milliseconds(3 * config_.stream_interval_ms);
-  if (std::chrono::steady_clock::now() - received_at > max_age)
+  const auto now = std::chrono::steady_clock::now();
+  if (now - received_at > max_age)
   {
-    return StreamResult::kUnavailable;
+    return;
   }
   if (seq == last_acs_seq_)
   {
-    return StreamResult::kNoNewFrame;
+    return;
   }
   last_acs_seq_ = seq;
 
   convert::joint_deg_to_rad(joint_pose_, joint_pose_.size());
-  publish_joint_pose(joint_pose_);
-  return StreamResult::kPublished;
+  // 时间戳取帧接收时刻而不是发布时刻，避免消费者把排队延迟算进运动学时间。
+  // 这里用 ROS 时钟减去 steady 时钟的帧龄；`use_sim_time` 下若时钟暂停，两者可能短暂不同步。
+  const auto age = std::chrono::duration_cast<std::chrono::nanoseconds>(now - received_at);
+  const rclcpp::Time stamp = node_.now() - rclcpp::Duration(age);
+  publish_joint_pose(joint_pose_, stamp);
 }
 
-StatePublishers::StreamResult StatePublishers::publish_tcp_stream()
+void StatePublishers::publish_tcp_stream()
 {
   uint64_t seq = 0;
   std::chrono::steady_clock::time_point received_at;
   if (!session_.get_state_values(kMcsChannel, tcp_pose_, seq, received_at) || tcp_pose_.size() < 6)
   {
-    return StreamResult::kUnavailable;
+    return;
   }
 
   const auto max_age = std::chrono::milliseconds(3 * config_.stream_interval_ms);
-  if (std::chrono::steady_clock::now() - received_at > max_age)
+  const auto now = std::chrono::steady_clock::now();
+  if (now - received_at > max_age)
   {
-    return StreamResult::kUnavailable;
+    return;
   }
   if (seq == last_mcs_seq_)
   {
-    return StreamResult::kNoNewFrame;
+    return;
   }
   last_mcs_seq_ = seq;
 
-  publish_tcp_pose_from_mcs(tcp_pose_);
-  return StreamResult::kPublished;
+  const auto age = std::chrono::duration_cast<std::chrono::nanoseconds>(now - received_at);
+  const rclcpp::Time stamp = node_.now() - rclcpp::Duration(age);
+  publish_tcp_pose_from_mcs(tcp_pose_, stamp);
 }
 
 void StatePublishers::update_channel_health(ChannelHealth& health, bool unavailable, const char *name)
@@ -228,10 +294,10 @@ void StatePublishers::update_channel_health(ChannelHealth& health, bool unavaila
   }
 }
 
-void StatePublishers::publish_joint_pose(const std::vector<double>& joint_pose)
+void StatePublishers::publish_joint_pose(const std::vector<double>& joint_pose, const rclcpp::Time& stamp)
 {
   auto& msg = joint_state_msg_;
-  msg.header.stamp = node_.now();
+  msg.header.stamp = stamp;
 
   // 按实际数据与关节名数量裁剪：6 轴时 SDK 末位为补 0，丢掉；数据不足时不越界。
   const std::size_t count = std::min(joint_pose.size(), joint_names_.size());
@@ -257,7 +323,7 @@ void StatePublishers::publish_joint_pose(const std::vector<double>& joint_pose)
   joint_state_pub_->publish(msg);
 }
 
-void StatePublishers::publish_tcp_pose(const std::vector<double>& tcp_pose)
+void StatePublishers::publish_tcp_pose(const std::vector<double>& tcp_pose, const rclcpp::Time& stamp)
 {
   if (tcp_pose.size() < 6)
   {
@@ -267,7 +333,7 @@ void StatePublishers::publish_tcp_pose(const std::vector<double>& tcp_pose)
   }
 
   auto& msg = tcp_pose_msg_;
-  msg.header.stamp = node_.now();
+  msg.header.stamp = stamp;
 
   // 同步查询返回：位置 mm、欧拉角 rad → m 和 rad。
   msg.position.x = convert::mm_to_m(tcp_pose[0]);
@@ -297,7 +363,7 @@ void StatePublishers::publish_tcp_pose(const std::vector<double>& tcp_pose)
   tcp_pose_pub_->publish(msg);
 }
 
-void StatePublishers::publish_tcp_pose_from_mcs(const std::vector<double>& mcs)
+void StatePublishers::publish_tcp_pose_from_mcs(const std::vector<double>& mcs, const rclcpp::Time& stamp)
 {
   if (mcs.size() < 6)
   {
@@ -308,7 +374,7 @@ void StatePublishers::publish_tcp_pose_from_mcs(const std::vector<double>& mcs)
 
   // 关键单位差异（架构评审 §14.3）：MCS 流的 rpy 是度，不能复用同步查询（rad）的分支。
   auto& msg = tcp_pose_msg_;
-  msg.header.stamp = node_.now();
+  msg.header.stamp = stamp;
 
   msg.position.x = convert::mm_to_m(mcs[0]);
   msg.position.y = convert::mm_to_m(mcs[1]);
@@ -337,38 +403,67 @@ void StatePublishers::publish_tcp_pose_from_mcs(const std::vector<double>& mcs)
   tcp_pose_pub_->publish(msg);
 }
 
-void StatePublishers::publish_running_status(int fd)
+void StatePublishers::query_running_status()
 {
+  if (!session_.is_connected())
+  {
+    return;
+  }
+
   tl::RunState running_status = tl::RunState::STOP;
-  tl::Result ret = tl::get_robot_running_state(fd, running_status);
+  const tl::Result ret = tl::get_robot_running_state(session_.fd(), running_status);
   if (ret != tl::Result::SUCCESS)
   {
     RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000,
                          "[Read Running Status]: failed to read running status, result=%s",
                          arm_client::result_to_string(ret));
+    std::lock_guard<std::mutex> lock(status_mutex_);
+    if (++arm_status_failures_ >= kMaxRunningStatusFailures)
+    {
+      // 停止发布：消费者看到话题中断，比继续收到冻结的 RUNNING/STOP 更安全。
+      arm_status_sampled_ = false;
+    }
     return;
   }
 
-  auto& msg = arm_status_msg_;
-  msg.stamp = node_.now();
+  std::string state;
   switch (running_status)
   {
     case tl::RunState::STOP:
-      msg.run_state = "STOP";
+      state = "STOP";
       break;
     case tl::RunState::PAUSE:
-      msg.run_state = "PAUSE";
+      state = "PAUSE";
       break;
     case tl::RunState::RUNNING:
-      msg.run_state = "RUNNING";
+      state = "RUNNING";
       break;
     default:
-      msg.run_state = "UNKNOWN";
+      state = "UNKNOWN";
       RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000, "[Pub]: unknown run state %d",
                            static_cast<int>(running_status));
       break;
   }
 
+  std::lock_guard<std::mutex> lock(status_mutex_);
+  arm_status_msg_.stamp = node_.now();
+  arm_status_msg_.run_state = std::move(state);
+  arm_status_sampled_ = true;
+  arm_status_failures_ = 0;
+}
+
+void StatePublishers::publish_running_status()
+{
+  // 拷贝后发布：避免持锁执行 DDS 写，也避免 100 Hz 发布与 10 Hz 查询互相阻塞。
+  tl_ros2_interface::msg::ArmStatus msg;
+  {
+    std::lock_guard<std::mutex> lock(status_mutex_);
+    if (!arm_status_sampled_)
+    {
+      return;
+    }
+    msg = arm_status_msg_;
+  }
   running_status_pub_->publish(msg);
 }
 

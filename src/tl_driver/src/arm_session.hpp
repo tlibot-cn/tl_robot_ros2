@@ -95,6 +95,9 @@ public:
   /// @brief 通道在 `max_age` 内是否收到过帧。
   bool is_state_frame_fresh(int channel, std::chrono::milliseconds max_age) const;
 
+  /// @brief 等待 7000 状态帧更新通知（独立发布线程使用）。
+  bool wait_state_update(uint64_t& seen, std::chrono::milliseconds timeout) const;
+
 private:
   rclcpp::Logger logger_;
   arm_client::ArmClient client_;

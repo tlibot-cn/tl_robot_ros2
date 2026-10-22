@@ -100,6 +100,11 @@ bool ArmSession::get_state_values(int channel, std::vector<double>& values, uint
   return client_.get_state_values(channel, values, seq, received_at);
 }
 
+bool ArmSession::wait_state_update(uint64_t& seen, std::chrono::milliseconds timeout) const
+{
+  return client_.wait_state_update(seen, timeout);
+}
+
 bool ArmSession::is_state_frame_fresh(int channel, std::chrono::milliseconds max_age) const
 {
   return client_.is_state_frame_fresh(channel, max_age);

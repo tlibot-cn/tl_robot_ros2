@@ -9,6 +9,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -95,6 +96,13 @@ public:
   /// @return 在 max_age 内收到过帧时为 true
   bool is_state_frame_fresh(int channel, std::chrono::milliseconds max_age) const;
 
+  /// @brief 等待状态帧更新通知（7000 回调写入后唤醒发布线程）。
+  /// @param[in,out] seen 已处理的通知序号；返回时更新为最新序号
+  /// @param[in] timeout 最长等待时间
+  /// @return 等待期间收到新帧通知时为 true，超时为 false
+  /// @note 在 `frame_mutex_` 上等待，不占用 SDK 回调线程；超时用于周期检查停止标志。
+  bool wait_state_update(uint64_t& seen, std::chrono::milliseconds timeout) const;
+
 private:
   static void error_callback(int message_type, const char *message, int message_code);
   static void state_callback(const char *state);
@@ -102,6 +110,8 @@ private:
   void on_error(int message_type, const char *message, int message_code);
   void on_state(const char *state);
   bool should_log(std::atomic<int64_t>& last_ns, std::chrono::milliseconds period);
+  /// @brief 累计通道帧率，每 5 s 输出一次 INFO（用于确认 7000 流实际推送率）。
+  void update_frame_stats(int channel);
 
   // SDK 回调无 userdata：用受锁保护的进程级指针转发到实例。
   static std::mutex registry_mutex_;
@@ -114,7 +124,17 @@ private:
 
   // 通道 1..9；索引 0 不用。
   mutable std::mutex frame_mutex_;
+  mutable std::condition_variable state_cv_;
+  uint64_t state_notify_seq_{0}; ///< 帧通知计数，与 `seen` 比较避免丢失唤醒
   std::array<StateFrame, 10> frames_;
+
+  /// @brief 每通道帧率统计（只在 SDK 回调线程累计，原子读写供日志使用）。
+  struct ChannelStats
+  {
+    std::atomic<uint64_t> frames{0};
+    std::atomic<int64_t> window_start_ns{0};
+  };
+  std::array<ChannelStats, 10> channel_stats_;
 };
 } // namespace tl_driver::arm_client
 

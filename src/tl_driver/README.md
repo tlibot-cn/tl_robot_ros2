@@ -103,11 +103,11 @@ tl_driver:
     arm_port_aux: "7000"            # 设置机械臂连接时的辅助端口
     arm_type: "TCB710"              # 机械臂型号（仅作日志标识，不参与行为）
     arm_joints: ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7"] # 关节名称（1～8 个，启动时校验）
-    publish_rate: 100.0             # 状态话题发布频率，单位 Hz，范围 1～1000，非法值启动即退出
+    publish_rate: 100.0             # /arm_status 发布频率（stream 模式下 /joint_states、/tcp_pose 跟随 7000 帧率），范围 1～1000，非法值启动即退出
     state_source: "stream"          # "stream"=7000 端口连续状态流；"poll"=旧的同步查询（回滚开关）
     state_stream_interval_ms: 10    # 连续状态流间隔，范围 10～60000 ms
     joint_dynamics_rate: 10.0       # /tl_driver/joint_dynamics 频率，0=关闭
-    joint_thermal_rate: 0.5         # /tl_driver/joint_thermal 频率，0～1，0=关闭
+    joint_thermal_rate: 1.0         # /tl_driver/joint_thermal 频率，0～1，0=关闭
     io_state_rate: 10.0             # /tl_driver/io_state 频率，0=关闭
     motion_action_timeout: 60.0     # move_joint/move_linear 默认超时，秒
     track_action_timeout: 600.0     # play_track 默认超时，秒
@@ -115,7 +115,7 @@ tl_driver:
 
 > `arm_port` / `arm_port_aux` 以字符串传给 SDK，不要写成整数。
 > `state_source` 等新增参数只在启动时读取（运行期 `ros2 param set` 会被明确拒绝）；回滚到旧同步查询路径时用 `state_source:=poll`，此时位姿话题为 20 Hz。单个状态通道失效时只降级该通道。
-> `publish_rate` 支持运行期修改：`ros2 param set /tl_driver publish_rate 50.0` 会立即重建定时器；非法值（非有限数或超出 1～1000 Hz）会被拒绝并保持原频率。参数类型必须是浮点数（写 `100.0`；写整数 `100` 会被 ROS 判为类型错误并启动失败）。
+> `publish_rate` 只控制 `/arm_status` 的发布频率（以及回退轮询上限）：`state_source=stream` 时 `/joint_states`、`/tcp_pose` 由 7000 帧通知直接发布，频率取决于 `state_stream_interval_ms` 与控制器的实际推送率。`publish_rate` 支持运行期修改：`ros2 param set /tl_driver publish_rate 50.0` 会立即重建定时器；非法值（非有限数或超出 1～1000 Hz）会被拒绝并保持原频率。参数类型必须是浮点数（写 `100.0`；写整数 `100` 会被 ROS 判为类型错误并启动失败）。
 ## tl_driver功能包架构说明
 ### 功能包文件总览
 ```

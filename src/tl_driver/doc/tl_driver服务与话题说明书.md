@@ -1532,7 +1532,7 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 
 ### 16.1 状态流与回滚参数
 
-驱动连接成功后，在 7000 端口启动两个连续反馈通道，回调只解析并写快照，发布由定时器读取快照完成：
+驱动连接成功后，在 7000 端口启动两个连续反馈通道，回调只解析并写快照；`/joint_states`、`/tcp_pose` 由帧通知唤醒的独立发布线程直接发布，不再经过 100 Hz 定时器，因此不受 6001 端口同步查询阻塞。`/arm_status` 由 10 Hz 查询缓存、100 Hz 定时器只发布缓存值。
 
 | 通道 | 请求 | 数据源 | 用途 |
 | :---- | :---- | :---- | :---- |
@@ -1544,22 +1544,22 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 | `state_source` | `stream` | `stream` / `poll` | `poll` 回退旧的同步查询路径（启动时生效） |
 | `state_stream_interval_ms` | 10 | 10–60000 | 连续反馈间隔 |
 | `joint_dynamics_rate` | 10.0 | 0–100 | `/tl_driver/joint_dynamics` 频率，0 关闭 |
-| `joint_thermal_rate` | 0.5 | 0–1 | `/tl_driver/joint_thermal` 频率，0 关闭 |
+| `joint_thermal_rate` | 1.0 | 0–1 | `/tl_driver/joint_thermal` 频率，0 关闭 |
 | `io_state_rate` | 10.0 | 0–100 | `/tl_driver/io_state` 频率，0 关闭 |
 | `motion_action_timeout` | 60.0 | (0, 3600] | 运动 action 默认超时（秒） |
 | `track_action_timeout` | 600.0 | (0, 3600] | 回放 action 默认超时（秒） |
 
-> 两个通道独立降级：某通道连续失效 3 s 后只有该通道改用同步查询（20 Hz），恢复连续 1 s 后切回状态流，另一通道不受影响。1 Hz 看门狗在通道超过 3×`state_stream_interval_ms` 无新帧时重发 `mode=1`（前 3 s 每秒一次，之后每 5 s 一次），3 次仍无新帧记录故障告警。`state_source=poll` 时两个通道都走同步查询，发布频率为 20 Hz。
+> 两个通道独立降级：某通道连续失效 3 s 后只有该通道改用同步查询（20 Hz），恢复连续 1 s 后切回状态流，另一通道不受影响。1 Hz 看门狗在通道超过 3×`state_stream_interval_ms` 无新帧时重发 `mode=1`（前 3 s 每秒一次，之后每 5 s 一次），3 次仍无新帧记录故障告警。`state_source=poll` 时两个通道都走同步查询，发布频率为 20 Hz。运行状态（`/arm_status`）由独立 10 Hz 定时器查询并缓存，100 Hz 定时器只发布缓存，查询不再进入 100 Hz 路径。
 
 ### 16.2 诊断话题
 
 | 话题 | 类型 | 默认频率 | 内容 |
 | :---- | :---- | ----: | :---- |
-| `/tl_driver/joint_dynamics` | `tl_ros2_interface/msg/JointDynamics` | 10 Hz | 线速度 m/s、关节速度 rad/s、电机电流 A、力矩 % 额定扭矩 |
-| `/tl_driver/joint_thermal` | `tl_ros2_interface/msg/JointThermal` | 0.5 Hz | 关节温度 °C、关节/外部轴电压 V |
+| `/tl_driver/joint_dynamics` | `tl_ros2_interface/msg/JointDynamics` | 10 Hz | 线速度 m/s、关节速度 rad/s、电机电流 A、力矩 ‰ 额定扭矩（千分之一，不是 %） |
+| `/tl_driver/joint_thermal` | `tl_ros2_interface/msg/JointThermal` | 1 Hz | 关节温度 °C、关节/外部轴电压 V |
 | `/tl_driver/io_state` | `tl_ros2_interface/msg/IoState` | 10 Hz | 数字输入/输出数组 |
 
-> 三个话题均为 `reliable` + `transient_local` + depth 1。`joint_thermal` 单次查询约 150–350 ms，频率上限 1 Hz；每次发布单独占用热状态回调组，不阻塞 100 Hz 位姿发布。原有查询服务全部保留。
+> 三个话题均为 `reliable` + `transient_local` + depth 1。`joint_thermal` 单次查询约 150–350 ms，频率上限 1 Hz；每次发布单独占用热状态回调组。/joint_states 与 /tcp_pose 已由独立发布线程发布，热状态查询不再阻塞它们；`/arm_status` 的 100 Hz 发布只读 10 Hz 查询缓存。原有查询服务全部保留。
 
 ### 16.3 运动 Action
 
