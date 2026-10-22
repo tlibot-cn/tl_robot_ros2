@@ -89,11 +89,6 @@ void ArmSession::stop_state_stream()
   client_.stop_state_stream(fd_aux, kMcsChannel, kMcsPosition);
 }
 
-bool ArmSession::get_state_frame(int channel, arm_client::StateFrame& out) const
-{
-  return client_.get_state_frame(channel, out);
-}
-
 bool ArmSession::get_state_values(int channel, std::vector<double>& values, uint64_t& seq,
                                   std::chrono::steady_clock::time_point& received_at) const
 {

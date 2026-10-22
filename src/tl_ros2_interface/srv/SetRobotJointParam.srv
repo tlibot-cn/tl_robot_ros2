@@ -1,6 +1,0 @@
-# 设置机械臂关节参数
-int32 id    # 关节轴序号（从 1 开始）
-tl_ros2_interface/RobotJointParam param   # 关节参数（单位见 RobotJointParam.msg）
----
-bool success
-string message

@@ -87,15 +87,6 @@ public:
     return track_action_timeout_;
   }
 
-  /// @brief 读取状态流快照，供 action feedback 使用。
-  /// @param[in] channel 1=ACS，2=MCS
-  /// @param[out] out 快照
-  /// @return 至少收到过一帧时为 true
-  bool get_state_frame(int channel, arm_client::StateFrame& out) const
-  {
-    return session_.get_state_frame(channel, out);
-  }
-
   /// @brief 创建服务并持有其生命周期，供各域 register_*_services 使用。
   /// @note 包装 `rclcpp::Node::create_service`（固定 `rmw_qos_profile_services_default` 与服务回调组），
   ///       并把服务存入 `services_` 保活——rclcpp Humble 只弱引用已创建的服务，不持有即注销。
@@ -204,7 +195,6 @@ private:
   int state_stream_interval_ms_{10};
   double joint_dynamics_rate_{10.0};
   double joint_thermal_rate_{1.0};
-  double io_state_rate_{10.0};
   double motion_action_timeout_{60.0};
   double track_action_timeout_{600.0};
 
@@ -227,8 +217,7 @@ private:
   rclcpp::CallbackGroup::SharedPtr stream_group_;
   rclcpp::CallbackGroup::SharedPtr dynamics_group_;
   rclcpp::CallbackGroup::SharedPtr thermal_group_;
-  rclcpp::CallbackGroup::SharedPtr io_state_group_;
-  // 运行状态查询独立成组：10 Hz 同步查询不能与 100 Hz 发布或 dynamics 互相排队。
+  // 运行状态/速度查询独立成组：同步查询不能与 100 Hz 发布或 dynamics 互相排队。
   rclcpp::CallbackGroup::SharedPtr status_group_;
   rclcpp::CallbackGroup::SharedPtr action_group_;
   rclcpp::SubscriptionOptions topic_options_;
@@ -240,8 +229,8 @@ private:
   rclcpp::TimerBase::SharedPtr state_publish_timer_;
   rclcpp::TimerBase::SharedPtr dynamics_timer_;
   rclcpp::TimerBase::SharedPtr thermal_timer_;
-  rclcpp::TimerBase::SharedPtr io_state_timer_;
   rclcpp::TimerBase::SharedPtr status_query_timer_;
+  rclcpp::TimerBase::SharedPtr speed_query_timer_;
   rclcpp::TimerBase::SharedPtr stream_watchdog_timer_;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr publish_rate_param_handle_;
 

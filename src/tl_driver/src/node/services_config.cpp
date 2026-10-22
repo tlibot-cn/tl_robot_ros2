@@ -22,7 +22,6 @@
 #include "tl_ros2_interface/srv/set_axis_zero_pos.hpp"
 #include "tl_ros2_interface/srv/set_coord_num.hpp"
 #include "tl_ros2_interface/srv/set_drag_mode.hpp"
-#include "tl_ros2_interface/srv/set_robot_joint_param.hpp"
 #include "tl_ros2_interface/srv/set_tool_param.hpp"
 #include "tl_ros2_interface/srv/set_user_coord.hpp"
 
@@ -70,55 +69,6 @@ void handle_get_robot_joint_param_service(
   {
     response->success = false;
     response->message = "Failed to get robot joint param";
-  }
-}
-
-void handle_set_robot_joint_param_service(
-    DriverNode& node, const std::shared_ptr<tl_ros2_interface::srv::SetRobotJointParam::Request> request,
-    std::shared_ptr<tl_ros2_interface::srv::SetRobotJointParam::Response> response)
-{
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  if (request->id < 1 || request->id > node.ndof())
-  {
-    response->success = false;
-    response->message = "Invalid id";
-    return;
-  }
-
-  tl::RobotJointParam param{};
-  param.reduceRatio = request->param.reduction_ratio;
-  param.encoderResolution = request->param.encoder_resolution;
-  // ROS: rad、rad/s、rad/s² → SDK: 度、rpm、度/s²
-  param.maxPos = convert::rad_to_deg(request->param.pos_sw_limit);
-  param.minPos = convert::rad_to_deg(request->param.neg_sw_limit);
-  param.ratedRotSpeed = convert::rad_s_to_rpm(request->param.rated_rot_speed);
-  param.maxRotSpeed = convert::rad_s_to_rpm(request->param.max_rot_speed);
-  param.maxAcc = convert::rad_to_deg(request->param.max_acc);
-  param.maxDec = convert::rad_to_deg(request->param.max_dec);
-  param.axisDirection = request->param.direction;
-  // 新 SDK 无 rated_derot_speed / max_derot_speed / rated_vel / rated_devel 对应字段，忽略
-
-  tl::Result ret = tl::set_robot_joint_param(node.session().fd(), request->id, param);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Set robot joint param successfully" : "Failed to set robot joint param";
-
-  // 设置参数后机械臂会下电；上下电失败必须回写，避免控制器停在掉电状态而调用方以为成功
-  if (!node.session().power_off())
-  {
-    RCLCPP_WARN(node.get_logger(), "[SetRobotJointParam]: power_off failed after writing parameter");
-  }
-  if (!node.session().power_on())
-  {
-    const bool write_ok = response->success;
-    response->success = false;
-    response->message =
-        write_ok ? "Parameter written but power on failed" : "Failed to set robot joint param and power on failed";
   }
 }
 
@@ -382,9 +332,6 @@ void register_config_services(DriverNode& node)
   node.create_service<tl_ros2_interface::srv::GetDHParam>(
       "/tl_driver/get_dh_param",
       std::bind(&handle_get_dh_param_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
-  node.create_service<tl_ros2_interface::srv::SetRobotJointParam>(
-      "/tl_driver/set_robot_joint_param",
-      std::bind(&handle_set_robot_joint_param_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
   node.create_service<tl_ros2_interface::srv::GetRobotJointParam>(
       "/tl_driver/get_robot_joint_param",
       std::bind(&handle_get_robot_joint_param_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));

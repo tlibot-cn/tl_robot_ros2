@@ -66,7 +66,7 @@ src/
 │   └── tl_tcb710v_config/
 ├── tl_ros2_interface/       # ROS2 消息与服务接口
 │   ├── msg/                 # 11 个 msg 定义文件
-│   └── srv/                 # 45 个 srv 定义文件
+│   └── srv/                 # 26 个 srv 定义文件
 ├── tl_teleop/               # VR 遥操作（C++ 节点，PXREA SDK）
 │   ├── config/
 │   ├── launch/

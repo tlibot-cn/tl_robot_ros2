@@ -45,10 +45,11 @@ ros2 service call /tl_driver/get_controller_id std_srvs/srv/Trigger "{}"
 ros2 service call /tl_driver/set_speed tl_ros2_interface/srv/SetSpeed "{speed: 30.0}"
 ```
 
-### `/tl_driver/get_speed` — `tl_ros2_interface/srv/GetSpeed`
-无请求参数
+### 运行速度 — `/arm_status`
+话题，`speed` / `speed_valid` 字段（1 Hz 查询缓存）
 ```bash
-ros2 service call /tl_driver/get_speed tl_ros2_interface/srv/GetSpeed "{}"
+ros2 topic echo /arm_status --field speed
+ros2 topic echo /arm_status --field speed_valid
 ```
 
 ### `/tl_driver/set_current_mode` — `tl_ros2_interface/srv/SetCurrentMode`
@@ -176,24 +177,16 @@ ros2 service call /tl_driver/coord_transform tl_ros2_interface/srv/CoordTransfor
 
 | # | 接口名 | 类型 | 请求参数 | 说明 |
 |---|--------|------|----------|------|
-| 1 | `/tl_driver/get_robot_state` | `GetRobotState` | `channel/stop/mode/interval/io_state/position/detail_motion_pos/pos_sum/io_port/optional` | 7000 端口状态 |
-| 2 | `/tl_driver/get_joint_temperature` | `GetJointTemperature` | 无 | 关节温度 |
-| 3 | `/tl_driver/get_joint_voltage` | `GetJointVoltage` | 无 | 关节电压 |
-| 4 | `/tl_driver/get_motor_current` | `GetMotorCurrent` | 无 | 电机电流 |
-| 5 | `/tl_driver/get_current_motor_torque` | `GetCurrentMotorTorque` | 无 | 电机力矩 |
-| 6 | `/tl_driver/get_current_line_joint_speed` | `GetCurrentLineJointSpeed` | 无 | 末端线速度+关节速度 |
-| 7 | `/tl_driver/get_joint_software_version` | `GetJointSoftwareVersion` | `axis_num` | 关节软件版本 |
-| 8 | `/tl_driver/get_pos_reachable` | `GetPosReachable` | `pos/move_type` | 点位是否可达 |
+| 1 | `/arm_status` | `ArmStatus` | — | `run_state` / `speed` / `speed_valid` |
+| 2 | `/tl_driver/joint_dynamics` | `JointDynamics` | — | 线速度、关节速度、电流、力矩（‰ 额定扭矩） |
+| 3 | `/tl_driver/joint_thermal` | `JointThermal` | — | 温度、本体/外部轴电压 |
+| 4 | `/tl_driver/get_pos_reachable` | `GetPosReachable` | `pos/move_type` | 点位是否可达 |
 
 **测试指令：**
 ```bash
-ros2 service call /tl_driver/get_robot_state tl_ros2_interface/srv/GetRobotState "{channel: 1, stop: false, mode: 0, interval: 100, io_state: false, position: 0, detail_motion_pos: false, pos_sum: 1, io_port: [], optional: []}"
-ros2 service call /tl_driver/get_joint_temperature tl_ros2_interface/srv/GetJointTemperature "{}"
-ros2 service call /tl_driver/get_joint_voltage tl_ros2_interface/srv/GetJointVoltage "{}"
-ros2 service call /tl_driver/get_motor_current tl_ros2_interface/srv/GetMotorCurrent "{}"
-ros2 service call /tl_driver/get_current_motor_torque tl_ros2_interface/srv/GetCurrentMotorTorque "{}"
-ros2 service call /tl_driver/get_current_line_joint_speed tl_ros2_interface/srv/GetCurrentLineJointSpeed "{}"
-ros2 service call /tl_driver/get_joint_software_version tl_ros2_interface/srv/GetJointSoftwareVersion "{axis_num: 1}"
+ros2 topic echo /arm_status --once
+ros2 topic echo /tl_driver/joint_dynamics --once
+ros2 topic echo /tl_driver/joint_thermal --once
 ros2 service call /tl_driver/get_pos_reachable tl_ros2_interface/srv/GetPosReachable "{pos: [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0], move_type: 'MOVJ'}"
 ```
 
@@ -205,8 +198,7 @@ ros2 service call /tl_driver/get_pos_reachable tl_ros2_interface/srv/GetPosReach
 |---|--------|------|------|
 | 1 | `/tl_driver/get_dh_param` | `GetDHParam` | 获取 DH 参数 |
 | 2 | `/tl_driver/get_robot_joint_param` | `GetRobotJointParam`（`id`） | 获取关节参数 |
-| 3 | `/tl_driver/set_robot_joint_param` | `SetRobotJointParam`（`id`+`RobotJointParam`） | 设置关节参数 |
-| 4 | `/tl_driver/set_controller_ip` | `SetControllerIP` | 配置控制器网口 IP |
+| 3 | `/tl_driver/set_controller_ip` | `SetControllerIP` | 配置控制器网口 IP |
 
 **测试指令：**
 ```bash
@@ -215,7 +207,7 @@ ros2 service call /tl_driver/get_robot_joint_param tl_ros2_interface/srv/GetRobo
 ros2 service call /tl_driver/set_controller_ip tl_ros2_interface/srv/SetControllerIP "{name: 'eth0', addr: '192.168.1.13', gateway: '192.168.1.1', dns: '8.8.8.8'}"
 ```
 
-> ⚠️ `set_robot_joint_param` 涉及结构体参数，改动有风险，测试请谨慎（先 `get` 备份原值）。
+> ⚠️ `set_controller_ip` 会修改控制器网络，测试后需重新连接。
 
 ---
 
@@ -227,6 +219,7 @@ ros2 service call /tl_driver/set_digital_output tl_ros2_interface/srv/SetDigital
 ```
 
 ### `/tl_driver/get_digital_input_output` — `GetDigitalInputOutput`
+数字 IO 的唯一读取路径（不发布 `io_state` 话题）
 ```bash
 ros2 service call /tl_driver/get_digital_input_output tl_ros2_interface/srv/GetDigitalInputOutput "{}"
 ```
@@ -324,8 +317,8 @@ ros2 interface show tl_ros2_interface/srv/SetSpeed
 
 ## 测试顺序建议（安全优先）
 
-1. **连接类**：`get_library_version` → `get_controller_id` → `get_speed` → `get_current_mode` → `get_current_coord`
-2. **状态类**：`get_joint_temperature` / `get_joint_voltage` / `get_motor_current` / `get_current_motor_torque` / `get_current_line_joint_speed`（只读，安全）
+1. **连接类**：`get_library_version` → `get_controller_id` → `get_current_mode` → `get_current_coord`
+2. **状态类**：`/arm_status`、`/tl_driver/joint_dynamics`、`/tl_driver/joint_thermal` 话题（只读，安全）
 3. **配置类**：`set_speed` / `set_current_mode` / `set_current_coord` / `set_drag_mode`
 4. **运动类**（⚠️ 先确认周围安全、上电后）：`power_on` → `moveJ`/`moveL` 话题 → `power_off`
 5. **IO/Modbus/轨迹**：按需单独测试

@@ -1,4 +1,4 @@
-# 获取所有数字输入输出
+# 获取所有数字输入输出（数字 IO 的唯一读取接口；不发布 io_state 话题）
 ---
 bool success
 string message

@@ -40,7 +40,6 @@ StatePublishers::StatePublishers(rclcpp::Node& node, const ArmSession& session, 
       node_.create_publisher<tl_ros2_interface::msg::JointDynamics>("/tl_driver/joint_dynamics", state_qos);
   joint_thermal_pub_ =
       node_.create_publisher<tl_ros2_interface::msg::JointThermal>("/tl_driver/joint_thermal", state_qos);
-  io_state_pub_ = node_.create_publisher<tl_ros2_interface::msg::IoState>("/tl_driver/io_state", state_qos);
 
   // 静态字段只填一次；动态字段每周期覆盖，容量复用。发布路径不清空消息，frame_id 保持不变。
   joint_state_msg_.name = joint_names_;
@@ -452,6 +451,27 @@ void StatePublishers::query_running_status()
   arm_status_failures_ = 0;
 }
 
+void StatePublishers::query_speed()
+{
+  if (!session_.is_connected())
+  {
+    return;
+  }
+
+  int speed = 0;
+  const tl::Result ret = tl::get_speed(session_.fd(), speed);
+  std::lock_guard<std::mutex> lock(status_mutex_);
+  if (ret != tl::Result::SUCCESS)
+  {
+    arm_status_msg_.speed_valid = false;
+    RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000, "[Read Speed]: failed, result=%s",
+                         arm_client::result_to_string(ret));
+    return;
+  }
+  arm_status_msg_.speed = static_cast<double>(speed);
+  arm_status_msg_.speed_valid = true;
+}
+
 void StatePublishers::publish_running_status()
 {
   // 拷贝后发布：避免持锁执行 DDS 写，也避免 100 Hz 发布与 10 Hz 查询互相阻塞。
@@ -546,31 +566,4 @@ void StatePublishers::publish_thermal()
   joint_thermal_pub_->publish(msg);
 }
 
-void StatePublishers::publish_io()
-{
-  if (!session_.is_connected())
-  {
-    return;
-  }
-
-  const int fd = session_.fd();
-
-  std::vector<int> digital_input;
-  std::vector<int> digital_output;
-  const bool input_ok = tl::get_digital_input(fd, digital_input) == tl::Result::SUCCESS;
-  const bool output_ok = tl::get_digital_output(fd, digital_output) == tl::Result::SUCCESS;
-  if (!input_ok && !output_ok)
-  {
-    RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000,
-                         "[Pub]: all io_state queries failed, skip publish");
-    return;
-  }
-
-  auto& msg = io_state_msg_;
-  msg.header.stamp = node_.now();
-  msg.digital_input = input_ok ? digital_input : std::vector<int>{};
-  msg.digital_output = output_ok ? digital_output : std::vector<int>{};
-
-  io_state_pub_->publish(msg);
-}
 } // namespace tl_driver

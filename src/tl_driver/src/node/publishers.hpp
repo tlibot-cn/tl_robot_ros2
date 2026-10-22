@@ -21,7 +21,6 @@
 #include "arm_session.hpp"
 #include "tl_ros2_interface/msg/arm_status.hpp"
 #include "tl_ros2_interface/msg/cartesian_pose.hpp"
-#include "tl_ros2_interface/msg/io_state.hpp"
 #include "tl_ros2_interface/msg/joint_dynamics.hpp"
 #include "tl_ros2_interface/msg/joint_thermal.hpp"
 
@@ -63,14 +62,14 @@ public:
   /// @brief 10 Hz 定时器入口：同步查询运行状态并写入缓存，供 100 Hz 发布复用。
   void query_running_status();
 
+  /// @brief 1 Hz 定时器入口：查询运行速度并写入 /arm_status 缓存。
+  void query_speed();
+
   /// @brief 发布 `/tl_driver/joint_dynamics`（默认 10 Hz）。
   void publish_dynamics();
 
   /// @brief 发布 `/tl_driver/joint_thermal`（默认 1 Hz，可关闭）。
   void publish_thermal();
-
-  /// @brief 发布 `/tl_driver/io_state`（默认 10 Hz）。
-  void publish_io();
 
 private:
   void publish_joint_stream();
@@ -125,7 +124,6 @@ private:
   rclcpp::Publisher<tl_ros2_interface::msg::ArmStatus>::SharedPtr running_status_pub_;
   rclcpp::Publisher<tl_ros2_interface::msg::JointDynamics>::SharedPtr joint_dynamics_pub_;
   rclcpp::Publisher<tl_ros2_interface::msg::JointThermal>::SharedPtr joint_thermal_pub_;
-  rclcpp::Publisher<tl_ros2_interface::msg::IoState>::SharedPtr io_state_pub_;
 
   // 流发布缓冲：独立发布线程与 poll 回退路径都会写，统一由 publish_mutex_ 串行化。
   std::mutex publish_mutex_;
@@ -140,7 +138,6 @@ private:
   std::mutex status_mutex_;
   tl_ros2_interface::msg::JointDynamics joint_dynamics_msg_;
   tl_ros2_interface::msg::JointThermal joint_thermal_msg_;
-  tl_ros2_interface::msg::IoState io_state_msg_;
 
   ChannelHealth acs_health_;
   ChannelHealth mcs_health_;

@@ -7,12 +7,9 @@ test_all_interfaces.py
 参照 tx.cpp（C++ 版驱动快速自检）的分组与调用逻辑实现，覆盖：
 
   §2  连接管理      power_on / power_off（连接与断开由驱动节点启动/退出自动完成）
-  §4  信息查询      get_speed / get_controller_id / get_robot_state / get_library_version /
-                    get_robot_joint_param / get_joint_temperature / get_joint_voltage /
-                    get_motor_current / get_joint_software_version /
-                    get_current_coord / get_coord_num / get_dh_param /
-                    get_pos_reachable / get_current_motor_torque / get_current_line_joint_speed
-                    + 话题 /joint_states、/tcp_pose、/arm_status
+  §4  信息查询      get_controller_id / get_library_version / get_robot_joint_param /
+                    get_current_coord / get_coord_num / get_dh_param / get_pos_reachable
+                    + 话题 /joint_states、/tcp_pose、/arm_status、/tl_driver/joint_dynamics、/tl_driver/joint_thermal
   §5  基础设置      set_speed / coord_transform
   §8  坐标系与工具  set_tool_param / set_user_coord / set_coord_num / set_current_coord
   §9  示教操作      stop_jogging / set_drag_mode / get_drag_status / track_save
@@ -24,8 +21,7 @@ test_all_interfaces.py
 
 危险接口（会触发运动、改动标定/IP、删除文件等）默认跳过，仅打印提示：
   moveJ / moveL / start_jogging / queue_motion_movej / open_servoj /
-  track_playback / set_axis_zero_pos / set_robot_joint_param /
-  set_controller_ip / set_default_cartesian_param
+  track_playback / set_axis_zero_pos / set_controller_ip / set_default_cartesian_param
 
 @usage
   方式一（推荐，需已 source install/setup.bash）:
@@ -105,19 +101,11 @@ from tl_ros2_interface.srv import (
     CoordTransform,
     GetCoordNum,
     GetCurrentCoord,
-    GetCurrentLineJointSpeed,
     GetCurrentMode,
-    GetCurrentMotorTorque,
     GetDHParam,
     GetDigitalInputOutput,
-    GetJointSoftwareVersion,
-    GetJointTemperature,
-    GetJointVoltage,
-    GetMotorCurrent,
     GetPosReachable,
     GetRobotJointParam,
-    GetRobotState,
-    GetSpeed,
     Jogging,
     ModbusRead,
     ModbusWrite,
@@ -131,7 +119,6 @@ from tl_ros2_interface.srv import (
     SetCurrentMode,
     SetDigitalOutput,
     SetDragMode,
-    SetRobotJointParam,
     SetSpeed,
     SetToolParam,
     SetUserCoord,
@@ -274,25 +261,6 @@ class DriverQuickTest(Node):
     def test_info_query(self):
         self.logger.info("\n========== §4 信息查询（服务）==========")
 
-        cli = self.wait_service("/tl_driver/get_speed", GetSpeed)
-        resp = self.call_srv(cli, GetSpeed.Request(), "get_speed")
-        if resp and resp.success:
-            self.logger.info(f"      speed = {resp.speed:.1f}%")
-
-        cli = self.wait_service("/tl_driver/get_robot_state", GetRobotState)
-        req = GetRobotState.Request()
-        req.channel = 1
-        req.stop = False
-        req.mode = 0
-        req.interval = 100
-        req.io_state = False
-        req.position = 0
-        req.detail_motion_pos = False
-        req.pos_sum = 1
-        resp = self.call_srv(cli, req, "get_robot_state")
-        if resp and resp.success:
-            self.logger.info(f"      信息: {resp.message}")
-
         cli = self.wait_service("/tl_driver/get_robot_joint_param", GetRobotJointParam)
         req = GetRobotJointParam.Request()
         req.id = 1
@@ -302,27 +270,6 @@ class DriverQuickTest(Node):
             self.logger.info(
                 f"      减速比={p.reduction_ratio:.3f} 限位[{p.neg_sw_limit:.3f},{p.pos_sw_limit:.3f}]rad 额定速度={p.rated_vel:.3f}rad/s"
             )
-
-        cli = self.wait_service("/tl_driver/get_joint_temperature", GetJointTemperature)
-        resp = self.call_srv(cli, GetJointTemperature.Request(), "get_joint_temperature")
-        if resp and resp.success:
-            self.print_arr("      temperature(℃) ", resp.temperatures)
-
-        cli = self.wait_service("/tl_driver/get_joint_voltage", GetJointVoltage)
-        resp = self.call_srv(cli, GetJointVoltage.Request(), "get_joint_voltage")
-        if resp and resp.success:
-            self.print_arr("      joint_voltage(V) ", resp.joint_voltage)
-            self.print_arr("      positioner_voltage(V) ", resp.positioner_voltage)
-
-        cli = self.wait_service("/tl_driver/get_motor_current", GetMotorCurrent)
-        resp = self.call_srv(cli, GetMotorCurrent.Request(), "get_motor_current")
-        if resp and resp.success:
-            self.print_arr("      motor_current ", resp.motor_current)
-
-        cli = self.wait_service("/tl_driver/get_joint_software_version", GetJointSoftwareVersion)
-        req = GetJointSoftwareVersion.Request()
-        req.axis_num = 1
-        self.call_srv(cli, req, "get_joint_software_version(axis=1)")
 
         cli = self.wait_service("/tl_driver/get_current_coord", GetCurrentCoord)
         resp = self.call_srv(cli, GetCurrentCoord.Request(), "get_current_coord")
@@ -342,20 +289,6 @@ class DriverQuickTest(Node):
         req.pos = [0.0] * 14
         req.move_type = "MOVJ"
         self.call_srv(cli, req, "get_pos_reachable")
-
-        cli = self.wait_service("/tl_driver/get_current_motor_torque", GetCurrentMotorTorque)
-        resp = self.call_srv(cli, GetCurrentMotorTorque.Request(), "get_current_motor_torque")
-        if resp and resp.success:
-            self.print_arr("      motor_torque ", [float(v) for v in resp.motor_torque])
-            self.print_arr("      motor_torque_sync ", [float(v) for v in resp.motor_torque_sync])
-
-        cli = self.wait_service("/tl_driver/get_current_line_joint_speed", GetCurrentLineJointSpeed)
-        resp = self.call_srv(
-            cli, GetCurrentLineJointSpeed.Request(), "get_current_line_joint_speed"
-        )
-        if resp and resp.success:
-            self.logger.info(f"      line_speed = {resp.line_speed:.3f} m/s")
-            self.print_arr("      joint_speed ", resp.joint_speed)
 
     def test_basic_set(self):
         self.logger.info("\n========== §5 基础设置 ==========")
@@ -530,7 +463,6 @@ class DriverQuickTest(Node):
         for label, reason in [
             ("moveJ/moveL 话题", "会触发运动"),
             ("set_axis_zero_pos", "改动零点标定"),
-            ("set_robot_joint_param", "改动关节参数"),
             ("set_controller_ip", "修改控制器网络"),
             ("set_default_cartesian_param", "重置笛卡尔参数"),
         ]:

@@ -1,6 +1,0 @@
-# 获取关节温度
-# 单位：℃（SDK 头未标注，按控制器手册口径），数组长度 = 关节数。
----
-bool success
-string message
-float64[] temperatures   # 各关节电机温度，单位：℃

@@ -1,5 +1,5 @@
 # 机器人DH参数（新SDK: 标准DH参数）
-# 用途：仅作 srv 嵌套参数（GetDHParam.param、SetDHParam.param），不发布话题。
+# 用途：仅作 srv 嵌套参数（GetDHParam.param），不发布话题。
 # 对应 SDK tl::RobotDHParam：alpha[6]/a[6]/theta[6]/d[6]/eulerAngle/mountingAngle
 # 单位遵循 REP 103：角度 rad、长度 m；驱动在边界换算到 SDK 的 deg / mm。
 float64[] alpha           # 1-6轴DH参数alpha，数组长度 6，单位：rad

@@ -9,9 +9,8 @@
 | :--- | :--- | :--- | :--- |
 | `/joint_states` | `position` / `velocity` | rad / rad·s⁻¹ | ACS 流：度；同步查询：度 |
 | `/tcp_pose` | `position` / `rpy` | m / rad | MCS 流：mm / 度；同步查询：mm / rad |
-| `/tl_driver/joint_dynamics` | `line_speed` / `joint_speed` / 电流 / 力矩 | m/s / rad/s / A / % 额定 | mm/s / 度/s / A / % |
-| `/tl_driver/joint_thermal` | `temperature` / `voltage` | °C / V | °C / V |
-| `/tl_driver/io_state` | `digital_input` / `digital_output` | 0/1 | 0/1 |
+| `/tl_driver/joint_dynamics` | `line_speed` / `joint_speed` / 电流 / 力矩 | m/s / rad/s / A / ‰ 额定扭矩 | mm/s / 度/s / A / ‰ |
+| `/tl_driver/joint_thermal` | `temperature` / `joint_voltage` / `positioner_voltage` | °C / V / V | °C / V / V |
 | `/tl_driver/moveJ` | `MoveCommand`，`coord=0` | 关节 rad | 度 |
 | `/tl_driver/moveL` | `MoveCommand`，`coord=1/2/3` | m + rad；`velocity` m/s | mm + rad；`velocity` mm/s |
 | `/tl_driver/set_servoj_pos` | `data[7]` | rad（6 轴末位补 0） | 度 |
@@ -29,11 +28,10 @@
 | 服务 | 字段 | ROS 单位 |
 | :--- | :--- | :--- |
 | `coord_transform` | `origin_pos` / `reference_pos` / `target_pos` | 关节 rad；笛卡尔 m + rad |
-| `get_robot_joint_param` / `set_robot_joint_param` | 软限位 rad；`*_rot_speed` rad/s；`max_acc` / `max_dec` rad/s² | 驱动内换算 rpm / 度 |
+| `get_robot_joint_param` | 软限位 rad；`*_rot_speed` rad/s；`max_acc` / `max_dec` rad/s² | 驱动内换算 rpm / 度 |
 | `set_tool_param` | `x/y/z`、质心 m；`a/b/c` rad；质量 kg | 驱动内换算 mm / 度 |
 | `set_user_coord` | `position` m；`rpy` rad | 驱动内换算 mm |
 | `open_servoj` | `vmax` / `amax` / `jmax` | rad/s、rad/s²、rad/s³（固定 7 元素） |
-| `get_current_line_joint_speed` | `line_speed` m/s；`joint_speed` rad/s | 驱动内换算 mm/s、度/s |
 | `get_dh_param` | `alpha/theta/mounting_angle` rad；`a/d` m | 驱动内换算 度 / mm |
 
 ## 协议包例外（不换算）

@@ -1,5 +1,0 @@
-# 获取指定关节（轴）的软件版本号
-int32 axis_num   # 关节（轴）号，从 1 开始
----
-bool success
-string message   # 成功时返回版本号信息

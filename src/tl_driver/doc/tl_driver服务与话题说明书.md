@@ -22,6 +22,7 @@
 |V1.13 | 2026-10-20 | `get_pos_reachable` 新增 `reachable` 字段（`success` 改为查询成功语义），`pos` 限 14 位 |
 |V1.14 | 2026-10-21 | 状态话题化：`get_robot_state` 改为返回 ACS/MCS 缓存；新增 `joint_dynamics`/`joint_thermal`/`io_state` 话题与 `move_joint`/`move_linear`/`play_track` action（第 16 章） |
 |V1.15 | 2026-10-21 | 新增 16.4 运动 Action 测试命令（MoveJ 10°、MoveL 5 cm）与回退命令 |
+|V1.16 | 2026-10-22 | 查询类接口话题化：删除 `get_speed`、`get_robot_state`、`get_joint_temperature`、`get_joint_voltage`、`get_motor_current`、`get_joint_software_version`、`get_current_motor_torque`、`get_current_line_joint_speed`；删除 `io_state` 话题（数字 IO 读写统一走服务）；删除 `set_robot_joint_param`；力矩单位统一为额定扭矩千分之一（‰）|
 
 </div>
 
@@ -52,7 +53,6 @@
 * [5 机械臂基础功能设置接口](#5-机械臂基础功能设置接口)
   * [5.1 设置运行速度](#51-设置运行速度)
   * [5.2 设置控制器有线网口IP](#52-设置控制器有线网口ip)
-  * [5.3 设置关节参数](#53-设置关节参数)
   * [5.5 设置机械臂默认笛卡尔参数](#55-设置机械臂默认笛卡尔参数)
   * [5.6 坐标转换](#56-坐标转换)
 * [6 MoveCommand 消息类型说明](#6-movecommand-消息类型说明)
@@ -129,10 +129,11 @@
 | 关节角 | rad | `/joint_states`、运动指令、坐标转换、DH 参数 |
 | 笛卡尔位置 | m | `/tcp_pose`、运动指令、工具/用户坐标系 |
 | 姿态 / 欧拉角 | rad | XYZ 内旋 |
-| 线速度 | m/s | MOVL 指令、`get_current_line_joint_speed` |
-| 关节速度 | rad/s | `get_current_line_joint_speed`、`RobotJointParam.*_rot_speed` |
+| 线速度 | m/s | MOVL 指令、`/tl_driver/joint_dynamics.line_speed` |
+| 关节速度 | rad/s | `/tl_driver/joint_dynamics.joint_speed`、`RobotJointParam.*_rot_speed` |
 | 角加速度 / 加加速度 | rad/s² / rad/s³ | ServoJ 约束、`RobotJointParam.max_acc` / `max_dec` |
-| 百分比量 | % | 速度、加速度、扭矩（额定值百分比，取值见各接口） |
+| 百分比量 | % | 速度、加速度（额定值百分比，取值见各接口） |
+| 电机力矩 | ‰（额定扭矩千分之一） | `JointDynamics.motor_torque` / `motor_torque_sync`，取值 ±1000 对应 ±100% 额定扭矩；不是 N·m，也不是 % |
 | 温度 / 电压 / 电流 | ℃ / V / A | SDK 头未标注温度、电压；电流 SDK 头标 ‰，与本仓 A 口径不符 |
 
 - `MoveCommand.velocity`：MOVJ 为 %（0<v≤100）；MOVL 为 m/s（0<v≤1）。
@@ -233,24 +234,26 @@ ros2 topic echo /joint_states
 ros2 topic echo /tcp_pose
 ```
 ### 4.3 查询运行速度
-| 功能描述 | 查询机械臂当前全局运行速度百分比 |
+| 功能描述 | 查询机械臂当前全局运行速度百分比（随 `/arm_status` 发布） |
 | :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/get_speed` |
-| 服务类型 | `tl_ros2_interface/srv/GetSpeed` |
+| 通信机制 | ROS2话题 |
+| 话题名 | `/arm_status` |
+| 消息类型 | `tl_ros2_interface/msg/ArmStatus` |
 
 **输入参数**
-无请求参数。
+无（话题订阅，无需请求参数）。
 
 **输出/返回值**
 | 参数名 | 类型 | 单位 | 范围 | 说明 |
 |--------|------|------|------|------|
-| success | bool | — | — | `true` = 查询成功，`false` = 查询失败 |
-| message | string | — | — | 失败时包含错误描述 |
-| speed | float64 | % | 1～100 | 当前全局运行速度百分比 |
+| speed | float64 | % | 0～100 | 当前全局运行速度；驱动以 1 Hz 查询并缓存 |
+| speed_valid | bool | — | — | `true` = 最近一次速度查询成功；`false` = 查询失败，`speed` 保持上次值 |
+
+> 服务 `/tl_driver/get_speed` 已删除；查询失败不会阻塞 100 Hz 的 `/arm_status` 发布，只把 `speed_valid` 置 `false`。
 #### 命令示例
 ```
-ros2 service call /tl_driver/get_speed tl_ros2_interface/srv/GetSpeed "{}"
+ros2 topic echo /arm_status --field speed
+ros2 topic echo /arm_status --field speed_valid
 ```
 ### 4.4 查询控制器序列号ID
 | 功能描述 | 查询机械臂控制器的唯一序列号标识 |
@@ -272,48 +275,30 @@ ros2 service call /tl_driver/get_speed tl_ros2_interface/srv/GetSpeed "{}"
 ros2 service call /tl_driver/get_controller_id std_srvs/srv/Trigger "{}"
 ```
 ### 4.5 查询机械臂状态
-| 功能描述 | 返回最近一帧缓存的机械臂状态报文（ACS/MCS），不再触发 SDK 查询 |
+| 功能描述 | 通过 `/arm_status`、`/joint_states`、`/tcp_pose` 三个话题获取机械臂当前状态 |
 | :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/get_robot_state` |
-| 服务类型 | `tl_ros2_interface/srv/GetRobotState` |
+| 通信机制 | ROS2话题 |
+| 话题名 | `/arm_status`（运行状态/速度）、`/joint_states`（关节）、`/tcp_pose`（末端位姿） |
+| 消息类型 | `tl_ros2_interface/msg/ArmStatus`、`sensor_msgs/msg/JointState`、`tl_ros2_interface/msg/CartesianPose` |
 
 **输入参数**
-| 参数名 | 类型 | 范围 | 说明 |
-|--------|------|------|------|
-| channel | int32 | — | 保留字段，当前忽略（缓存按 `position` 选择） |
-| stop | bool | — | 必须为 `false`；`true` 返回失败 `"State stream is managed internally"` |
-| mode | int32 | — | 保留字段，当前忽略 |
-| interval | int32 | — | 保留字段，当前忽略 |
-| io_state | bool | — | 保留字段，当前忽略 |
-| position | int32 | 0 或 1 | `0` = 返回 ACS（关节）缓存，`1` = 返回 MCS（直角）缓存 |
-| detail_motion_pos | bool | — | 保留字段，当前忽略 |
-| pos_sum | int32 | — | 保留字段，当前忽略 |
-| io_port | string[] | — | 保留字段，当前忽略 |
-| optional | string[] | — | 保留字段，当前忽略 |
+无（话题订阅，无需请求参数）。
 
 **输出/返回值**
-| 参数名 | 类型 | 说明 |
+| 话题 | 字段 | 说明 |
 |--------|------|------|
-| success | bool | `true` = 缓存可用，`false` = 未连接/无缓存/参数不支持 |
-| message | string | 成功时为该通道最近一帧原始 JSON 报文；失败时为错误描述 |
+| `/arm_status` | `run_state` | `"STOP"` / `"PAUSE"` / `"RUNNING"` / `"UNKNOWN"` |
+| `/arm_status` | `speed` / `speed_valid` | 全局运行速度 % 及其有效性 |
+| `/arm_status` | `stamp` | 最近一次状态查询的采样时间 |
+| `/joint_states` | `position` | 关节角 rad（6 轴只发 6 个） |
+| `/tcp_pose` | `position` / `rpy` | 末端位姿 m / rad |
 
-> **注意**：状态流由驱动在连接时自动启动（`state_source=stream`），服务只读缓存，P99 < 10 ms，不再出现 5 s 超时。`position` 非 0/1 返回 `"Unsupported position"`；`io_state`/`detail_motion_pos`/`io_port` 不支持缓存模式；`state_source=poll` 返回 `"State stream disabled (state_source=poll)"`；缓存超过 3×`state_stream_interval_ms` 未更新返回 `"No fresh cached state"`。
+> 服务 `/tl_driver/get_robot_state` 已删除：它只返回内部缓存报文，话题已完整覆盖；驱动不再对外暴露 ACS/MCS 原始 JSON。
 #### 命令示例
 ```
-ros2 service call /tl_driver/get_robot_state tl_ros2_interface/srv/GetRobotState \
-"{
-    channel: 1,
-    stop: false,
-    mode: 0,
-    interval: 10,
-    io_state: false,
-    position: 0,
-    detail_motion_pos: false,
-    pos_sum: 1,
-    io_port: ["DO1"],
-    optional: ["ACS"]
-}"
+ros2 topic echo /arm_status
+ros2 topic echo /joint_states --once
+ros2 topic echo /tcp_pose --once
 ```
 ### 4.6 查询库版本信息
 | 功能描述 | 查询本地API动态库（`_tl_host.so`）的版本信息 |
@@ -373,86 +358,78 @@ ros2 service call /tl_driver/get_library_version std_srvs/srv/Trigger "{}"
 ros2 service call /tl_driver/get_robot_joint_param tl_ros2_interface/srv/GetRobotJointParam "{id: 1}"
 ```
 ### 4.8 查询关节温度
-| 功能描述 | 查询各关节电机当前温度 |
+| 功能描述 | 查询各关节电机当前温度（随 `/tl_driver/joint_thermal` 发布） |
 | :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/get_joint_temperature` |
-| 服务类型 | `tl_ros2_interface/srv/GetJointTemperature` |
+| 通信机制 | ROS2话题 |
+| 话题名 | `/tl_driver/joint_thermal` |
+| 消息类型 | `tl_ros2_interface/msg/JointThermal` |
 
 **输入参数**
-无请求参数。
+无（话题订阅，无需请求参数）。
 
 **输出/返回值**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| success | bool | — | `true` = 查询成功，`false` = 查询失败 |
-| message | string | — | 失败时包含错误描述 |
-| temperatures | float64[] | ℃ | 各关节电机当前温度，数组长度 = 关节数 |
-#### 命令示例
-```
-ros2 service call /tl_driver/get_joint_temperature tl_ros2_interface/srv/GetJointTemperature "{}"
-```
-### 4.9 查询关节电压
-| 功能描述 | 查询各关节当前电压 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/get_joint_voltage` |
-| 服务类型 | `tl_ros2_interface/srv/GetJointVoltage` |
-
-**输入参数**
-无请求参数。
-
-**输出/返回值**
-| 参数名 | 类型 | 单位 | 说明 |
-|--------|------|------|------|
-| success | bool | — | `true` = 查询成功，`false` = 查询失败 |
-| message | string | — | 失败时包含错误描述 |
+| temperature | float64[] | ℃ | 各关节电机当前温度，数组长度 = 关节数 |
 | joint_voltage | float64[] | V | 机械臂本体各关节电压 |
 | positioner_voltage | float64[] | V | 外部轴各关节电压 |
+
+> 默认 1 Hz（`joint_thermal_rate`，取 0 关闭）。温度/电压由同一次 SDK 查询产生，因此放在同一话题；单次查询约 150–350 ms，频率上限 1 Hz。服务 `/tl_driver/get_joint_temperature`、`/tl_driver/get_joint_voltage` 已删除。
 #### 命令示例
 ```
-ros2 service call /tl_driver/get_joint_voltage tl_ros2_interface/srv/GetJointVoltage "{}"
+ros2 topic echo /tl_driver/joint_thermal --once
 ```
-### 4.10 查询电机电流
-| 功能描述 | 查询机器人本体 7 轴电机电流（外部轴同步电流未暴露） |
+### 4.9 查询关节电压
+| 功能描述 | 查询各关节当前电压（与 4.8 同一话题，同一次查询） |
 | :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/get_motor_current` |
-| 服务类型 | `tl_ros2_interface/srv/GetMotorCurrent` |
-
-**输入参数**
-无请求参数。
+| 通信机制 | ROS2话题 |
+| 话题名 | `/tl_driver/joint_thermal` |
+| 消息类型 | `tl_ros2_interface/msg/JointThermal` |
 
 **输出/返回值**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| success | bool | — | `true` = 查询成功，`false` = 查询失败 |
-| message | string | — | 失败时包含错误描述 |
-| motor_current | float64[] | A | 机器人本体 7 轴电机电流（SDK 头标 ‰，与实际不符，此处按 A 口径） |
+| joint_voltage | float64[] | V | 机械臂本体各关节电压 |
+| positioner_voltage | float64[] | V | 外部轴各关节电压 |
+
 #### 命令示例
 ```
-ros2 service call /tl_driver/get_motor_current tl_ros2_interface/srv/GetMotorCurrent "{}"
+ros2 topic echo /tl_driver/joint_thermal --field joint_voltage
+ros2 topic echo /tl_driver/joint_thermal --field positioner_voltage
 ```
-### 4.11 查询关节软件版本号
-| 功能描述 | 查询指定关节（轴）的软件版本号 |
+### 4.10 查询电机电流
+| 功能描述 | 查询机器人本体 7 轴电机电流（随 `/tl_driver/joint_dynamics` 发布） |
 | :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/get_joint_software_version` |
-| 服务类型 | `tl_ros2_interface/srv/GetJointSoftwareVersion` |
+| 通信机制 | ROS2话题 |
+| 话题名 | `/tl_driver/joint_dynamics` |
+| 消息类型 | `tl_ros2_interface/msg/JointDynamics` |
 
 **输入参数**
-| 参数名 | 类型 | 范围 | 说明 |
-|--------|------|------|------|
-| axis_num | int32 | 1～6（或更多） | 关节（轴）号 |
+无（话题订阅，无需请求参数）。
 
 **输出/返回值**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| success | bool | `true` = 查询成功，`false` = 查询失败 |
-| message | string | 成功时返回版本号信息，失败时包含错误描述 |
+| 参数名 | 类型 | 单位 | 说明 |
+|--------|------|------|------|
+| motor_current | float64[] | A | 机器人本体 7 轴电机电流 |
+| motor_current_sync | float64[] | A | 外部轴同步电机电流 |
+
+> 默认 10 Hz（`joint_dynamics_rate`，取 0 关闭）。服务 `/tl_driver/get_motor_current` 已删除。
 #### 命令示例
 ```
-ros2 service call /tl_driver/get_joint_software_version tl_ros2_interface/srv/GetJointSoftwareVersion "{axis_num: 1}"
+ros2 topic echo /tl_driver/joint_dynamics --field motor_current --once
+```
+### 4.11 查询关节软件版本号
+| 功能描述 | 驱动启动时逐轴查询并打印关节软件版本 |
+| :---: | :---- |
+| 通信机制 | ROS2 日志 |
+| 输出位置 | `[Init]: joint N software version: ...` |
+
+**说明**
+连接并上电成功后，`DriverNode::init()` 对 1..NDOF 逐轴调用 `tl::query_joint_software_version`，成功打 `INFO`，失败打 `WARN` 并继续启动；不再提供 `/tl_driver/get_joint_software_version` 服务。
+
+#### 命令示例
+```
+ros2 launch tl_bringup tl_tcb610_bringup.launch.py 2>&1 | grep 'software version'
 ```
 ### 4.13 查询当前坐标系
 | 功能描述 | 查询当前激活的工作坐标系类型 |
@@ -541,7 +518,7 @@ ros2 service call /tl_driver/get_pos_reachable tl_ros2_interface/srv/GetPosReach
 }'
 ```
 ### 4.18 查询机械臂运行状态
-| 功能描述 | 实时获取机械臂当前运行状态（停止/暂停/运行中），通过话题持续发布 |
+| 功能描述 | 实时获取机械臂当前运行状态（停止/暂停/运行中）与速度，通过话题持续发布 |
 | :---: | :---- |
 | 通信机制 | ROS2话题 |
 | 话题名 | `/arm_status` |
@@ -553,55 +530,60 @@ ros2 service call /tl_driver/get_pos_reachable tl_ros2_interface/srv/GetPosReach
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
-| stamp | Time | 时间戳 |
+| stamp | Time | 最近一次运行状态查询的采样时间 |
 | run_state | string | 运行状态：`"STOP"` = 停止，`"PAUSE"` = 暂停，`"RUNNING"` = 运行中，`"UNKNOWN"` = SDK 返回未识别值 |
+| speed | float64 | 全局运行速度 %（1 Hz 查询缓存） |
+| speed_valid | bool | 速度字段是否有效 |
+
+> 运行状态以 10 Hz 查询并缓存，100 Hz 定时器只发布缓存值；查询失败时沿用上一次状态，不阻塞发布。
 #### 命令示例
 ```
 ros2 topic echo /arm_status
 ```
 
 ### 4.19 查询当前电机力矩
-| 功能描述 | 查询机械臂当前各电机力矩 |
+| 功能描述 | 查询机械臂当前各电机力矩（随 `/tl_driver/joint_dynamics` 发布） |
 | :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/get_current_motor_torque` |
-| 服务类型 | `tl_ros2_interface/srv/GetCurrentMotorTorque` |
+| 通信机制 | ROS2话题 |
+| 话题名 | `/tl_driver/joint_dynamics` |
+| 消息类型 | `tl_ros2_interface/msg/JointDynamics` |
 
 **输入参数**
-无请求参数。
+无（话题订阅，无需请求参数）。
 
 **输出/返回值**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| success | bool | — | `true` = 查询成功，`false` = 查询失败 |
-| message | string | — | 失败时包含错误描述 |
-| motor_torque | int32[] | % | 机械臂本体当前各电机力矩（额定扭矩百分比，数组长度 7） |
-| motor_torque_sync | int32[] | % | 同步轴当前各电机力矩（数组长度 5） |
+| motor_torque | int32[] | ‰ 额定扭矩 | 机械臂本体当前各电机力矩（千分之一额定扭矩，数组长度 7） |
+| motor_torque_sync | int32[] | ‰ 额定扭矩 | 同步轴当前各电机力矩（数组长度 5） |
+
+> **单位**：力矩是额定扭矩的千分之一（‰），±1000 对应 ±100% 额定扭矩；不是 N·m，也不是百分比。服务 `/tl_driver/get_current_motor_torque` 已删除。
 #### 命令示例
 ```
-ros2 service call /tl_driver/get_current_motor_torque tl_ros2_interface/srv/GetCurrentMotorTorque "{}"
+ros2 topic echo /tl_driver/joint_dynamics --field motor_torque --once
 ```
 ### 4.20 查询当前线速度和关节速度
-| 功能描述 | 查询机械臂当前末端的线速度和各关节角速度 |
+| 功能描述 | 查询机械臂当前末端的线速度和各关节角速度（随 `/tl_driver/joint_dynamics` 发布） |
 | :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/get_current_line_joint_speed` |
-| 服务类型 | `tl_ros2_interface/srv/GetCurrentLineJointSpeed` |
+| 通信机制 | ROS2话题 |
+| 话题名 | `/tl_driver/joint_dynamics` |
+| 消息类型 | `tl_ros2_interface/msg/JointDynamics` |
 
 **输入参数**
-无请求参数。
+无（话题订阅，无需请求参数）。
 
 **输出/返回值**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| success | bool | — | `true` = 查询成功，`false` = 查询失败 |
-| message | string | — | 失败时包含错误描述 |
 | line_speed | float64 | m/s | 当前末端线速度 |
 | joint_speed | float64[] | rad/s | 机械臂本体当前各关节速度，数组长度 7 |
 | joint_speed_sync | float64[] | rad/s | 同步轴当前各关节速度，数组长度 5 |
+
+> 服务 `/tl_driver/get_current_line_joint_speed` 已删除。
 #### 命令示例
 ```
-ros2 service call /tl_driver/get_current_line_joint_speed tl_ros2_interface/srv/GetCurrentLineJointSpeed "{}"
+ros2 topic echo /tl_driver/joint_dynamics --field line_speed --once
+ros2 topic echo /tl_driver/joint_dynamics --field joint_speed --once
 ```
 
 ## 5 机械臂基础功能设置接口
@@ -657,50 +639,6 @@ ros2 service call /tl_driver/set_controller_ip tl_ros2_interface/srv/SetControll
     gateway: '',
     dns: ''
 }"
-```
-### 5.3 设置关节参数
-| 功能描述 | 设置指定关节的减速比、限位、转速、加速度等硬件参数 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/set_robot_joint_param` |
-| 服务类型 | `tl_ros2_interface/srv/SetRobotJointParam` |
-
-**输入参数**
-| 参数名 | 类型 | 单位 | 范围 | 说明 |
-|--------|------|------|------|------|
-| id | int32 | — | 1～6（或更多） | 关节轴序号 |
-| param | RobotJointParam | — | — | 关节参数结构体（详见 [查询关节参数](#47-查询关节参数)） |
-
-**输出/返回值**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| success | bool | `true` = 设置成功，`false` = 设置失败 |
-| message | string | 失败时包含错误描述 |
-
-> **注意**：修改关节参数会直接影响机械臂的运动范围和安全限制，请谨慎操作。参数字段含义见 [查询关节参数](#47-查询关节参数) 的输出说明。
-#### 命令示例
-```
-ros2 service call /tl_driver/set_robot_joint_param tl_ros2_interface/srv/SetRobotJointParam \
-"{
-    id: 1,
-    param:
-    {
-        reduction_ratio: 1.0,
-        encoder_resolution: 19,
-        pos_sw_limit: 179.0,
-        neg_sw_limit: -179.0,
-        rated_rot_speed: 30.0,
-        rated_derot_speed: -30.0,
-        max_rot_speed: 1.0,
-        max_derot_speed: -1.0,
-        rated_vel: 180.0,
-        rated_devel: -180.0,
-        max_acc: 1.5,
-        max_deacc: -1.5,
-        direction: -1
-    }
-}"
-
 ```
 ### 5.5 设置机械臂默认笛卡尔参数
 | 功能描述 | 将机械臂笛卡尔空间参数恢复为出厂默认值 |
@@ -1253,7 +1191,7 @@ ros2 service call /tl_driver/get_current_mode tl_ros2_interface/srv/GetCurrentMo
 ros2 service call /tl_driver/set_digital_output tl_ros2_interface/srv/SetDigitalOutput "{port: 1, value: 1}"
 ```
 ### 12.4 查询数字输入输出状态
-| 功能描述 | 查询所有数字输入（DI）和数字输出（DO）端口状态 |
+| 功能描述 | 查询所有数字输入（DI）和数字输出（DO）端口状态；这是数字 IO 的唯一读取路径，不再发布 `io_state` 话题 |
 | :---: | :---- |
 | 通信机制 | ROS2服务 |
 | 服务名 | `/tl_driver/get_digital_input_output` |
@@ -1545,11 +1483,10 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 | `state_stream_interval_ms` | 10 | 10–60000 | 连续反馈间隔 |
 | `joint_dynamics_rate` | 10.0 | 0–100 | `/tl_driver/joint_dynamics` 频率，0 关闭 |
 | `joint_thermal_rate` | 1.0 | 0–1 | `/tl_driver/joint_thermal` 频率，0 关闭 |
-| `io_state_rate` | 10.0 | 0–100 | `/tl_driver/io_state` 频率，0 关闭 |
 | `motion_action_timeout` | 60.0 | (0, 3600] | 运动 action 默认超时（秒） |
 | `track_action_timeout` | 600.0 | (0, 3600] | 回放 action 默认超时（秒） |
 
-> 两个通道独立降级：某通道连续失效 3 s 后只有该通道改用同步查询（20 Hz），恢复连续 1 s 后切回状态流，另一通道不受影响。1 Hz 看门狗在通道超过 3×`state_stream_interval_ms` 无新帧时重发 `mode=1`（前 3 s 每秒一次，之后每 5 s 一次），3 次仍无新帧记录故障告警。`state_source=poll` 时两个通道都走同步查询，发布频率为 20 Hz。运行状态（`/arm_status`）由独立 10 Hz 定时器查询并缓存，100 Hz 定时器只发布缓存，查询不再进入 100 Hz 路径。
+> 两个通道独立降级：某通道连续失效 3 s 后只有该通道改用同步查询（20 Hz），恢复连续 1 s 后切回状态流，另一通道不受影响。1 Hz 看门狗在通道超过 3×`state_stream_interval_ms` 无新帧时重发 `mode=1`（前 3 s 每秒一次，之后每 5 s 一次），3 次仍无新帧记录故障告警。`state_source=poll` 时两个通道都走同步查询，发布频率为 20 Hz。运行状态（`/arm_status`）由独立 10 Hz 定时器查询并缓存，运行速度由 1 Hz 定时器查询并写入同一缓存；100 Hz 定时器只发布缓存，查询不再进入 100 Hz 路径。
 
 ### 16.2 诊断话题
 
@@ -1557,9 +1494,8 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 | :---- | :---- | ----: | :---- |
 | `/tl_driver/joint_dynamics` | `tl_ros2_interface/msg/JointDynamics` | 10 Hz | 线速度 m/s、关节速度 rad/s、电机电流 A、力矩 ‰ 额定扭矩（千分之一，不是 %） |
 | `/tl_driver/joint_thermal` | `tl_ros2_interface/msg/JointThermal` | 1 Hz | 关节温度 °C、关节/外部轴电压 V |
-| `/tl_driver/io_state` | `tl_ros2_interface/msg/IoState` | 10 Hz | 数字输入/输出数组 |
 
-> 三个话题均为 `reliable` + `transient_local` + depth 1。`joint_thermal` 单次查询约 150–350 ms，频率上限 1 Hz；每次发布单独占用热状态回调组。/joint_states 与 /tcp_pose 已由独立发布线程发布，热状态查询不再阻塞它们；`/arm_status` 的 100 Hz 发布只读 10 Hz 查询缓存。原有查询服务全部保留。
+> 两个话题均为 `reliable` + `transient_local` + depth 1。`joint_thermal` 单次查询约 150–350 ms，频率上限 1 Hz；每次发布单独占用热状态回调组。`/joint_states` 与 `/tcp_pose` 已由独立发布线程发布，热状态查询不再阻塞它们；`/arm_status` 的 100 Hz 发布只读 10 Hz 查询缓存。数字 IO 不发布话题，读写分别使用 `get_digital_input_output` / `set_digital_output` 服务；其余查询服务（速度、机器人状态、温度、电压、电流、力矩、线速度/关节速度、关节软件版本）已删除。
 
 ### 16.3 运动 Action
 
