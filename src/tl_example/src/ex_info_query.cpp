@@ -7,22 +7,22 @@
  * §4 信息查询接口（按说明书编号 4.1~4.20，终端打印顺序与说明书一致）：
  *   [4.1]  /joint_states 话题           查询关节角度（rad）
  *   [4.2]  /tcp_pose 话题               查询末端位姿（m/rad）
- *   [4.3]  get_speed                    查询运行速度
+ *   [4.3]  /arm_status 话题             speed 运行速度
  *   [4.4]  get_controller_id            查询控制器序列号
- *   [4.5]  get_robot_state              查询机械臂状态
+ *   [4.5]  /arm_status 话题             run_state 机械臂状态
  *   [4.6]  get_library_version          查询库版本
  *   [4.7]  get_robot_joint_param        查询关节参数
- *   [4.8]  get_joint_temperature        查询关节温度
- *   [4.9]  get_joint_voltage            查询关节电压
- *   [4.10] get_motor_current            查询电机电流
- *   [4.11] get_joint_software_version   查询关节软件版本号
+ *   [4.8]  /tl_driver/joint_thermal     关节温度
+ *   [4.9]  /tl_driver/joint_thermal     关节/外部轴电压
+ *   [4.10] /tl_driver/joint_dynamics    电机电流
+ *   [4.11] 启动日志                     关节软件版本（驱动启动时打印）
  *   [4.13] get_current_coord            查询当前坐标系
  *   [4.14] get_coord_num                查询坐标系编号
  *   [4.15] get_dh_param                 查询机械臂DH参数
  *   [4.17] get_pos_reachable            查询目标位姿可达状态（关节+直角两坐标系，打印目标位姿）
  *   [4.18] /arm_status 话题             查询机械臂运行状态
- *   [4.19] get_current_motor_torque     查询当前电机力矩
- *   [4.20] get_current_line_joint_speed 查询当前线速度和关节速度
+ *   [4.19] /tl_driver/joint_dynamics    电机力矩（额定扭矩千分之一）
+ *   [4.20] /tl_driver/joint_dynamics    线速度和关节速度
  *
  * 仅做查询与读取，不执行任何设置/运动操作，可放心在真实机械臂上运行。
  *
@@ -47,20 +47,14 @@
 
 #include "tl_ros2_interface/msg/arm_status.hpp"
 #include "tl_ros2_interface/msg/cartesian_pose.hpp"
+#include "tl_ros2_interface/msg/joint_dynamics.hpp"
+#include "tl_ros2_interface/msg/joint_thermal.hpp"
 
 #include "tl_ros2_interface/srv/get_coord_num.hpp"
 #include "tl_ros2_interface/srv/get_current_coord.hpp"
-#include "tl_ros2_interface/srv/get_current_line_joint_speed.hpp"
-#include "tl_ros2_interface/srv/get_current_motor_torque.hpp"
 #include "tl_ros2_interface/srv/get_dh_param.hpp"
-#include "tl_ros2_interface/srv/get_joint_software_version.hpp"
-#include "tl_ros2_interface/srv/get_joint_temperature.hpp"
-#include "tl_ros2_interface/srv/get_joint_voltage.hpp"
-#include "tl_ros2_interface/srv/get_motor_current.hpp"
 #include "tl_ros2_interface/srv/get_pos_reachable.hpp"
 #include "tl_ros2_interface/srv/get_robot_joint_param.hpp"
-#include "tl_ros2_interface/srv/get_robot_state.hpp"
-#include "tl_ros2_interface/srv/get_speed.hpp"
 
 namespace tl_example
 {
@@ -69,6 +63,8 @@ namespace tl_example
 using Trigger = std_srvs::srv::Trigger;
 using ArmStatus = tl_ros2_interface::msg::ArmStatus;
 using CartesianPose = tl_ros2_interface::msg::CartesianPose;
+using JointDynamics = tl_ros2_interface::msg::JointDynamics;
+using JointThermal = tl_ros2_interface::msg::JointThermal;
 using JointState = sensor_msgs::msg::JointState;
 
 /**
@@ -91,25 +87,13 @@ public:
     trig_clis_["get_controller_id"] = create_client<Trigger>("/tl_driver/get_controller_id");
     trig_clis_["get_library_version"] = create_client<Trigger>("/tl_driver/get_library_version");
 
-    // ── 信息查询类服务 ──
-    get_speed_cli_ = create_client<tl_ros2_interface::srv::GetSpeed>("/tl_driver/get_speed");
-    get_robot_state_cli_ = create_client<tl_ros2_interface::srv::GetRobotState>("/tl_driver/get_robot_state");
+    // ── 信息查询类服务（仅保留没有对应话题的只读接口）──
     get_joint_param_cli_ =
         create_client<tl_ros2_interface::srv::GetRobotJointParam>("/tl_driver/get_robot_joint_param");
-    get_joint_temp_cli_ =
-        create_client<tl_ros2_interface::srv::GetJointTemperature>("/tl_driver/get_joint_temperature");
-    get_joint_volt_cli_ = create_client<tl_ros2_interface::srv::GetJointVoltage>("/tl_driver/get_joint_voltage");
-    get_motor_curr_cli_ = create_client<tl_ros2_interface::srv::GetMotorCurrent>("/tl_driver/get_motor_current");
-    get_joint_sw_cli_ =
-        create_client<tl_ros2_interface::srv::GetJointSoftwareVersion>("/tl_driver/get_joint_software_version");
     get_current_coord_cli_ = create_client<tl_ros2_interface::srv::GetCurrentCoord>("/tl_driver/get_current_coord");
     get_coord_num_cli_ = create_client<tl_ros2_interface::srv::GetCoordNum>("/tl_driver/get_coord_num");
     get_dh_param_cli_ = create_client<tl_ros2_interface::srv::GetDHParam>("/tl_driver/get_dh_param");
     get_pos_reachable_cli_ = create_client<tl_ros2_interface::srv::GetPosReachable>("/tl_driver/get_pos_reachable");
-    get_motor_torque_cli_ =
-        create_client<tl_ros2_interface::srv::GetCurrentMotorTorque>("/tl_driver/get_current_motor_torque");
-    get_line_speed_cli_ =
-        create_client<tl_ros2_interface::srv::GetCurrentLineJointSpeed>("/tl_driver/get_current_line_joint_speed");
 
     // ── 话题订阅（信息查询类）──
     arm_status_sub_ = this->create_subscription<ArmStatus>(
@@ -118,6 +102,13 @@ public:
         "/joint_states", 10, std::bind(&InfoQueryDemo::onJointState, this, std::placeholders::_1));
     tcp_pose_sub_ = this->create_subscription<CartesianPose>(
         "/tcp_pose", 10, std::bind(&InfoQueryDemo::onTcpPose, this, std::placeholders::_1));
+    // 诊断话题为 transient_local + depth 1，晚加入也能拿到最后一帧。
+    const auto diagnostic_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
+    dynamics_sub_ =
+        this->create_subscription<JointDynamics>("/tl_driver/joint_dynamics", diagnostic_qos,
+                                                 std::bind(&InfoQueryDemo::onDynamics, this, std::placeholders::_1));
+    thermal_sub_ = this->create_subscription<JointThermal>(
+        "/tl_driver/joint_thermal", diagnostic_qos, std::bind(&InfoQueryDemo::onThermal, this, std::placeholders::_1));
 
     RCLCPP_INFO(this->get_logger(), "  客户端与订阅创建完成");
   }
@@ -130,36 +121,40 @@ private:
   std::map<std::string, rclcpp::Client<Trigger>::SharedPtr> trig_clis_;
 
   // ── 查询类客户端 ──
-  rclcpp::Client<tl_ros2_interface::srv::GetSpeed>::SharedPtr get_speed_cli_;
-  rclcpp::Client<tl_ros2_interface::srv::GetRobotState>::SharedPtr get_robot_state_cli_;
   rclcpp::Client<tl_ros2_interface::srv::GetRobotJointParam>::SharedPtr get_joint_param_cli_;
-  rclcpp::Client<tl_ros2_interface::srv::GetJointTemperature>::SharedPtr get_joint_temp_cli_;
-  rclcpp::Client<tl_ros2_interface::srv::GetJointVoltage>::SharedPtr get_joint_volt_cli_;
-  rclcpp::Client<tl_ros2_interface::srv::GetMotorCurrent>::SharedPtr get_motor_curr_cli_;
-  rclcpp::Client<tl_ros2_interface::srv::GetJointSoftwareVersion>::SharedPtr get_joint_sw_cli_;
   rclcpp::Client<tl_ros2_interface::srv::GetCurrentCoord>::SharedPtr get_current_coord_cli_;
   rclcpp::Client<tl_ros2_interface::srv::GetCoordNum>::SharedPtr get_coord_num_cli_;
   rclcpp::Client<tl_ros2_interface::srv::GetDHParam>::SharedPtr get_dh_param_cli_;
   rclcpp::Client<tl_ros2_interface::srv::GetPosReachable>::SharedPtr get_pos_reachable_cli_;
-  rclcpp::Client<tl_ros2_interface::srv::GetCurrentMotorTorque>::SharedPtr get_motor_torque_cli_;
-  rclcpp::Client<tl_ros2_interface::srv::GetCurrentLineJointSpeed>::SharedPtr get_line_speed_cli_;
 
   // ── 话题订阅 ──
   rclcpp::Subscription<ArmStatus>::SharedPtr arm_status_sub_;
   rclcpp::Subscription<JointState>::SharedPtr joint_state_sub_;
   rclcpp::Subscription<CartesianPose>::SharedPtr tcp_pose_sub_;
+  rclcpp::Subscription<JointDynamics>::SharedPtr dynamics_sub_;
+  rclcpp::Subscription<JointThermal>::SharedPtr thermal_sub_;
 
   // 话题最近收到的数据
   std::string arm_run_state_ = "unknown";
+  double arm_speed_ = 0.0;
+  bool arm_speed_valid_ = false;
+  rclcpp::Time arm_status_stamp_{0, 0, RCL_ROS_TIME};
   bool got_joint_state_ = false;
   bool got_tcp_pose_ = false;
+  bool got_dynamics_ = false;
+  bool got_thermal_ = false;
   JointState::SharedPtr last_joint_state_;
   CartesianPose::SharedPtr last_tcp_pose_;
+  JointDynamics::SharedPtr last_dynamics_;
+  JointThermal::SharedPtr last_thermal_;
 
   // ── 话题回调 ──
   void onArmStatus(const ArmStatus::SharedPtr msg)
   {
     arm_run_state_ = msg->run_state;
+    arm_speed_ = msg->speed;
+    arm_speed_valid_ = msg->speed_valid;
+    arm_status_stamp_ = rclcpp::Time(msg->stamp);
   }
   void onJointState(const JointState::SharedPtr msg)
   {
@@ -170,6 +165,16 @@ private:
   {
     last_tcp_pose_ = msg;
     got_tcp_pose_ = true;
+  }
+  void onDynamics(const JointDynamics::SharedPtr msg)
+  {
+    last_dynamics_ = msg;
+    got_dynamics_ = true;
+  }
+  void onThermal(const JointThermal::SharedPtr msg)
+  {
+    last_thermal_ = msg;
+    got_thermal_ = true;
   }
 
   // ── 辅助方法 ──
@@ -351,35 +356,37 @@ void tl_example::InfoQueryDemo::testInfoQuery()
     RCLCPP_WARN(this->get_logger(), "      未收到 /tcp_pose");
   }
 
-  // [4.3] 查询运行速度
-  RCLCPP_INFO(this->get_logger(), "  --- [4.3] 查询运行速度 get_speed ---");
+  // [4.3] 查询运行速度（话题 /arm_status.speed，1 Hz 缓存）
+  RCLCPP_INFO(this->get_logger(), "  --- [4.3] 查询运行速度 /arm_status.speed ---");
+  spinWaitFor(
+      [this]()
+      {
+        return arm_speed_valid_;
+      },
+      2.0);
+  if (arm_speed_valid_)
   {
-    auto req = std::make_shared<tl_ros2_interface::srv::GetSpeed::Request>();
-    auto resp = callService<tl_ros2_interface::srv::GetSpeed>(get_speed_cli_, req, "get_speed");
-    if (resp && resp->success)
-      RCLCPP_INFO(this->get_logger(), "      speed = %.1f%%", resp->speed);
+    RCLCPP_INFO(this->get_logger(), "      speed = %.1f%%", arm_speed_);
+  }
+  else
+  {
+    RCLCPP_WARN(this->get_logger(), "      speed 尚未就绪（speed_valid=false）");
   }
 
   // [4.4] 查询控制器序列号ID
   RCLCPP_INFO(this->get_logger(), "  --- [4.4] 查询控制器序列号 get_controller_id ---");
   callTrigger("get_controller_id", "get_controller_id");
 
-  // [4.5] 查询机械臂状态
-  RCLCPP_INFO(this->get_logger(), "  --- [4.5] 查询机械臂状态 get_robot_state ---");
-  {
-    auto req = std::make_shared<tl_ros2_interface::srv::GetRobotState::Request>();
-    req->channel = 1;
-    req->stop = false;
-    req->mode = 0;
-    req->interval = 100;
-    req->io_state = false;
-    req->position = 0;
-    req->detail_motion_pos = false;
-    req->pos_sum = 1;
-    auto resp = callService<tl_ros2_interface::srv::GetRobotState>(get_robot_state_cli_, req, "get_robot_state");
-    if (resp && resp->success)
-      RCLCPP_INFO(this->get_logger(), "      信息: %s", resp->message.c_str());
-  }
+  // [4.5] 查询机械臂状态（话题 /arm_status.run_state）
+  RCLCPP_INFO(this->get_logger(), "  --- [4.5] 查询机械臂状态 /arm_status.run_state ---");
+  spinWaitFor(
+      [this]()
+      {
+        return arm_run_state_ != "unknown";
+      },
+      2.0);
+  RCLCPP_INFO(this->get_logger(), "      run_state = %s",
+              arm_run_state_ == "unknown" ? "(未收到)" : arm_run_state_.c_str());
 
   // [4.6] 查询库版本信息
   RCLCPP_INFO(this->get_logger(), "  --- [4.6] 查询库版本 get_library_version ---");
@@ -400,47 +407,55 @@ void tl_example::InfoQueryDemo::testInfoQuery()
     }
   }
 
-  // [4.8] 查询关节温度
-  RCLCPP_INFO(this->get_logger(), "  --- [4.8] 查询关节温度 get_joint_temperature ---");
+  // [4.8] 查询关节温度（话题 /tl_driver/joint_thermal）
+  RCLCPP_INFO(this->get_logger(), "  --- [4.8] 查询关节温度 /tl_driver/joint_thermal ---");
+  spinWaitFor(
+      [this]()
+      {
+        return got_thermal_;
+      },
+      2.0);
+  if (last_thermal_ && !last_thermal_->temperature.empty())
   {
-    auto req = std::make_shared<tl_ros2_interface::srv::GetJointTemperature::Request>();
-    auto resp =
-        callService<tl_ros2_interface::srv::GetJointTemperature>(get_joint_temp_cli_, req, "get_joint_temperature");
-    if (resp && resp->success)
-      printArray(resp->temperatures, "      temperature(℃) ");
+    printArray(last_thermal_->temperature, "      temperature(℃) ");
+  }
+  else
+  {
+    RCLCPP_WARN(this->get_logger(), "      未收到关节温度");
   }
 
-  // [4.9] 查询关节电压
-  RCLCPP_INFO(this->get_logger(), "  --- [4.9] 查询关节电压 get_joint_voltage ---");
+  // [4.9] 查询关节电压（同一话题）
+  RCLCPP_INFO(this->get_logger(), "  --- [4.9] 查询关节电压 /tl_driver/joint_thermal ---");
+  if (last_thermal_ && !last_thermal_->joint_voltage.empty())
   {
-    auto req = std::make_shared<tl_ros2_interface::srv::GetJointVoltage::Request>();
-    auto resp = callService<tl_ros2_interface::srv::GetJointVoltage>(get_joint_volt_cli_, req, "get_joint_voltage");
-    if (resp && resp->success)
-    {
-      printArray(resp->joint_voltage, "      joint_voltage(V) ");
-      printArray(resp->positioner_voltage, "      positioner_voltage(V) ");
-    }
+    printArray(last_thermal_->joint_voltage, "      joint_voltage(V) ");
+    printArray(last_thermal_->positioner_voltage, "      positioner_voltage(V) ");
+  }
+  else
+  {
+    RCLCPP_WARN(this->get_logger(), "      未收到关节电压");
   }
 
-  // [4.10] 查询电机电流
-  RCLCPP_INFO(this->get_logger(), "  --- [4.10] 查询电机电流 get_motor_current ---");
+  // [4.10] 查询电机电流（话题 /tl_driver/joint_dynamics）
+  RCLCPP_INFO(this->get_logger(), "  --- [4.10] 查询电机电流 /tl_driver/joint_dynamics ---");
+  spinWaitFor(
+      [this]()
+      {
+        return got_dynamics_;
+      },
+      2.0);
+  if (last_dynamics_ && !last_dynamics_->motor_current.empty())
   {
-    auto req = std::make_shared<tl_ros2_interface::srv::GetMotorCurrent::Request>();
-    auto resp = callService<tl_ros2_interface::srv::GetMotorCurrent>(get_motor_curr_cli_, req, "get_motor_current");
-    if (resp && resp->success)
-      printArray(resp->motor_current, "      motor_current(A) ");
+    printArray(last_dynamics_->motor_current, "      motor_current(A) ");
+  }
+  else
+  {
+    RCLCPP_WARN(this->get_logger(), "      未收到电机电流");
   }
 
-  // [4.11] 查询关节软件版本号
-  RCLCPP_INFO(this->get_logger(), "  --- [4.11] 查询关节软件版本 get_joint_software_version ---");
-  {
-    auto req = std::make_shared<tl_ros2_interface::srv::GetJointSoftwareVersion::Request>();
-    req->axis_num = 1;
-    auto resp = callService<tl_ros2_interface::srv::GetJointSoftwareVersion>(get_joint_sw_cli_, req,
-                                                                             "get_joint_software_version(axis=1)");
-    if (resp && resp->success)
-      RCLCPP_INFO(this->get_logger(), "      版本: %s", resp->message.c_str());
-  }
+  // [4.11] 查询关节软件版本
+  RCLCPP_INFO(this->get_logger(), "  --- [4.11] 关节软件版本（驱动启动日志 [Init]: joint N software version）---");
+  RCLCPP_INFO(this->get_logger(), "      已改为启动时打印，失败不阻断驱动启动；此处不再提供服务调用");
 
   // [4.13] 查询当前坐标系
   RCLCPP_INFO(this->get_logger(), "  --- [4.13] 查询当前坐标系 get_current_coord ---");
@@ -525,38 +540,51 @@ void tl_example::InfoQueryDemo::testInfoQuery()
     }
   }
 
-  // [4.18] 查询机械臂运行状态（话题 /arm_status）
-  RCLCPP_INFO(this->get_logger(), "  --- [4.18] 查询机械臂运行状态 /arm_status ---");
+  // [4.18] /arm_status 采样时间（验证 10 Hz 查询缓存）
+  RCLCPP_INFO(this->get_logger(), "  --- [4.18] /arm_status 采样时间 ---");
   spinWaitFor(
       [this]()
       {
         return arm_run_state_ != "unknown";
       },
       2.0);
-  RCLCPP_INFO(this->get_logger(), "      run_state = %s",
-              arm_run_state_ == "unknown" ? "(未收到)" : arm_run_state_.c_str());
-
-  // [4.19] 查询当前电机力矩
-  RCLCPP_INFO(this->get_logger(), "  --- [4.19] 查询当前电机力矩 get_current_motor_torque ---");
+  if (arm_run_state_ != "unknown")
   {
-    auto req = std::make_shared<tl_ros2_interface::srv::GetCurrentMotorTorque::Request>();
-    auto resp = callService<tl_ros2_interface::srv::GetCurrentMotorTorque>(get_motor_torque_cli_, req,
-                                                                           "get_current_motor_torque");
-    if (resp && resp->success)
-      printArray(resp->motor_torque, "      motor_torque(Nm) ");
+    const double age_ms = (this->now() - arm_status_stamp_).seconds() * 1000.0;
+    RCLCPP_INFO(this->get_logger(), "      run_state=%s stamp_age=%.1f ms", arm_run_state_.c_str(), age_ms);
+  }
+  else
+  {
+    RCLCPP_WARN(this->get_logger(), "      未收到 /arm_status");
   }
 
-  // [4.20] 查询当前线速度和关节速度
-  RCLCPP_INFO(this->get_logger(), "  --- [4.20] 查询当前线速度和关节速度 get_current_line_joint_speed ---");
+  // [4.19] 查询当前电机力矩（话题 /tl_driver/joint_dynamics，单位：额定扭矩千分之一）
+  RCLCPP_INFO(this->get_logger(), "  --- [4.19] 查询当前电机力矩 /tl_driver/joint_dynamics ---");
+  spinWaitFor(
+      [this]()
+      {
+        return got_dynamics_;
+      },
+      2.0);
+  if (last_dynamics_ && !last_dynamics_->motor_torque.empty())
   {
-    auto req = std::make_shared<tl_ros2_interface::srv::GetCurrentLineJointSpeed::Request>();
-    auto resp = callService<tl_ros2_interface::srv::GetCurrentLineJointSpeed>(get_line_speed_cli_, req,
-                                                                              "get_current_line_joint_speed");
-    if (resp && resp->success)
-    {
-      RCLCPP_INFO(this->get_logger(), "      line_speed = %.3f m/s", resp->line_speed);
-      printArray(resp->joint_speed, "      joint_speed(rad/s) ");
-    }
+    printArray(last_dynamics_->motor_torque, "      motor_torque(‰ 额定) ");
+  }
+  else
+  {
+    RCLCPP_WARN(this->get_logger(), "      未收到电机力矩");
+  }
+
+  // [4.20] 查询当前线速度和关节速度（同一话题）
+  RCLCPP_INFO(this->get_logger(), "  --- [4.20] 查询当前线速度和关节速度 /tl_driver/joint_dynamics ---");
+  if (last_dynamics_)
+  {
+    RCLCPP_INFO(this->get_logger(), "      line_speed = %.3f m/s", last_dynamics_->line_speed);
+    printArray(last_dynamics_->joint_speed, "      joint_speed(rad/s) ");
+  }
+  else
+  {
+    RCLCPP_WARN(this->get_logger(), "      未收到线速度/关节速度");
   }
 }
 

@@ -14,6 +14,9 @@
 
 ### 2026-10-22
 
+- **破坏性变更**：查询类接口统一话题化，`tl_driver` 服务数 45 → 36。删除 `/tl_driver/get_speed`（改读 `/arm_status.speed` / `speed_valid`，1 Hz 缓存）、`get_robot_state`（改读 `/joint_states`、`/tcp_pose`、`/arm_status`）、`get_joint_temperature` / `get_joint_voltage`（改读 `/tl_driver/joint_thermal`）、`get_motor_current`（改读 `/tl_driver/joint_dynamics`）、`get_current_motor_torque` / `get_current_line_joint_speed`（改读 `/tl_driver/joint_dynamics`）、`get_joint_software_version`（改为启动日志逐轴打印，查询失败仅告警）、`set_robot_joint_param`
+- **破坏性变更**：删除 `/tl_driver/io_state` 话题与 `IoState.msg`（发布数 6 → 5，msg 14 → 11）；数字 IO 读写统一走 `get_digital_input_output` / `set_digital_output` 服务
+- tl_driver：力矩单位统一为**额定扭矩千分之一（‰）**，`JointDynamics.motor_torque` / `motor_torque_sync` 注释、说明书与单位对照表同步；±1000 对应 ±100% 额定扭矩，不是 N·m 也不是 %
 - **行为变更**：`/joint_states`、`/tcp_pose` 改由 7000 端口机器人状态帧通知的独立发布线程发布，不再经过 100 Hz 定时器；6001 端口的同步查询不再阻塞位姿话题（实机基线：100 Hz 话题仅 58–78 Hz，最大间隔 0.41 s）
 - **行为变更**：`/arm_status` 的运行状态查询由 100 Hz 降到 10 Hz 并缓存，100 Hz 定时器只发布缓存（`stamp` 为采样时刻）；首次查询成功前不发布该话题，连续 3 次查询失败后停止发布，避免长期冻结在最后一次状态；新增 `status_group_` 回调组
 - **行为变更**：stream 模式下 `publish_rate` 只控制 `/arm_status` 与回退轮询上限；`/joint_states`、`/tcp_pose` 频率由 7000 帧率决定，消息 `stamp` 改为帧接收时刻

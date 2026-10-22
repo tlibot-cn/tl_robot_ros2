@@ -14,7 +14,6 @@
 #include "node/driver_node.hpp"
 
 #include "std_srvs/srv/trigger.hpp"
-#include "tl_ros2_interface/srv/get_speed.hpp"
 #include "tl_ros2_interface/srv/jogging.hpp"
 #include "tl_ros2_interface/srv/open_servo_j.hpp"
 #include "tl_ros2_interface/srv/queue_motion_move_j.hpp"
@@ -48,31 +47,6 @@ void handle_set_speed_service(DriverNode& node,
   tl::Result ret = tl::set_speed(node.session().fd(), request->speed);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Set speed successfully" : "Failed to set speed";
-}
-
-void handle_get_speed_service(DriverNode& node,
-                              const std::shared_ptr<tl_ros2_interface::srv::GetSpeed::Request> request,
-                              std::shared_ptr<tl_ros2_interface::srv::GetSpeed::Response> response)
-{
-  (void)request;
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  int speed;
-  tl::Result ret = tl::get_speed(node.session().fd(), speed);
-  if (ret != tl::Result::SUCCESS)
-  {
-    response->success = false;
-    response->message = "Failed to get speed";
-    return;
-  }
-  response->success = true;
-  response->message = "Get speed successfully";
-  response->speed = speed;
 }
 
 void handle_start_jogging_service(DriverNode& node,
@@ -330,9 +304,6 @@ void register_motion_services(DriverNode& node)
   node.create_service<tl_ros2_interface::srv::SetSpeed>(
       "/tl_driver/set_speed",
       std::bind(&handle_set_speed_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
-  node.create_service<tl_ros2_interface::srv::GetSpeed>(
-      "/tl_driver/get_speed",
-      std::bind(&handle_get_speed_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
   node.create_service<tl_ros2_interface::srv::Jogging>(
       "/tl_driver/start_jogging",
       std::bind(&handle_start_jogging_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));

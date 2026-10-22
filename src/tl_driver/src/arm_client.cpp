@@ -114,22 +114,6 @@ bool ArmClient::stop_state_stream(int fd_aux, int channel, int position)
   return true;
 }
 
-bool ArmClient::get_state_frame(int channel, StateFrame& out) const
-{
-  if (channel < 1 || channel >= static_cast<int>(frames_.size()))
-  {
-    return false;
-  }
-
-  std::lock_guard<std::mutex> lock(frame_mutex_);
-  if (frames_[channel].seq == 0)
-  {
-    return false;
-  }
-  out = frames_[channel];
-  return true;
-}
-
 bool ArmClient::get_state_values(int channel, std::vector<double>& values, uint64_t& seq,
                                  std::chrono::steady_clock::time_point& received_at) const
 {
@@ -225,7 +209,6 @@ void ArmClient::on_state(const char *state)
   {
     std::lock_guard<std::mutex> lock(frame_mutex_);
     StateFrame& frame = frames_[parsed.channel];
-    frame.raw = state;
     frame.acs = std::move(parsed.acs);
     frame.mcs = std::move(parsed.mcs);
     frame.received_at = std::chrono::steady_clock::now();

@@ -108,7 +108,6 @@ tl_driver:
     state_stream_interval_ms: 10    # 连续状态流间隔，范围 10～60000 ms
     joint_dynamics_rate: 10.0       # /tl_driver/joint_dynamics 频率，0=关闭
     joint_thermal_rate: 1.0         # /tl_driver/joint_thermal 频率，0～1，0=关闭
-    io_state_rate: 10.0             # /tl_driver/io_state 频率，0=关闭
     motion_action_timeout: 60.0     # move_joint/move_linear 默认超时，秒
     track_action_timeout: 600.0     # play_track 默认超时，秒
 ```
@@ -190,7 +189,7 @@ tl_driver:
 │   │   ├── actions_motion.cpp   # action server（move_joint/move_linear/play_track）
 │   │   ├── publishers.{hpp,cpp} # 状态流/诊断话题发布
 │   │   ├── services_session.cpp # 会话类服务（连接/上下电/清错）
-│   │   ├── services_state.cpp   # 状态类服务（机器人状态/版本/温度/电压/电流/力矩/模式）
+│   │   ├── services_state.cpp   # 状态类服务（库版本/当前模式）；状态量改由话题发布
 │   │   ├── services_config.cpp  # 配置类服务（DH 查询/关节参数/工具/坐标系/可达性）
 │   │   ├── services_transform.cpp # 坐标系服务（坐标系变换、当前坐标系读写）
 │   │   ├── services_motion.cpp  # 运动类服务（速度/点动/轨迹/队列/ServoJ 开关）
@@ -213,4 +212,4 @@ tl_driver功能包的服务和话题较多，可以通过如下指令了解其�
 ![image](doc/tl_driver4.png)  
 主要为套用API实现的一些机械臂本体的功能，其详细介绍和使用在此不详细展开，可以通过专门的文档《[tl_driver服务与话题说明书](doc/tl_driver服务与话题说明书.md)》进行查看。
 
-状态话题化后，`/joint_states` 与 `/tcp_pose` 默认由 7000 端口 ACS/MCS 连续流驱动；诊断量走 `/tl_driver/joint_dynamics`、`/tl_driver/joint_thermal`、`/tl_driver/io_state`。长运动客户端可使用 `/tl_driver/move_joint`、`/tl_driver/move_linear`、`/tl_driver/play_track` action；现有 `moveJ`/`moveL` 话题与 `track_playback` 服务保持不变，action 的 cancel 因 SDK 无停止接口而一律拒绝。
+状态话题化后，`/joint_states` 与 `/tcp_pose` 默认由 7000 端口 ACS/MCS 连续流驱动；诊断量走 `/tl_driver/joint_dynamics`、`/tl_driver/joint_thermal`，数字 IO 读写统一使用 `get_digital_input_output` / `set_digital_output` 服务（不发布 `io_state` 话题）。`/arm_status` 额外携带 1 Hz 查询缓存的 `speed` / `speed_valid`。长运动客户端可使用 `/tl_driver/move_joint`、`/tl_driver/move_linear`、`/tl_driver/play_track` action；现有 `moveJ`/`moveL` 话题与 `track_playback` 服务保持不变，action 的 cancel 因 SDK 无停止接口而一律拒绝。

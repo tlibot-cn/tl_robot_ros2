@@ -27,6 +27,8 @@ constexpr double kMaxAuxRate = 100.0;
 constexpr double kMaxThermalRate = 1.0;
 // 运行状态只用于 /arm_status 缓存；10 Hz 足够覆盖 STOP/PAUSE/RUNNING 切换，且不再占用 100 Hz 周期。
 constexpr double kRunningStatusRate = 10.0;
+// 运行速度只用于 /arm_status.speed；1 Hz 足够反映 SetSpeed 后的变化，避免增加 6001 查询负载。
+constexpr double kSpeedQueryRate = 1.0;
 constexpr double kMaxActionTimeoutSec = 3600.0;
 
 bool is_valid_publish_rate(double rate)
@@ -70,7 +72,6 @@ void DriverNode::declare_parameters()
   this->declare_parameter("state_stream_interval_ms", 10);
   this->declare_parameter("joint_dynamics_rate", 10.0);
   this->declare_parameter("joint_thermal_rate", 1.0);
-  this->declare_parameter("io_state_rate", 10.0);
   this->declare_parameter("motion_action_timeout", 60.0);
   this->declare_parameter("track_action_timeout", 600.0);
 
@@ -84,7 +85,6 @@ void DriverNode::declare_parameters()
   state_stream_interval_ms_ = this->get_parameter("state_stream_interval_ms").as_int();
   joint_dynamics_rate_ = this->get_parameter("joint_dynamics_rate").as_double();
   joint_thermal_rate_ = this->get_parameter("joint_thermal_rate").as_double();
-  io_state_rate_ = this->get_parameter("io_state_rate").as_double();
   motion_action_timeout_ = this->get_parameter("motion_action_timeout").as_double();
   track_action_timeout_ = this->get_parameter("track_action_timeout").as_double();
   ndof_ = static_cast<int>(arm_joints_.size());
@@ -101,9 +101,9 @@ void DriverNode::declare_parameters()
   {
     throw std::invalid_argument("state_stream_interval_ms must be in [10, 60000]");
   }
-  if (!is_valid_rate(joint_dynamics_rate_, kMaxAuxRate) || !is_valid_rate(io_state_rate_, kMaxAuxRate))
+  if (!is_valid_rate(joint_dynamics_rate_, kMaxAuxRate))
   {
-    throw std::invalid_argument("joint_dynamics_rate / io_state_rate must be in [0, 100] Hz");
+    throw std::invalid_argument("joint_dynamics_rate must be in [0, 100] Hz");
   }
   if (!is_valid_rate(joint_thermal_rate_, kMaxThermalRate))
   {
@@ -200,7 +200,6 @@ void DriverNode::create_callback_groups()
   stream_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   dynamics_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   thermal_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  io_state_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   status_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   // action 的 execute 在独立工作线程中运行；goal/cancel 回调仍单独成组，避免占用服务组。
@@ -317,18 +316,18 @@ void DriverNode::create_aux_timers()
         publishers_->publish_thermal();
       },
       thermal_group_);
-  io_state_timer_ = make_timer(
-      io_state_rate_,
-      [this]()
-      {
-        publishers_->publish_io();
-      },
-      io_state_group_);
   status_query_timer_ = make_timer(
       kRunningStatusRate,
       [this]()
       {
         publishers_->query_running_status();
+      },
+      status_group_);
+  speed_query_timer_ = make_timer(
+      kSpeedQueryRate,
+      [this]()
+      {
+        publishers_->query_speed();
       },
       status_group_);
 }
@@ -437,6 +436,22 @@ void DriverNode::init()
     RCLCPP_INFO(this->get_logger(), "上电延时2s...");
     std::this_thread::sleep_for(std::chrono::seconds(2));
     RCLCPP_INFO(this->get_logger(), "上电延时完成");
+
+    // 关节软件版本只在启动时记录；查询失败仅告警，不得阻断启动（部分固件要求伺服使能后才能查询）。
+    for (int axis = 1; axis <= ndof_; ++axis)
+    {
+      std::string version;
+      const tl::Result version_ret = tl::query_joint_software_version(fd, axis, version);
+      if (version_ret == tl::Result::SUCCESS)
+      {
+        RCLCPP_INFO(this->get_logger(), "[Init]: joint %d software version: %s", axis, version.c_str());
+      }
+      else
+      {
+        RCLCPP_WARN(this->get_logger(), "[Init]: joint %d software version query failed: %s", axis,
+                    arm_client::result_to_string(version_ret));
+      }
+    }
 
     // 所有可能抛异常的初始化步骤已完成后再启动发布线程：
     // 若在 set_current_mode() 抛异常前启动，构造失败时 StatePublishers 析构若未 join 会 terminate。

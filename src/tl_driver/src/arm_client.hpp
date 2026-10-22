@@ -30,7 +30,6 @@ const char *result_to_string(tl::Result ret) noexcept;
 /// @brief 单通道状态快照。
 struct StateFrame
 {
-  std::string raw;                                     ///< 原始报文，供 get_robot_state 服务返回
   std::vector<double> acs;                             ///< ACS 关节角（度）
   std::vector<double> mcs;                             ///< MCS 位姿（位置 mm、姿态度）
   uint64_t seq{0};                                     ///< 该通道帧序号，0 表示尚未收到
@@ -74,12 +73,6 @@ public:
   /// @param[in] position 0=ACS，1=MCS
   /// @return SDK 返回 SUCCESS 时为 true
   bool stop_state_stream(int fd_aux, int channel, int position);
-
-  /// @brief 读取通道快照（拷贝）。
-  /// @param[in] channel 通道号
-  /// @param[out] out 快照
-  /// @return 该通道至少收到过一帧时为 true
-  bool get_state_frame(int channel, StateFrame& out) const;
 
   /// @brief 只读取通道数值向量与帧元数据（100 Hz 发布路径，避免拷贝原始报文）。
   /// @param[in] channel 1=ACS，2=MCS

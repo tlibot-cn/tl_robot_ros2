@@ -1,8 +1,0 @@
-# 位姿转换
-# 单位遵循 REP 103：欧拉角 rad、位置 m（四元数、旋转矩阵无量纲）。
-# input/output 的具体含义随服务：四元数、欧拉角、旋转矩阵或齐次矩阵。
-float64[] input     # 输入数组
----
-bool success
-string message
-float64[] output    # 输出数组

@@ -1,8 +1,0 @@
-# 当前线速度和关节速度
-# 单位遵循 REP 103：line_speed m/s；joint_speed / joint_speed_sync rad/s；数组长度 7 / 5。
----
-bool success
-string message
-float64 line_speed          # 末端线速度，单位：m/s
-float64[] joint_speed       # 本体关节速度，数组长度 7，单位：rad/s
-float64[] joint_speed_sync  # 外部轴关节速度，数组长度 5，单位：rad/s
