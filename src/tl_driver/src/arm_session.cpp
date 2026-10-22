@@ -269,9 +269,8 @@ bool ArmSession::connect(const std::string& ip, const std::string& port, const s
   socket_fd_.store(fd, std::memory_order_relaxed);
   socket_fd_aux_.store(fd_aux, std::memory_order_relaxed);
 
+  // 错误/告警异步推送只在主端口注册；7000 只承载状态帧推送。
   client_.register_error_callback(fd);
-
-  client_.register_error_callback(fd_aux);
 
   // 新 SDK：机器人状态通过 robot_state_callback（7000 端口）接收，不再使用旧的 recv_message 机制
   client_.start_robot_state_channel(fd_aux);

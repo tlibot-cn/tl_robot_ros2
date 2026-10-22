@@ -31,7 +31,7 @@ flowchart LR
 
 核心事实：
 
-- **双端口**：`arm_port` 6001 用于请求/响应式 SDK 调用；`arm_port_aux` 7000 用于 servoJ 全系列 + 机器人状态异步推送。两个 fd 都必须连通，状态回调只在 aux 注册，错误/告警回调两个端口都注册。
+- **双端口**：`arm_port` 6001 用于请求/响应式 SDK 调用；`arm_port_aux` 7000 用于 servoJ 全系列 + 机器人状态异步推送。两个 fd 都必须连通，状态回调只在 aux 注册，错误/告警回调只在主端口 6001 注册（7000 不注册）。
 - **`tl_driver` 组成**：`DriverNode` 只做参数、回调组、实体创建；服务按域拆在 `src/node/services_*.cpp`，由 `src/node/registrars.hpp` 的 `register_*` 函数注册；话题在 `topics.cpp`，action 在 `actions_motion.cpp`。当前规模：**36 个服务、3 个订阅、5 个发布、3 个 action**。`arm_client::ArmClient` 进程内只允许一个实例（SDK 回调无 userdata）；状态帧/错误日志走 rclcpp 并 1 s 节流。
 - **发布**：`/joint_states`（rad）、`/tcp_pose`（m/rad）、`/arm_status`（`STOP`/`PAUSE`/`RUNNING` + `speed`/`speed_valid`）目标 100 Hz；`/tl_driver/joint_dynamics`（10 Hz）、`/tl_driver/joint_thermal`（1 Hz）。数字 IO 不发布话题，读写统一走 `get_digital_input_output` / `set_digital_output` 服务。`/joint_states`、`/tcp_pose` 由 7000 端口 ACS/MCS 连续帧**通知独立发布线程**发布（`state_source=stream`），不经过 100 Hz 定时器；`/arm_status` 由 10 Hz 查询缓存、100 Hz 定时器只发布缓存；`poll` 可回滚。`StatePublishers` 复用成员缓冲与消息，**勿在发布回调内新建 vector/message**；ServoJ 日志不得逐帧 INFO。
 - **订阅**：`/tl_driver/moveJ`、`/tl_driver/moveL`、`/tl_driver/set_servoj_pos`（rad，6 或 7 元素，6 元素末尾补 0；转发 SDK 时为固定 7 元素）。`moveJ/moveL` **不等到位**，需要到位判定的一方轮询 `/arm_status`。

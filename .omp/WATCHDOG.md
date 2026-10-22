@@ -92,11 +92,11 @@
 | 端口 | 参数 | 职责 |
 |---|---|---|
 | 6001 | `arm_port` | 请求/响应式 SDK 调用（运动、IO、Modbus、作业、参数查询、外部轴、拖拽示教） |
-| 7000 | `arm_port_aux` | servoJ 全系列、伺服点位、**机器人状态异步推送**、错误/告警回调 |
+| 7000 | `arm_port_aux` | servoJ 全系列、伺服点位、**机器人状态异步推送**（不注册错误/告警回调） |
 
 - **两个 fd 都必须连上**：`connect()` 两次 `connect_robot`，任一侧 `<= 0` 即失败；`is_connected()` 另要求两个 fd 均 > 0。
 - 状态推送只在 aux 注册：`robot_state_callback(socket_fd_aux_, robot_state_callback_handler)`；旧 `recv_message` 机制已废弃，别加回主端口。
-- 错误/告警回调**两个端口都注册**（`set_receive_error_or_warnning_message_callback` 各一次）——别以「状态是 7000 的事」为由删掉主端口那次。
+- 错误/告警回调**只在主端口 6001 注册**（`set_receive_error_or_warnning_message_callback` 一次）；7000 只注册 `robot_state_callback`。
 - ⚠️ 已知未修正项：`set_darg_mode`、`get_drag_thread_is_end` 传的是**主端口**（SDK 文档要求 7000）。**不要顺手「统一到 aux」**，属行为变更，需真机验证。
 
 ## 八、文档与仓库卫生（清单在 `AGENTS.md`，这里只留该盯的动作）

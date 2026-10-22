@@ -52,7 +52,7 @@ public:
   ArmClient& operator=(const ArmClient&) = delete;
 
   /// @brief 在指定端口注册错误/告警异步推送回调。
-  /// @param[in] fd 已建立的 SDK 连接（6001 与 7000 均需注册）
+  /// @param[in] fd 已建立的 SDK 主端口连接（6001）
   void register_error_callback(int fd);
 
   /// @brief 在辅助端口注册机器人状态异步推送。

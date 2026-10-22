@@ -14,6 +14,7 @@
 
 ### 2026-10-22
 
+- tl_driver：错误/告警异步回调只在 6001 主端口注册，7000 端口仅注册机器人状态推送
 - **破坏性变更**：查询类接口统一话题化，`tl_driver` 服务数 45 → 36。删除 `/tl_driver/get_speed`（改读 `/arm_status.speed` / `speed_valid`，1 Hz 缓存）、`get_robot_state`（改读 `/joint_states`、`/tcp_pose`、`/arm_status`）、`get_joint_temperature` / `get_joint_voltage`（改读 `/tl_driver/joint_thermal`）、`get_motor_current`（改读 `/tl_driver/joint_dynamics`）、`get_current_motor_torque` / `get_current_line_joint_speed`（改读 `/tl_driver/joint_dynamics`）、`get_joint_software_version`（改为启动日志逐轴打印，查询失败仅告警）、`set_robot_joint_param`
 - **破坏性变更**：删除 `/tl_driver/io_state` 话题与 `IoState.msg`（发布数 6 → 5，msg 14 → 11）；数字 IO 读写统一走 `get_digital_input_output` / `set_digital_output` 服务
 - tl_driver：力矩单位统一为**额定扭矩千分之一（‰）**，`JointDynamics.motor_torque` / `motor_torque_sync` 注释、说明书与单位对照表同步；±1000 对应 ±100% 额定扭矩，不是 N·m 也不是 %
