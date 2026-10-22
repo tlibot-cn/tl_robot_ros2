@@ -25,6 +25,8 @@ constexpr int kMinStreamIntervalMs = 10;
 constexpr int kMaxStreamIntervalMs = 60000;
 constexpr double kMaxAuxRate = 100.0;
 constexpr double kMaxThermalRate = 1.0;
+// 运行状态只用于 /arm_status 缓存；10 Hz 足够覆盖 STOP/PAUSE/RUNNING 切换，且不再占用 100 Hz 周期。
+constexpr double kRunningStatusRate = 10.0;
 constexpr double kMaxActionTimeoutSec = 3600.0;
 
 bool is_valid_publish_rate(double rate)
@@ -67,7 +69,7 @@ void DriverNode::declare_parameters()
   this->declare_parameter("state_source", "stream");
   this->declare_parameter("state_stream_interval_ms", 10);
   this->declare_parameter("joint_dynamics_rate", 10.0);
-  this->declare_parameter("joint_thermal_rate", 0.5);
+  this->declare_parameter("joint_thermal_rate", 1.0);
   this->declare_parameter("io_state_rate", 10.0);
   this->declare_parameter("motion_action_timeout", 60.0);
   this->declare_parameter("track_action_timeout", 600.0);
@@ -199,6 +201,7 @@ void DriverNode::create_callback_groups()
   dynamics_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   thermal_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   io_state_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  status_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   // action 的 execute 在独立工作线程中运行；goal/cancel 回调仍单独成组，避免占用服务组。
   action_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -321,6 +324,13 @@ void DriverNode::create_aux_timers()
         publishers_->publish_io();
       },
       io_state_group_);
+  status_query_timer_ = make_timer(
+      kRunningStatusRate,
+      [this]()
+      {
+        publishers_->query_running_status();
+      },
+      status_group_);
 }
 
 void DriverNode::check_state_stream()
@@ -363,7 +373,13 @@ void DriverNode::check_state_stream()
 
 DriverNode::~DriverNode()
 {
-  // 先停 action 工作线程，避免析构过程中仍访问节点/会话。
+  // 先停状态发布线程：它会读 7000 快照，必须在会话断开前退出。
+  if (publishers_)
+  {
+    publishers_->stop_stream_thread();
+  }
+
+  // 再停 action 工作线程，避免析构过程中仍访问节点/会话。
   actions_.reset();
 
   if (session_.is_connected())
@@ -421,6 +437,13 @@ void DriverNode::init()
     RCLCPP_INFO(this->get_logger(), "上电延时2s...");
     std::this_thread::sleep_for(std::chrono::seconds(2));
     RCLCPP_INFO(this->get_logger(), "上电延时完成");
+
+    // 所有可能抛异常的初始化步骤已完成后再启动发布线程：
+    // 若在 set_current_mode() 抛异常前启动，构造失败时 StatePublishers 析构若未 join 会 terminate。
+    if (state_source_ == "stream")
+    {
+      publishers_->start_stream_thread();
+    }
     return;
   }
   throw std::runtime_error("failed to connect to " + arm_ip_ + ":" + arm_port_ + "," + arm_port_aux_);

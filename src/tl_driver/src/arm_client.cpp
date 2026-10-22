@@ -168,6 +168,19 @@ bool ArmClient::is_state_frame_fresh(int channel, std::chrono::milliseconds max_
   return std::chrono::steady_clock::now() - frame.received_at <= max_age;
 }
 
+bool ArmClient::wait_state_update(uint64_t& seen, std::chrono::milliseconds timeout) const
+{
+  std::unique_lock<std::mutex> lock(frame_mutex_);
+  // 谓词比较通知序号，避免“写入发生在等待之前”导致发布线程睡到超时。
+  const bool updated = state_cv_.wait_for(lock, timeout,
+                                          [this, seen]
+                                          {
+                                            return state_notify_seq_ != seen;
+                                          });
+  seen = state_notify_seq_;
+  return updated;
+}
+
 void ArmClient::error_callback(int message_type, const char *message, int message_code)
 {
   std::lock_guard<std::mutex> lock(registry_mutex_);
@@ -217,7 +230,44 @@ void ArmClient::on_state(const char *state)
     frame.mcs = std::move(parsed.mcs);
     frame.received_at = std::chrono::steady_clock::now();
     ++frame.seq;
+    ++state_notify_seq_;
   }
+  // 通知放在锁外：发布线程被唤醒后会重新取锁读快照，避免持锁唤醒造成的伪竞争。
+  state_cv_.notify_one();
+  update_frame_stats(parsed.channel);
+}
+
+void ArmClient::update_frame_stats(int channel)
+{
+  if (channel < 1 || channel >= static_cast<int>(channel_stats_.size()))
+  {
+    return;
+  }
+
+  ChannelStats& stats = channel_stats_[channel];
+  stats.frames.fetch_add(1, std::memory_order_relaxed);
+
+  constexpr int64_t kWindowNs = 5'000'000'000LL;
+  const int64_t now_ns = clock_.now().nanoseconds();
+  int64_t window_start = stats.window_start_ns.load(std::memory_order_relaxed);
+  if (window_start == 0)
+  {
+    stats.window_start_ns.compare_exchange_strong(window_start, now_ns);
+    return;
+  }
+  if (now_ns - window_start < kWindowNs)
+  {
+    return;
+  }
+  // 只有一个回调线程累计计数；CAS 失败说明窗口刚被别的线程切换，直接跳过本次统计。
+  if (!stats.window_start_ns.compare_exchange_strong(window_start, now_ns))
+  {
+    return;
+  }
+
+  const uint64_t frames = stats.frames.exchange(0, std::memory_order_relaxed);
+  const double elapsed_s = static_cast<double>(now_ns - window_start) / 1e9;
+  RCLCPP_INFO(logger_, "[SDK]: channel %d state stream %.1f fps", channel, static_cast<double>(frames) / elapsed_s);
 }
 
 bool ArmClient::should_log(std::atomic<int64_t>& last_ns, std::chrono::milliseconds period)

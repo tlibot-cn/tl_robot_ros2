@@ -203,7 +203,7 @@ private:
   std::string state_source_{"stream"};
   int state_stream_interval_ms_{10};
   double joint_dynamics_rate_{10.0};
-  double joint_thermal_rate_{0.5};
+  double joint_thermal_rate_{1.0};
   double io_state_rate_{10.0};
   double motion_action_timeout_{60.0};
   double track_action_timeout_{600.0};
@@ -228,6 +228,8 @@ private:
   rclcpp::CallbackGroup::SharedPtr dynamics_group_;
   rclcpp::CallbackGroup::SharedPtr thermal_group_;
   rclcpp::CallbackGroup::SharedPtr io_state_group_;
+  // 运行状态查询独立成组：10 Hz 同步查询不能与 100 Hz 发布或 dynamics 互相排队。
+  rclcpp::CallbackGroup::SharedPtr status_group_;
   rclcpp::CallbackGroup::SharedPtr action_group_;
   rclcpp::SubscriptionOptions topic_options_;
 
@@ -239,6 +241,7 @@ private:
   rclcpp::TimerBase::SharedPtr dynamics_timer_;
   rclcpp::TimerBase::SharedPtr thermal_timer_;
   rclcpp::TimerBase::SharedPtr io_state_timer_;
+  rclcpp::TimerBase::SharedPtr status_query_timer_;
   rclcpp::TimerBase::SharedPtr stream_watchdog_timer_;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr publish_rate_param_handle_;
 
