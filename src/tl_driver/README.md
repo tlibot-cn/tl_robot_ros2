@@ -113,8 +113,8 @@ tl_driver:
 ```
 
 > `arm_port` / `arm_port_aux` 以字符串传给 SDK，不要写成整数。
-> `state_source` 等新增参数只在启动时读取（运行期 `ros2 param set` 会被明确拒绝）；回滚到旧同步查询路径时用 `state_source:=poll`，此时位姿话题为 20 Hz。单个状态通道失效时只降级该通道。
-> `publish_rate` 只控制 `/arm_status` 的发布频率（以及回退轮询上限）：`state_source=stream` 时 `/joint_states`、`/tcp_pose` 由 7000 帧通知直接发布，频率取决于 `state_stream_interval_ms` 与控制器的实际推送率。`publish_rate` 支持运行期修改：`ros2 param set /tl_driver publish_rate 50.0` 会立即重建定时器；非法值（非有限数或超出 1～1000 Hz）会被拒绝并保持原频率。参数类型必须是浮点数（写 `100.0`；写整数 `100` 会被 ROS 判为类型错误并启动失败）。
+> 所有参数只在启动时读取（运行期 `ros2 param set` 会被明确拒绝并返回原因）；回滚到旧同步查询路径时用 `state_source:=poll`，此时位姿话题为 20 Hz。单个状态通道失效时只降级该通道。
+> `publish_rate` 只控制 `/arm_status` 的发布频率（以及回退轮询上限）：`state_source=stream` 时 `/joint_states`、`/tcp_pose` 由 7000 帧通知直接发布，频率取决于 `state_stream_interval_ms` 与控制器的实际推送率。该参数在启动时读取，非法值（非有限数或超出 1～1000 Hz）会启动失败；参数类型必须是浮点数（写 `100.0`；写整数 `100` 会被 ROS 判为类型错误并启动失败）。
 ## tl_driver功能包架构说明
 ### 功能包文件总览
 ```
