@@ -24,9 +24,9 @@ namespace
 constexpr auto kPollPeriod = std::chrono::milliseconds(50);
 constexpr auto kFeedbackPeriod = std::chrono::milliseconds(100);
 constexpr auto kMotionStartTimeout = std::chrono::seconds(3);
-constexpr auto kSdkSamplePeriod = std::chrono::milliseconds(200);     // 流不可用时的同步采样周期
-constexpr auto kMotionSettleTimeout = std::chrono::seconds(2);        // 非 RUNNING 后等待目标收敛的时间
-constexpr auto kExternalMotionGrace = std::chrono::milliseconds(500); // 话题运动后拒绝 action 的窗口
+constexpr auto kSdkSamplePeriod = std::chrono::milliseconds(200); // 流不可用时的同步采样周期
+constexpr auto kMotionSettleTimeout = std::chrono::seconds(2);    // 非 RUNNING 后等待目标收敛的时间
+constexpr auto kExternalMotionGrace = std::chrono::milliseconds(500); // 外部运动（队列/轨迹回放）后拒绝 action 的窗口
 constexpr int kMotionConfirmPolls = 2;                                // 位姿变化连续确认次数
 constexpr int kInactiveConfirmPolls = 4;         // 非 RUNNING 连续确认次数（覆盖 ~200 ms 状态延迟）
 constexpr double kJointMoveEpsilonRad = 1e-3;    // rad，约 0.057°，位姿变化判据
@@ -371,7 +371,7 @@ rclcpp_action::GoalResponse MotionActionServers::handle_move_goal(const rclcpp_a
     RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: invalid velocity/acc/dec");
     return rclcpp_action::GoalResponse::REJECT;
   }
-  // MOVJ 速度单位为 %，MOVL 为 m/s（话题契约上限 1 m/s）。
+  // MOVJ 速度单位为 %，MOVL 为 m/s（MOVL 上限 1 m/s）。
   if (linear ? command.velocity > 1.0 : command.velocity > 100.0)
   {
     RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: velocity out of range");

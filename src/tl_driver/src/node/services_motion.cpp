@@ -1,5 +1,5 @@
 /// @file services_motion.cpp
-/// @brief 运动类服务与话题：速度/点动/轨迹/队列/ServoJ 与 moveJ·moveL的实现（由 driver_node.cpp
+/// @brief 运动类服务：速度/点动/轨迹/队列/ServoJ 开关与队列运动实现（由 driver_node.cpp
 /// 按域搬移，行为不变）。
 
 #include "convert/msg_convert.hpp"

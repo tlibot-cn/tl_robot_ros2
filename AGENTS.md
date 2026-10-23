@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-> 本文件只记录「不知道就会做错」的硬约束与导航地图；使用说明见 `README.md`，逐包说明见各包 `README.md`，接口逐条说明见 `src/tl_driver/doc/tl_driver服务与话题说明书.md`。
+> 本文件只记录「不知道就会做错」的硬约束与导航地图；使用说明见 `README.md`，逐包说明见各包 `README.md`，接口逐条说明见 `src/tl_driver/doc/tl_driver接口说明书.md`。
 
 天链（TL）系列机械臂 ROS2 工作空间。目标环境 **Ubuntu 22.04 + ROS2 Humble + 控制器 2403**；C++17 / ament_cmake / colcon，无 ament_python 包、无前端。支持 14 种臂型（`tcb605`…`tcb710v`）。
 
@@ -23,7 +23,7 @@ flowchart LR
   D -->|/joint_states /tcp_pose /arm_status| H[tl_hardware]
   D -->|state topics| T[tl_teleop / f710]
   H -->|/tl_driver/set_servoj_pos| D
-  T -->|set_servoj_pos / moveJ / moveL + services| D
+  T -->|set_servoj_pos / move_joint / move_linear + services| D
   D <-->|TCP 6001 request/response<br/>TCP 7000 servoJ + async state| C[Arm controller]
   M[tl_moveit2_config] --> H
   G[tl_gazebo] --> H
@@ -32,9 +32,9 @@ flowchart LR
 核心事实：
 
 - **双端口**：`arm_port` 6001 用于请求/响应式 SDK 调用；`arm_port_aux` 7000 用于 servoJ 全系列 + 机器人状态异步推送。两个 fd 都必须连通，状态回调只在 aux 注册，错误/告警回调只在主端口 6001 注册（7000 不注册）。
-- **`tl_driver` 组成**：`DriverNode` 只做参数、回调组、实体创建；服务按域拆在 `src/node/services_*.cpp`，由 `src/node/registrars.hpp` 的 `register_*` 函数注册；话题在 `topics.cpp`，action 在 `actions_motion.cpp`。当前规模：**36 个服务、3 个订阅、5 个发布、3 个 action**。`arm_client::ArmClient` 进程内只允许一个实例（SDK 回调无 userdata）；状态帧/错误日志走 rclcpp 并 1 s 节流。
+- **`tl_driver` 组成**：`DriverNode` 只做参数、回调组、实体创建；服务按域拆在 `src/node/services_*.cpp`，由 `src/node/registrars.hpp` 的 `register_*` 函数注册；话题在 `topics.cpp`，action 在 `actions_motion.cpp`。当前规模：**36 个服务、1 个订阅、5 个发布、3 个 action**。`arm_client::ArmClient` 进程内只允许一个实例（SDK 回调无 userdata）；状态帧/错误日志走 rclcpp 并 1 s 节流。
 - **发布**：`/joint_states`（rad）、`/tcp_pose`（m/rad）、`/arm_status`（`STOP`/`PAUSE`/`RUNNING` + `speed`/`speed_valid`）目标 100 Hz；`/tl_driver/joint_dynamics`（10 Hz）、`/tl_driver/joint_thermal`（1 Hz）。数字 IO 不发布话题，读写统一走 `get_digital_input_output` / `set_digital_output` 服务。`/joint_states`、`/tcp_pose` 由 7000 端口 ACS/MCS 连续帧**通知独立发布线程**发布（`state_source=stream`），不经过 100 Hz 定时器；`/arm_status` 由 10 Hz 查询缓存、100 Hz 定时器只发布缓存；`poll` 可回滚。`StatePublishers` 复用成员缓冲与消息，**勿在发布回调内新建 vector/message**；ServoJ 日志不得逐帧 INFO。
-- **订阅**：`/tl_driver/moveJ`、`/tl_driver/moveL`、`/tl_driver/set_servoj_pos`（rad，6 或 7 元素，6 元素末尾补 0；转发 SDK 时为固定 7 元素）。`moveJ/moveL` **不等到位**，需要到位判定的一方轮询 `/arm_status`。
+- **订阅**：`/tl_driver/set_servoj_pos`（rad，6 或 7 元素，6 元素末尾补 0；转发 SDK 时为固定 7 元素）。一次性运动统一走 `move_joint` / `move_linear` action；完成/失败以 action result 为准，`/arm_status` 仅用于运行状态与进度观察。
 - **线程模型**：`MultiThreadedExecutor`（`max(16, hardware_concurrency)`，至少覆盖 13 个回调组）；服务按域各一个 `MutuallyExclusive` 回调组（session/motion/transform/config/io/state）；`topic_group_` / `timer_group_` / `stream_group_` / `dynamics_group_` / `thermal_group_` / `status_group_` / `action_group_` 均为 `MutuallyExclusive`。`status_group_` 跑 10 Hz 运行状态查询与 1 Hz 速度查询；`/joint_states`、`/tcp_pose` 的发布在独立 `std::thread`（7000 帧通知），不在执行器内。`timer_group_` 曾因 `Reentrant` 导致状态发布并发，勿改回。
 - **失败即退**：`DriverNode::init()` 连接失败或切入示教模式失败时抛异常，由 `tl_driver_main.cpp` 捕获后返回 `EXIT_FAILURE`（析构会断开已建立的端口），不带病运行。
 - **硬件插件**：`TLHardwareInterface` 生命周期 `on_init → on_configure → on_activate → …`；`on_activate` 用当前关节位置初始化命令，避免跳到零位；`write()` 发 `/tl_driver/set_servoj_pos`。
@@ -64,7 +64,7 @@ ROS 侧统一 REP 103（m / rad / rad/s），控制器/SDK 侧 mm / 度 / %，�
 
 | 路径 | 用途 |
 |---|---|
-| `src/tl_ros2_interface/` | 11 个 `.msg` + 2 个 `.action` + 26 个 `.srv`，**必须最先构建**。`msg/` 不等于话题清单：5 个话题载荷、6 个仅作 srv 嵌套参数 |
+| `src/tl_ros2_interface/` | 11 个 `.msg` + 2 个 `.action` + 26 个 `.srv`，**必须最先构建**。`msg/` 不等于话题清单：4 个话题载荷、1 个 action goal 载荷（`MoveCommand`）、6 个仅作 srv 嵌套参数 |
 | `src/tl_driver/` | 驱动节点。`src/tl_driver_main.cpp`（入口）、`src/node/`（参数/回调组/注册）、`src/arm_session.*`、`src/arm_client.*`、`lib/`（预编译 SDK，只读） |
 | `src/tl_hardware/` | ros2_control `SystemInterface` 插件 |
 | `src/tl_teleop/` | VR 遥操作，100 Hz 控制线程；`lib/` 为 PXREA SDK，只读 |
@@ -139,7 +139,7 @@ ros2 launch tl_gazebo gazebo_tcb610_demo.launch.py          # Gazebo
 
 | 变更 | 必须同步 |
 |---|---|
-| msg/srv/话题/服务增删改 | `CHANGELOG.md` + `src/tl_driver/doc/tl_driver服务与话题说明书.md` |
+| msg/srv/话题/服务/action 增删改 | `CHANGELOG.md` + `src/tl_driver/doc/tl_driver接口说明书.md` |
 | launch / 参数 / YAML | 对应包 `README.md` |
 | 增删功能包、依赖 | `CHANGELOG.md` + 包表 + 该包 `README.md` |
 | 用户可见修复、SDK 升级、新臂型、行为变更 | `CHANGELOG.md` |

@@ -12,6 +12,11 @@
 
 ## [Unreleased]
 
+### 2026-10-23
+
+- **破坏性变更**：移除 `/tl_driver/moveJ`、`/tl_driver/moveL` 话题订阅（订阅数 3 → 1），一次性运动统一走 `move_joint` / `move_linear` action；`tl_example` 的 `ex_move_control`、`medical_demo` 迁移到 action
+- 文档：`tl_driver服务与话题说明书.md` 更名 `tl_driver接口说明书.md`；解散第 16 章，状态流与回滚参数并入 15.4、诊断话题说明并入 4.8/4.10、运动 Action 并入 7.1/7.2；第 7 章更名「运动控制接口」并删除 MoveJ/MoveL 话题章节
+
 ### 2026-10-22
 
 - tl_driver：错误/告警异步回调只在 6001 主端口注册，7000 端口仅注册机器人状态推送

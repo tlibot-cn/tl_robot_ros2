@@ -175,9 +175,9 @@ src/
 
 提供天链机械臂的应用示例代码，目前包含：
 
-- `medical_demo`：医疗/实验室自动化场景的 moveL 队列运动示例
+- `medical_demo`：医疗/实验室自动化场景的 move_linear action 多点位示例
 
-示例节点展示了如何通过 tl_driver 的服务和话题接口实现典型的机械臂控制流程。
+示例节点展示了如何通过 tl_driver 的服务、话题与 action 接口实现典型的机械臂控制流程。
 
 ### 2.10 tl_teleop_f710 — F710 手柄遥操作
 

@@ -1,5 +1,5 @@
 # 运动指令
-# 用途：话题载荷（/tl_driver/moveJ、/tl_driver/moveL 订阅）；同时作为 srv 嵌套参数（JobInsertMove.cmd、QueueMotionMoveJ.cmd）。
+# 用途：Move action goal 载荷；同时作为 srv 嵌套参数（JobInsertMove.cmd、QueueMotionMoveJ.cmd）。
 # 单位遵循 REP 103：关节角 rad、笛卡尔位置 m、姿态 rad；驱动在边界换算到控制器单位。
 # target_pos_value 为 14 维数组（与 SDK tl::MoveCmd::targetPosValue 一致：前 7 位本体、后 7 位外部轴）：
 #   coord = 0（关节）：[0..6] 为目标关节角（rad），按轴数填写、其余置 0；
