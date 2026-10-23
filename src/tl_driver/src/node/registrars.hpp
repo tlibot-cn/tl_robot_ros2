@@ -33,7 +33,7 @@ void register_io_services(DriverNode& node);
 /// @param[in] node 驱动节点
 void register_state_services(DriverNode& node);
 
-/// @brief 注册运动订阅话题（moveJ/moveL/servoJ）。
+/// @brief 注册话题订阅（ServoJ 目标位置）。
 /// @param[in] node 驱动节点
 void register_topics(DriverNode& node);
 } // namespace tl_driver

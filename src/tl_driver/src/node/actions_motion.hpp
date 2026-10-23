@@ -3,7 +3,7 @@
 
 /// @file actions_motion.hpp
 /// @brief 运动 action：/tl_driver/move_joint、/tl_driver/move_linear、/tl_driver/play_track。
-/// @note 架构评审 §15：只对长任务提供 action；现有话题/服务保留。
+/// @note 架构评审 §15：一次性运动统一走 action；队列运动、轨迹回放等服务保留。
 ///       控制器 SDK 无通用停止接口，cancel 一律显式拒绝，绝不返回“取消成功”。
 
 #include <atomic>
@@ -46,7 +46,7 @@ public:
     return motion_active_.load(std::memory_order_acquire);
   }
 
-  /// @brief 记录一次外部运动指令（moveJ/moveL 话题），用于拒绝紧随其后的 action goal。
+  /// @brief 记录一次外部运动指令（队列运动、轨迹回放等），用于拒绝紧随其后的 action goal。
   void note_external_motion();
 
 private:

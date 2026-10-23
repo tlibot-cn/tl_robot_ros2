@@ -66,35 +66,45 @@ ros2 service call /tl_driver/get_current_mode tl_ros2_interface/srv/GetCurrentMo
 
 ---
 
-## 三、运动（话题）
+## 三、运动（action 与话题）
+
+### 运动 action（发指令给机械臂）
+
+**`/tl_driver/move_joint` — `tl_ros2_interface/action/Move`（关节运动，`coord=0`）**
+```bash
+ros2 action send_goal /tl_driver/move_joint tl_ros2_interface/action/Move "{
+  command: {
+    target_pos_type: 0,
+    target_pos_value: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                       0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    coord: 0,
+    velocity: 30.0,
+    acc: 20.0,
+    dec: 20.0,
+    pl: 0
+  },
+  timeout_sec: 60.0
+}" --feedback
+```
+
+**`/tl_driver/move_linear` — `tl_ros2_interface/action/Move`（直线运动，`coord=1`，位置 m、姿态 rad）**
+```bash
+ros2 action send_goal /tl_driver/move_linear tl_ros2_interface/action/Move "{
+  command: {
+    target_pos_type: 0,
+    target_pos_value: [0.2793, 0.0, 0.4716, 3.1414, 0.0, 0.0,
+                       0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    coord: 1,
+    velocity: 0.01,
+    acc: 20.0,
+    dec: 20.0,
+    pl: 0
+  },
+  timeout_sec: 60.0
+}" --feedback
+```
 
 ### 订阅话题（发指令给机械臂）
-
-**`/tl_driver/moveJ` — `tl_ros2_interface/msg/MoveCommand`（关节运动）**
-```bash
-ros2 topic pub -1 /tl_driver/moveJ tl_ros2_interface/msg/MoveCommand "{
-  target_pos_type: 0,
-  target_pos_value: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-  coord: 0,
-  velocity: 30.0,
-  acc: 20.0,
-  dec: 20.0,
-  pl: 0
-}"
-```
-
-**`/tl_driver/moveL` — `tl_ros2_interface/msg/MoveCommand`（直线运动）**
-```bash
-ros2 topic pub -1 /tl_driver/moveL tl_ros2_interface/msg/MoveCommand "{
-  target_pos_type: 0,
-  target_pos_value: [300.0, 0.0, 200.0, 3.14, 0.0, 0.0, 0.0],
-  coord: 1,
-  velocity: 100.0,
-  acc: 20.0,
-  dec: 20.0,
-  pl: 0
-}"
-```
 
 **`/tl_driver/set_servoj_pos` — `std_msgs/msg/Float64MultiArray`（servoJ 关节角跟踪）**
 ```bash
@@ -320,5 +330,5 @@ ros2 interface show tl_ros2_interface/srv/SetSpeed
 1. **连接类**：`get_library_version` → `get_controller_id` → `get_current_mode` → `get_current_coord`
 2. **状态类**：`/arm_status`、`/tl_driver/joint_dynamics`、`/tl_driver/joint_thermal` 话题（只读，安全）
 3. **配置类**：`set_speed` / `set_current_mode` / `set_current_coord` / `set_drag_mode`
-4. **运动类**（⚠️ 先确认周围安全、上电后）：`power_on` → `moveJ`/`moveL` 话题 → `power_off`
+4. **运动类**（⚠️ 先确认周围安全、上电后）：`power_on` → `move_joint`/`move_linear` action → `power_off`
 5. **IO/Modbus/轨迹**：按需单独测试

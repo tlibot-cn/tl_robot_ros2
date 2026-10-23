@@ -121,11 +121,12 @@ tl_ros2_interface/
 
 | 用途 | 数量 | 定义 |
 | :-- | :--: | :-- |
-| 话题载荷（在 publisher / subscriber 上出现） | 5 | `ArmStatus`、`CartesianPose`、`MoveCommand`、`JointDynamics`、`JointThermal` |
+| 话题载荷（在 publisher / subscriber 上出现） | 4 | `ArmStatus`、`CartesianPose`、`JointDynamics`、`JointThermal` |
+| Action goal 载荷 / srv 嵌套参数 | 1 | `MoveCommand` |
 | 仅作 srv 嵌套参数（不发布话题） | 6 | `ModbusMasterParam`、`ModbusRTUParam`、`ModbusTCPParam`、`RobotDHParam`、`RobotJointParam`、`ToolParam` |
 | Action | 2 | `Move`（`move_joint`/`move_linear`）、`PlayTrack`（`play_track`） |
 
-其中 `CartesianPose`、`MoveCommand` 兼有两重身份：既发布/订阅话题，也作为 srv 嵌套参数（`SetUserCoord.pos`、`QueueMotionMoveJ.cmd`）。
+其中 `CartesianPose` 既发布/订阅话题，也作为 srv 嵌套参数（`SetUserCoord.pos`）；`MoveCommand` 作为 Move action goal 载荷，同时作为 srv 嵌套参数（`QueueMotionMoveJ.cmd`）。
 
 > **「仅在 srv 中出现的结构为什么放在 `msg/`」**：ROS2 的 `.srv` 只能声明内建类型或消息类型字段，无法内联结构体，也没有「仅供服务使用的结构」这一类——任何被 srv 复用的结构都必须定义成 `.msg`，生成出的类型名也就必然是 `<包>/msg/<名字>`。所以「`msg/` 目录里有不发布话题的类型」是 ROS2 类型系统的必然结果，不代表这些类型接口可以发布。判断一个类型是否发布，看驱动里有没有对应的 `create_publisher` / `create_subscription`。
 
@@ -675,11 +676,11 @@ float64 progress
 tl_ros2_interface/CartesianPose current_pose
 string state
 ```
-- goal: `command` 与 `/tl_driver/moveJ`、`/tl_driver/moveL` 同结构，`target_pos_value` 必须 14 位、`target_pos_type` 必须 0；`timeout_sec<=0` 使用节点默认超时
+- goal: `command` 为 `MoveCommand`，`target_pos_value` 必须 14 位、`target_pos_type` 必须 0；`timeout_sec<=0` 使用节点默认超时
 - feedback: `progress`（0–1，坐标系 2/3 无法估算时为 -1）、`current_pose`（MCS 状态流）、`state`（RUNNING/STOP/PAUSE）
 - result: `success`/`message`
 - cancel：控制器 SDK 无通用停止接口，驱动一律拒绝，不会返回“取消成功”
-- 并发：刚通过 `/tl_driver/moveJ`、`/tl_driver/moveL` 话题下发运动后 500 ms 内的 goal 会被拒绝
+- 并发：刚通过队列运动、轨迹回放等服务下发运动后 500 ms 内的 goal 会被拒绝
 - 完成校验：`move_joint` 仅接受 `coord=0`、`move_linear` 仅接受 `coord=1`；前者用 ACS、后者用 MCS 校验，到达容差 1° / 2 mm
 
 ### 轨迹回放PlayTrack_action

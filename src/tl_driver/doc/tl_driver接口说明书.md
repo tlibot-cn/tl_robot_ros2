@@ -1,6 +1,6 @@
 <div align="center">
 
-# tl_driver服务与话题说明书
+# tl_driver接口说明书
 
 文件修订记录：
 
@@ -23,6 +23,8 @@
 |V1.14 | 2026-10-21 | 状态话题化：`get_robot_state` 改为返回 ACS/MCS 缓存；新增 `joint_dynamics`/`joint_thermal`/`io_state` 话题与 `move_joint`/`move_linear`/`play_track` action（第 16 章） |
 |V1.15 | 2026-10-21 | 新增 16.4 运动 Action 测试命令（MoveJ 10°、MoveL 5 cm）与回退命令 |
 |V1.16 | 2026-10-22 | 查询类接口话题化：删除 `get_speed`、`get_robot_state`、`get_joint_temperature`、`get_joint_voltage`、`get_motor_current`、`get_joint_software_version`、`get_current_motor_torque`、`get_current_line_joint_speed`；删除 `io_state` 话题（数字 IO 读写统一走服务）；删除 `set_robot_joint_param`；力矩单位统一为额定扭矩千分之一（‰）|
+|V1.17 | 2026-10-23 | 文档更名《tl_driver接口说明书》：第 16 章解散，状态流与回滚参数并入 15.4、诊断话题说明并入 4.8/4.10、运动 Action 并入第 7 章 |
+|V1.18 | 2026-10-23 | 第 7 章由「实时运动控制接口」更名为「运动控制接口」；删除 `/tl_driver/moveJ`、`/tl_driver/moveL` 话题及 7.1/7.2 章节，运动 Action 章节改为 7.1/7.2 |
 
 </div>
 
@@ -56,9 +58,9 @@
   * [5.5 设置机械臂默认笛卡尔参数](#55-设置机械臂默认笛卡尔参数)
   * [5.6 坐标转换](#56-坐标转换)
 * [6 MoveCommand 消息类型说明](#6-movecommand-消息类型说明)
-* [7 实时运动控制接口](#7-实时运动控制接口)
-  * [7.1 MoveJ运动控制](#71-movej运动控制)
-  * [7.2 MoveL运动控制](#72-movel运动控制)
+* [7 运动控制接口](#7-运动控制接口)
+  * [7.1 运动 Action](#71-运动-action)
+  * [7.2 运动 Action 测试命令](#72-运动-action-测试命令)
 * [8 坐标系与工具管理接口](#8-坐标系与工具管理接口)
   * [8.1 设置工具手参数](#81-设置工具手参数)
   * [8.2 设置用户坐标系](#82-设置用户坐标系)
@@ -86,15 +88,11 @@
   * [14.1 设置MoveJ队列运动模式](#141-设置movej队列运动模式)
   * [14.2 MoveJ队列运动](#142-movej队列运动)
   * [14.3 停止MoveJ队列运动模式](#143-停止movej队列运动模式)
-* [15 7000端口（关节跟踪）](#15-7000端口关节跟踪)
+* [15 7000端口](#15-7000端口)
   * [15.1 打开关节跟踪模式](#151-打开关节跟踪模式)
   * [15.2 关闭关节跟踪模式](#152-关闭关节跟踪模式)
   * [15.3 发送跟踪关节位置](#153-发送跟踪关节位置)
-* [16 状态诊断话题与 Action](#16-状态诊断话题与-action)
-  * [16.1 状态流与回滚参数](#161-状态流与回滚参数)
-  * [16.2 诊断话题](#162-诊断话题)
-  * [16.3 运动 Action](#163-运动-action)
-  * [16.4 运动 Action 测试命令](#164-运动-action-测试命令)
+  * [15.4 状态流与回滚参数](#154-状态流与回滚参数)
 
 
 ## 1 通用约定
@@ -374,7 +372,7 @@ ros2 service call /tl_driver/get_robot_joint_param tl_ros2_interface/srv/GetRobo
 | joint_voltage | float64[] | V | 机械臂本体各关节电压 |
 | positioner_voltage | float64[] | V | 外部轴各关节电压 |
 
-> 默认 1 Hz（`joint_thermal_rate`，取 0 关闭）。温度/电压由同一次 SDK 查询产生，因此放在同一话题；单次查询约 150–350 ms，频率上限 1 Hz。服务 `/tl_driver/get_joint_temperature`、`/tl_driver/get_joint_voltage` 已删除。
+> 默认 1 Hz（`joint_thermal_rate`，取 0 关闭）。温度/电压由同一次 SDK 查询产生，因此放在同一话题；单次查询约 150–350 ms，频率上限 1 Hz。`joint_thermal` 与 `joint_dynamics` 均为 `reliable` + `transient_local` + depth 1；每次热状态发布单独占用热状态回调组，不阻塞 `/joint_states`、`/tcp_pose` 的独立发布线程。服务 `/tl_driver/get_joint_temperature`、`/tl_driver/get_joint_voltage` 已删除。
 #### 命令示例
 ```
 ros2 topic echo /tl_driver/joint_thermal --once
@@ -413,7 +411,7 @@ ros2 topic echo /tl_driver/joint_thermal --field positioner_voltage
 | motor_current | float64[] | A | 机器人本体 7 轴电机电流 |
 | motor_current_sync | float64[] | A | 外部轴同步电机电流 |
 
-> 默认 10 Hz（`joint_dynamics_rate`，取 0 关闭）。服务 `/tl_driver/get_motor_current` 已删除。
+> 默认 10 Hz（`joint_dynamics_rate`，取 0 关闭）。`joint_dynamics` 与 `joint_thermal` 均为 `reliable` + `transient_local` + depth 1。服务 `/tl_driver/get_motor_current` 已删除；数字 IO 不发布话题，读写分别使用 `get_digital_input_output` / `set_digital_output` 服务。
 #### 命令示例
 ```
 ros2 topic echo /tl_driver/joint_dynamics --field motor_current --once
@@ -715,102 +713,138 @@ ros2 service call /tl_driver/coord_transform tl_ros2_interface/srv/CoordTransfor
 | spin | int32 | — | 0～2 | 仅MOVCA指令使用：0=姿态不变，1=六轴不转，2=六轴旋转 |
 | para_sync | bool | — | — | `true` = 外部轴同步，`false` = 不同步 |
 
-## 7 实时运动控制接口
-### 7.1 MoveJ运动控制
-| 功能描述 | 通过话题下发关节角度数据，驱动机器人实时关节空间运动到目标位置（不依赖作业文件） |
-| :---: | :---- |
-| 通信机制 | ROS2话题 |
-| 话题名 | `/tl_driver/moveJ` |
-| 消息类型 | `tl_ros2_interface/msg/MoveCommand` |
+## 7 运动控制接口
+### 7.1 运动 Action
 
-**输入参数**
-| 参数名 | 类型 | 单位 | 范围 | 说明 |
-|--------|------|------|------|------|
-| target_pos_value | float64[] | — | — | 14维位置数组（coord=0关节坐标系时为各关节目标角度） |
-| target_pos_name | string | — | — | 目标位姿名称（通常留空） |
-| target_pos_type | int32 | — | 1 | 目标位姿类型（实时运动固定为1） |
-| coord | int32 | — | 0 | 坐标系（固定为关节坐标系） |
-| velocity | float64 | % | 1～100 | 运动速度百分比 |
-| velocity_sync | float64 | % | 1～100 | 同步轴速度百分比 |
-| acc | float64 | % | 1～100 | 加速度百分比 |
-| dec | float64 | % | 1～100 | 减速度百分比 |
-| pl | int32 | — | 0～5 | 平滑过渡等级，0=精确到达，非百分比 |
-| time | int32 | — | — | 提前执行时间（SDK 头未标注单位） |
-| tool_num | int32 | — | — | 工具坐标系编号 |
-| user_num | int32 | — | — | 用户坐标系编号 |
-| posidtype | int32 | — | — | 变量类型 |
-| configuration | int32 | — | — | 形态配置 |
-| spin | int32 | — | 0～2 | 0=姿态不变，1=六轴不转，2=六轴旋转 |
-| para_sync | bool | — | — | 外部轴是否同步 |
+| Action | 类型 | 说明 |
+| :---- | :---- | :---- |
+| `/tl_driver/move_joint` | `tl_ros2_interface/action/Move` | 关节运动（仅 `coord=0`，关节 rad） |
+| `/tl_driver/move_linear` | `tl_ros2_interface/action/Move` | 直线运动（仅 `coord=1`，位置 m、姿态 rad） |
+| `/tl_driver/play_track` | `tl_ros2_interface/action/PlayTrack` | 轨迹回放（`vel` 1–100 %） |
 
-**输出/返回值**
-无返回值（话题发布单向通信）。
+**Move goal**
+| 字段 | 类型 | 说明 |
+| :---- | :---- | :---- |
+| command | `MoveCommand` | 运动指令；`target_pos_value` 必须为 14 位，`target_pos_type` 必须为 0 |
+| timeout_sec | float64 | 超时秒数；<=0 时使用参数 `motion_action_timeout` |
 
-> **注意**：实时运动控制不等同于作业文件运动，需确保机械臂已上电（power_on）后再调用。
-#### 命令示例
+**Move feedback / result**
+| 字段 | 类型 | 说明 |
+| :---- | :---- | :---- |
+| progress | float64 | 0.0–1.0；位姿数据不可用时为 -1 |
+| current_pose | `CartesianPose` | MCS 状态流换算后的当前位姿；无流时为零值 |
+| state | string | `RUNNING` / `STOP` / `PAUSE` |
+| success / message | bool / string | result 中的最终结果与说明 |
+
+**PlayTrack goal / feedback / result**
+| 字段 | 类型 | 说明 |
+| :---- | :---- | :---- |
+| vel | int32 | 回放速度百分比 1–100 |
+| timeout_sec | float64 | 超时秒数；<=0 时使用参数 `track_action_timeout` |
+| progress | float64 | 控制器不提供进度，固定 -1 |
+| state | string | `RUNNING` / `STOP` / `PAUSE` |
+| success / message | bool / string | result 中的最终结果与说明 |
+
+> **超时参数**：`move_joint` / `move_linear` 使用 `motion_action_timeout`（默认 60 s），`play_track` 使用 `track_action_timeout`（默认 600 s）；goal 的 `timeout_sec` <= 0 时取节点参数。
+
+> **cancel 不支持**：控制器 SDK 没有通用运动停止接口（仅有 `robot_stop_jogging`、`queue_motion_stop_not_power_off`、`job_stop`、`track_record_stop` 录制停止），因此三个 action 的 cancel 请求一律返回 `REJECT`，不会出现“取消成功但机械臂仍在运动”。同一时刻只允许一个运动 action goal；已有 goal 运行或 `run_state` 非 `STOP`（含 `PAUSE`）时新 goal 被拒绝。action 执行期间，`set_servoj_pos`、`track_playback`、队列运动与 `open_servoj` 会被拒绝/忽略并记录告警。刚通过队列运动或轨迹回放等服务成功下发运动后 500 ms 内到达的 action goal 会被拒绝，避免控制器 `run_state` 更新延迟导致并发运动。完成判定对 `coord=0` 用 ACS、`coord=1` 用 MCS 校验目标，到达容差为 1° / 2 mm；`coord=2/3` 的 action goal 会被拒绝。
+
+### 7.2 运动 Action 测试命令
+
+前置条件：
+
+- `tl_driver` 已启动并连接控制器，`/arm_status` 为 `STOP`，机械臂已上电且工作区安全。
+- 以下示例以 6 轴零位为基准：`/tcp_pose` = `(0.2793, 0, 0.4216)` m，rpy = `(3.1414, 0, 0)` rad。换用其他初始位姿前，先读当前位姿并替换 `target_pos_value`。
+
+```bash
+ros2 topic echo /tcp_pose --once
+ros2 topic echo /arm_status --once
 ```
-ros2 topic pub --once /tl_driver/moveJ tl_ros2_interface/msg/MoveCommand \
-"{
-    target_pos_value: [1.5708, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-    target_pos_name: '',
-    target_pos_type: 0,
-    coord: 0,
-    velocity: 20.0,
-    velocity_sync: 0.0,
-    acc: 20.0,
-    dec: 20.0,
-    pl: 0,
-    time: 0,
-    tool_num: 0,
-    user_num: 0,
-    posidtype: 0,
-    configuration: 0,
-    spin: 0,
-    para_sync: false
-}"
+
+#### MoveJ：J6 转 10°
+
+10° = 0.174533 rad。`target_pos_value` 必须为 14 位：前 7 位是 J1–J7（rad），后 7 位是外部轴。
+
+```bash
+ros2 action send_goal /tl_driver/move_joint tl_ros2_interface/action/Move \
+"{command: {
+  target_pos_value: [0.0, 0.0, 0.0, 0.0, 0.0, 0.174533, 0.0,
+                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+  target_pos_name: '',
+  target_pos_type: 0,
+  coord: 0,
+  velocity: 20.0,
+  velocity_sync: 0.0,
+  acc: 20.0,
+  dec: 20.0,
+  pl: 0,
+  time: 0,
+  tool_num: 0,
+  user_num: 0,
+  posidtype: 0,
+  configuration: 0,
+  spin: 0,
+  para_sync: false
+}, timeout_sec: 10.0}" --feedback
 ```
-### 7.2 MoveL运动控制
-| 功能描述 | 通过话题下发直角坐标数据，驱动机器人末端沿直线实时运动到目标位姿 |
-| :---: | :---- |
-| 通信机制 | ROS2话题 |
-| 话题名 | `/tl_driver/moveL` |
-| 消息类型 | `tl_ros2_interface/msg/MoveCommand` |
 
-**输入参数** 同 MoveJ，区别如下：
-| 参数名 | 类型 | 单位 | 值 | 说明 |
-|--------|------|------|------|------|
-| coord | int32 | — | 1 | 坐标系（固定为直角坐标系） |
-| target_pos_value | float64[] | m, rad | — | [X(m), Y(m), Z(m), RX(rad), RY(rad), RZ(rad), 0]（7维） |
-| velocity | float64 | m/s | 0<v≤1 | 直线运动速度（与 MOVJ 的百分比口径不同） |
+回零：
 
-其余参数同 [MoveJ运动控制](#movej运动控制)。
-
-**输出/返回值**
-无返回值（话题发布单向通信）。
-
-> **注意**：需确保机械臂已上电后再调用。
-#### 命令示例
+```bash
+ros2 action send_goal /tl_driver/move_joint tl_ros2_interface/action/Move \
+"{command: {
+  target_pos_value: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+  target_pos_name: '', target_pos_type: 0, coord: 0,
+  velocity: 20.0, velocity_sync: 0.0, acc: 20.0, dec: 20.0,
+  pl: 0, time: 0, tool_num: 0, user_num: 0,
+  posidtype: 0, configuration: 0, spin: 0, para_sync: false
+}, timeout_sec: 10.0}" --feedback
 ```
-ros2 topic pub --once /tl_driver/moveL tl_ros2_interface/msg/MoveCommand \
-"{
-    target_pos_value: [0.010, 0.230, 0.245, -3.14, 0.0, -1.57, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-    target_pos_name: '',
-    target_pos_type: 0,
-    coord: 1,
-    velocity: 0.02,
-    velocity_sync: 0.0,
-    acc: 20.0,
-    dec: 20.0,
-    pl: 0,
-    time: 0,
-    tool_num: 0,
-    user_num: 0,
-    posidtype: 0,
-    configuration: 0,
-    spin: 0,
-    para_sync: false
-}"
+
+#### MoveL：沿 +Z 平移 5 cm
+
+基准位姿 z = 0.4216 m，目标 z = 0.4716 m。`coord=1`，位置 m、姿态 rad；`velocity` 单位为 m/s。
+
+```bash
+ros2 action send_goal /tl_driver/move_linear tl_ros2_interface/action/Move \
+"{command: {
+  target_pos_value: [0.2793, 0.0, 0.4716, 3.1414, 0.0, 0.0,
+                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+  target_pos_name: '',
+  target_pos_type: 0,
+  coord: 1,
+  velocity: 0.01,
+  velocity_sync: 0.0,
+  acc: 20.0,
+  dec: 20.0,
+  pl: 0,
+  time: 0,
+  tool_num: 0,
+  user_num: 0,
+  posidtype: 0,
+  configuration: 0,
+  spin: 0,
+  para_sync: false
+}, timeout_sec: 10.0}" --feedback
 ```
+
+回原位：
+
+```bash
+ros2 action send_goal /tl_driver/move_linear tl_ros2_interface/action/Move \
+"{command: {
+  target_pos_value: [0.2793, 0.0, 0.4216, 3.1414, 0.0, 0.0,
+                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+  target_pos_name: '', target_pos_type: 0, coord: 1,
+  velocity: 0.01, velocity_sync: 0.0, acc: 20.0, dec: 20.0,
+  pl: 0, time: 0, tool_num: 0, user_num: 0,
+  posidtype: 0, configuration: 0, spin: 0, para_sync: false
+}, timeout_sec: 10.0}" --feedback
+```
+
+> `move_joint` 的 `velocity` 是百分比，`move_linear` 的 `velocity` 是 m/s；`target_pos_type` 必须为 0，数组长度不是 14 时 goal 会被直接拒绝。两个 action 的 cancel 都会被拒绝，测试时如遇异常直接拍急停。
+
 ## 8 坐标系与工具管理接口
 ### 8.1 设置工具手参数
 | 功能描述 | 配置指定编号的工具手坐标系偏移参数（TCP）、负载质量与质心 |
@@ -1466,9 +1500,7 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 }"
 ```
 
-## 16 状态诊断话题与 Action
-
-### 16.1 状态流与回滚参数
+### 15.4 状态流与回滚参数
 
 驱动连接成功后，在 7000 端口启动两个连续反馈通道，回调只解析并写快照；`/joint_states`、`/tcp_pose` 由帧通知唤醒的独立发布线程直接发布，不再经过 100 Hz 定时器，因此不受 6001 端口同步查询阻塞。`/arm_status` 由 10 Hz 查询缓存、100 Hz 定时器只发布缓存值。
 
@@ -1481,147 +1513,7 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 | :---- | ----: | :---- | :---- |
 | `state_source` | `stream` | `stream` / `poll` | `poll` 回退旧的同步查询路径（启动时生效） |
 | `state_stream_interval_ms` | 10 | 10–60000 | 连续反馈间隔 |
-| `joint_dynamics_rate` | 10.0 | 0–100 | `/tl_driver/joint_dynamics` 频率，0 关闭 |
-| `joint_thermal_rate` | 1.0 | 0–1 | `/tl_driver/joint_thermal` 频率，0 关闭 |
-| `motion_action_timeout` | 60.0 | (0, 3600] | 运动 action 默认超时（秒） |
-| `track_action_timeout` | 600.0 | (0, 3600] | 回放 action 默认超时（秒） |
 
 > 两个通道独立降级：某通道连续失效 3 s 后只有该通道改用同步查询（20 Hz），恢复连续 1 s 后切回状态流，另一通道不受影响。1 Hz 看门狗在通道超过 3×`state_stream_interval_ms` 无新帧时重发 `mode=1`（前 3 s 每秒一次，之后每 5 s 一次），3 次仍无新帧记录故障告警。`state_source=poll` 时两个通道都走同步查询，发布频率为 20 Hz。运行状态（`/arm_status`）由独立 10 Hz 定时器查询并缓存，运行速度由 1 Hz 定时器查询并写入同一缓存；100 Hz 定时器只发布缓存，查询不再进入 100 Hz 路径。
-
-### 16.2 诊断话题
-
-| 话题 | 类型 | 默认频率 | 内容 |
-| :---- | :---- | ----: | :---- |
-| `/tl_driver/joint_dynamics` | `tl_ros2_interface/msg/JointDynamics` | 10 Hz | 线速度 m/s、关节速度 rad/s、电机电流 A、力矩 ‰ 额定扭矩（千分之一，不是 %） |
-| `/tl_driver/joint_thermal` | `tl_ros2_interface/msg/JointThermal` | 1 Hz | 关节温度 °C、关节/外部轴电压 V |
-
-> 两个话题均为 `reliable` + `transient_local` + depth 1。`joint_thermal` 单次查询约 150–350 ms，频率上限 1 Hz；每次发布单独占用热状态回调组。`/joint_states` 与 `/tcp_pose` 已由独立发布线程发布，热状态查询不再阻塞它们；`/arm_status` 的 100 Hz 发布只读 10 Hz 查询缓存。数字 IO 不发布话题，读写分别使用 `get_digital_input_output` / `set_digital_output` 服务；其余查询服务（速度、机器人状态、温度、电压、电流、力矩、线速度/关节速度、关节软件版本）已删除。
-
-### 16.3 运动 Action
-
-| Action | 类型 | 说明 |
-| :---- | :---- | :---- |
-| `/tl_driver/move_joint` | `tl_ros2_interface/action/Move` | 关节运动（仅 `coord=0`，关节 rad） |
-| `/tl_driver/move_linear` | `tl_ros2_interface/action/Move` | 直线运动（仅 `coord=1`，位置 m、姿态 rad） |
-| `/tl_driver/play_track` | `tl_ros2_interface/action/PlayTrack` | 轨迹回放（`vel` 1–100 %） |
-
-**Move goal**
-| 字段 | 类型 | 说明 |
-| :---- | :---- | :---- |
-| command | `MoveCommand` | 与话题同结构；`target_pos_value` 必须为 14 位，`target_pos_type` 必须为 0 |
-| timeout_sec | float64 | 超时秒数；<=0 时使用 `motion_action_timeout` |
-
-**Move feedback / result**
-| 字段 | 类型 | 说明 |
-| :---- | :---- | :---- |
-| progress | float64 | 0.0–1.0；位姿数据不可用时为 -1 |
-| current_pose | `CartesianPose` | MCS 状态流换算后的当前位姿；无流时为零值 |
-| state | string | `RUNNING` / `STOP` / `PAUSE` |
-| success / message | bool / string | result 中的最终结果与说明 |
-
-**PlayTrack goal / feedback / result**
-| 字段 | 类型 | 说明 |
-| :---- | :---- | :---- |
-| vel | int32 | 回放速度百分比 1–100 |
-| timeout_sec | float64 | 超时秒数；<=0 时使用 `track_action_timeout` |
-| progress | float64 | 控制器不提供进度，固定 -1 |
-| state | string | `RUNNING` / `STOP` / `PAUSE` |
-| success / message | bool / string | result 中的最终结果与说明 |
-
-> **cancel 不支持**：控制器 SDK 没有通用运动停止接口（仅有 `robot_stop_jogging`、`queue_motion_stop_not_power_off`、`job_stop`、`track_record_stop` 录制停止），因此三个 action 的 cancel 请求一律返回 `REJECT`，不会出现“取消成功但机械臂仍在运动”。同一时刻只允许一个运动 action goal；已有 goal 运行或 `run_state` 非 `STOP`（含 `PAUSE`）时新 goal 被拒绝。action 执行期间，`moveJ`/`moveL` 话题、`set_servoj_pos`、`track_playback`、队列运动与 `open_servoj` 会被拒绝/忽略并记录告警。现有 `moveJ`/`moveL` 话题与 `track_playback` 服务保持不变。刚通过 `moveJ`/`moveL` 话题成功下发运动后 500 ms 内到达的 action goal 会被拒绝，避免控制器 `run_state` 更新延迟导致并发运动。完成判定对 `coord=0` 用 ACS、`coord=1` 用 MCS 校验目标，到达容差为 1° / 2 mm；`coord=2/3` 的 action goal 会被拒绝。
-
-### 16.4 运动 Action 测试命令
-
-前置条件：
-
-- `tl_driver` 已启动并连接控制器，`/arm_status` 为 `STOP`，机械臂已上电且工作区安全。
-- 以下示例以 6 轴零位为基准：`/tcp_pose` = `(0.2793, 0, 0.4216)` m，rpy = `(3.1414, 0, 0)` rad。换用其他初始位姿前，先读当前位姿并替换 `target_pos_value`。
-
-```bash
-ros2 topic echo /tcp_pose --once
-ros2 topic echo /arm_status --once
-```
-
-#### MoveJ：J6 转 10°
-
-10° = 0.174533 rad。`target_pos_value` 必须为 14 位：前 7 位是 J1–J7（rad），后 7 位是外部轴。
-
-```bash
-ros2 action send_goal /tl_driver/move_joint tl_ros2_interface/action/Move \
-"{command: {
-  target_pos_value: [0.0, 0.0, 0.0, 0.0, 0.0, 0.174533, 0.0,
-                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-  target_pos_name: '',
-  target_pos_type: 0,
-  coord: 0,
-  velocity: 20.0,
-  velocity_sync: 0.0,
-  acc: 20.0,
-  dec: 20.0,
-  pl: 0,
-  time: 0,
-  tool_num: 0,
-  user_num: 0,
-  posidtype: 0,
-  configuration: 0,
-  spin: 0,
-  para_sync: false
-}, timeout_sec: 10.0}" --feedback
-```
-
-回零：
-
-```bash
-ros2 action send_goal /tl_driver/move_joint tl_ros2_interface/action/Move \
-"{command: {
-  target_pos_value: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-  target_pos_name: '', target_pos_type: 0, coord: 0,
-  velocity: 20.0, velocity_sync: 0.0, acc: 20.0, dec: 20.0,
-  pl: 0, time: 0, tool_num: 0, user_num: 0,
-  posidtype: 0, configuration: 0, spin: 0, para_sync: false
-}, timeout_sec: 10.0}" --feedback
-```
-
-#### MoveL：沿 +Z 平移 5 cm
-
-基准位姿 z = 0.4216 m，目标 z = 0.4716 m。`coord=1`，位置 m、姿态 rad；`velocity` 单位为 m/s。
-
-```bash
-ros2 action send_goal /tl_driver/move_linear tl_ros2_interface/action/Move \
-"{command: {
-  target_pos_value: [0.2793, 0.0, 0.4716, 3.1414, 0.0, 0.0,
-                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-  target_pos_name: '',
-  target_pos_type: 0,
-  coord: 1,
-  velocity: 0.01,
-  velocity_sync: 0.0,
-  acc: 20.0,
-  dec: 20.0,
-  pl: 0,
-  time: 0,
-  tool_num: 0,
-  user_num: 0,
-  posidtype: 0,
-  configuration: 0,
-  spin: 0,
-  para_sync: false
-}, timeout_sec: 10.0}" --feedback
-```
-
-回原位：
-
-```bash
-ros2 action send_goal /tl_driver/move_linear tl_ros2_interface/action/Move \
-"{command: {
-  target_pos_value: [0.2793, 0.0, 0.4216, 3.1414, 0.0, 0.0,
-                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-  target_pos_name: '', target_pos_type: 0, coord: 1,
-  velocity: 0.01, velocity_sync: 0.0, acc: 20.0, dec: 20.0,
-  pl: 0, time: 0, tool_num: 0, user_num: 0,
-  posidtype: 0, configuration: 0, spin: 0, para_sync: false
-}, timeout_sec: 10.0}" --feedback
-```
-
-> `move_joint` 的 `velocity` 是百分比，`move_linear` 的 `velocity` 是 m/s；`target_pos_type` 必须为 0，数组长度不是 14 时 goal 会被直接拒绝。两个 action 的 cancel 都会被拒绝，测试时如遇异常直接拍急停。
+>
+> 诊断话题频率参数 `joint_dynamics_rate` / `joint_thermal_rate` 见 [4.8](#48-查询关节温度)、[4.10](#410-查询电机电流)；运动 action 超时参数见 [7.1](#71-运动-action)。

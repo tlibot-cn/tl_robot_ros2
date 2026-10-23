@@ -20,7 +20,7 @@ test_all_interfaces.py
   §15 ServoJ       close_servoj
 
 危险接口（会触发运动、改动标定/IP、删除文件等）默认跳过，仅打印提示：
-  moveJ / moveL / start_jogging / queue_motion_movej / open_servoj /
+  move_joint / move_linear action / start_jogging / queue_motion_movej / open_servoj /
   track_playback / set_axis_zero_pos / set_controller_ip / set_default_cartesian_param
 
 @usage
@@ -461,7 +461,7 @@ class DriverQuickTest(Node):
     def test_dangerous(self):
         self.logger.info("\n========== 极高风险接口汇总（均跳过）==========")
         for label, reason in [
-            ("moveJ/moveL 话题", "会触发运动"),
+            ("move_joint/move_linear action", "会触发运动"),
             ("set_axis_zero_pos", "改动零点标定"),
             ("set_controller_ip", "修改控制器网络"),
             ("set_default_cartesian_param", "重置笛卡尔参数"),

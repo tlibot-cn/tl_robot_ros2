@@ -21,7 +21,7 @@ enum class MotionKind
   kLinear ///< robot_movel / moveC / imove：velocity 为 m/s（SDK 侧 mm/s）
 };
 
-/// @brief MoveCommand 消息（话题与 job/queue 服务共用）转 SDK 运动指令。
+/// @brief MoveCommand 消息（Move action goal 与 job/queue 服务共用）转 SDK 运动指令。
 /// @param[in] msg 运动指令消息（ROS 侧 m / rad / m·s⁻¹）
 /// @param[in] kind 速度字段语义（关节 % 或直线 m/s）
 /// @return 填充后的 SDK 运动指令（控制器侧 mm / 度 / mm·s⁻¹）

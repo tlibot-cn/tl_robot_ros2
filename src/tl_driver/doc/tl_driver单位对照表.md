@@ -11,9 +11,14 @@
 | `/tcp_pose` | `position` / `rpy` | m / rad | MCS 流：mm / 度；同步查询：mm / rad |
 | `/tl_driver/joint_dynamics` | `line_speed` / `joint_speed` / 电流 / 力矩 | m/s / rad/s / A / ‰ 额定扭矩 | mm/s / 度/s / A / ‰ |
 | `/tl_driver/joint_thermal` | `temperature` / `joint_voltage` / `positioner_voltage` | °C / V / V | °C / V / V |
-| `/tl_driver/moveJ` | `MoveCommand`，`coord=0` | 关节 rad | 度 |
-| `/tl_driver/moveL` | `MoveCommand`，`coord=1/2/3` | m + rad；`velocity` m/s | mm + rad；`velocity` mm/s |
 | `/tl_driver/set_servoj_pos` | `data[7]` | rad（6 轴末位补 0） | 度 |
+
+## Action
+
+| Action | 字段 | ROS 单位 | 控制器 / SDK 单位 |
+| :--- | :--- | :--- | :--- |
+| `/tl_driver/move_joint` | `goal.command`（`coord=0`） | 关节 rad | 度 |
+| `/tl_driver/move_linear` | `goal.command`（`coord=1`） | m + rad；`velocity` m/s | mm + rad；`velocity` mm/s |
 
 ## MoveCommand
 

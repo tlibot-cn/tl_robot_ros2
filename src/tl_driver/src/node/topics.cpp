@@ -1,5 +1,5 @@
 /// @file topics.cpp
-/// @brief 话题订阅：moveJ/moveL/servoJ 的 handler 与订阅注册。
+/// @brief 话题订阅：servoJ 目标位置（set_servoj_pos）的 handler 与订阅注册。
 
 #include <algorithm>
 #include <utility>
@@ -9,60 +9,15 @@
 
 #include "arm_client.hpp"
 #include "arm_sdk.hpp"
-#include "convert/msg_convert.hpp"
 #include "convert/units.hpp"
 #include "node/driver_node.hpp"
 
 #include "std_msgs/msg/float64_multi_array.hpp"
-#include "tl_ros2_interface/msg/move_command.hpp"
 
 namespace tl_driver
 {
 namespace
 {
-void handle_movej_topic(DriverNode& node, const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
-{
-  if (!node.session().is_connected())
-  {
-    RCLCPP_WARN(node.get_logger(), "[MoveJ]: arm is not connected");
-    return;
-  }
-  if (node.motion_action_active())
-  {
-    RCLCPP_WARN(node.get_logger(), "[MoveJ]: ignored while a motion action is active");
-    return;
-  }
-
-  tl::MoveCmd cmd = convert::to_move_cmd(*msg, convert::MotionKind::kJoint);
-
-  tl::Result ret = tl::robot_movej(node.session().fd(), cmd);
-  // 即使返回超时，指令也可能已生效；无条件记录以覆盖紧随其后的 action goal。
-  node.note_external_motion();
-
-  RCLCPP_INFO(node.get_logger(), "[MoveJ]: result=%s", arm_client::result_to_string(ret));
-}
-
-void handle_movel_topic(DriverNode& node, const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
-{
-  if (!node.session().is_connected())
-  {
-    RCLCPP_WARN(node.get_logger(), "[MoveL]: arm is not connected");
-    return;
-  }
-  if (node.motion_action_active())
-  {
-    RCLCPP_WARN(node.get_logger(), "[MoveL]: ignored while a motion action is active");
-    return;
-  }
-
-  tl::MoveCmd cmd = convert::to_move_cmd(*msg, convert::MotionKind::kLinear);
-
-  tl::Result ret = tl::robot_movel(node.session().fd(), cmd);
-  node.note_external_motion();
-
-  RCLCPP_INFO(node.get_logger(), "[MoveL]: result=%s", arm_client::result_to_string(ret));
-}
-
 /**
  * @brief 透传模式必须先使用open_servoJ开启跟踪模式
  */
@@ -109,18 +64,6 @@ void handle_set_servoj_pos_topic(DriverNode& node, const std_msgs::msg::Float64M
 
 void register_topics(DriverNode& node)
 {
-  node.create_subscription<tl_ros2_interface::msg::MoveCommand>(
-      "/tl_driver/moveJ", 10,
-      [&node](const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
-      {
-        handle_movej_topic(node, msg);
-      });
-  node.create_subscription<tl_ros2_interface::msg::MoveCommand>(
-      "/tl_driver/moveL", 10,
-      [&node](const tl_ros2_interface::msg::MoveCommand::SharedPtr msg)
-      {
-        handle_movel_topic(node, msg);
-      });
   node.create_subscription<std_msgs::msg::Float64MultiArray>(
       "/tl_driver/set_servoj_pos", 10,
       [&node](const std_msgs::msg::Float64MultiArray::SharedPtr msg)

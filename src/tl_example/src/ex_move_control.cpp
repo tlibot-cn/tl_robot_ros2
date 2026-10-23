@@ -3,12 +3,12 @@
  * @brief 运动控制测试 — MoveJ / MoveL
  *
  * 对应 tl_sdk/examples/py/ex_move_control.py 的 ROS2 实现。
- * 通过话题向 tl_driver 下发 MoveJ（关节空间）与 MoveL（笛卡尔直线）运动，
+ * 通过 action 向 tl_driver 下发 MoveJ（关节空间）与 MoveL（笛卡尔直线）运动，
  * 完整演示「连接 → 示教模式 → 上电 → 运动 → 下电 → 断开」流程。
  *
  * 与 Python 示例的主要差异：
- *   - 不直接管理 TCP Socket，通过 ROS2 服务/话题与 tl_driver 交互
- *   - 运动完成判断：订阅 /arm_status 话题（RUNNING → STOP），替代 SDK 轮询
+ *   - 不直接管理 TCP Socket，通过 ROS2 服务/action 与 tl_driver 交互
+ *   - 运动完成判断：等待 action result（含成功/失败原因），替代 SDK 轮询
  *
  * ⚠ 安全警告：本示例会真实控制机械臂运动！
  *   运行前请确保工作区安全、速度合理，并随时准备急停。
@@ -20,6 +20,7 @@
  * @see ex_queue_test.cpp — 队列运动（Queue Motion）测试（14 维 target_pos_value 布局参考）
  */
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <functional>
@@ -28,9 +29,10 @@
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
-#include "tl_ros2_interface/msg/arm_status.hpp"
+#include "tl_ros2_interface/action/move.hpp"
 #include "tl_ros2_interface/msg/move_command.hpp"
 #include "tl_ros2_interface/srv/set_current_mode.hpp"
 #include "tl_ros2_interface/srv/set_speed.hpp"
@@ -40,12 +42,14 @@ namespace tl_example
 
 // 类型别名 — 简化代码
 using Trigger = std_srvs::srv::Trigger;
-using ArmStatus = tl_ros2_interface::msg::ArmStatus;
 using MoveCommand = tl_ros2_interface::msg::MoveCommand;
+using Move = tl_ros2_interface::action::Move;
 
 namespace
 {
 constexpr double kDegToRad = M_PI / 180.0;
+// goal 超时比客户端等待短，确保 action 的 abort/result 先于本地超时到达。
+constexpr double kActionResultMarginSec = 5.0;
 } // namespace
 using SetCurrentMode = tl_ros2_interface::srv::SetCurrentMode;
 using SetSpeed = tl_ros2_interface::srv::SetSpeed;
@@ -58,7 +62,7 @@ using SetSpeed = tl_ros2_interface::srv::SetSpeed;
  *   MoveJ（关节坐标）→ 等待完成 → MoveL（直角坐标）→ 等待完成 →
  *   power_off → disconnect
  *
- * 运动完成通过订阅 /arm_status 判断：状态从 STOP → RUNNING（启动）再回到 STOP（完成）。
+ * 运动完成以 action result 为准（成功/失败原因），不再依赖 /arm_status。
  */
 class MoveControlDemo : public rclcpp::Node
 {
@@ -77,19 +81,15 @@ public:
     set_mode_cli_ = this->create_client<SetCurrentMode>("/tl_driver/set_current_mode");
     set_speed_cli_ = this->create_client<SetSpeed>("/tl_driver/set_speed");
 
-    // ── 运动指令发布 ──
-    movej_pub_ = this->create_publisher<MoveCommand>("/tl_driver/moveJ", 10);
-    movel_pub_ = this->create_publisher<MoveCommand>("/tl_driver/moveL", 10);
+    // ── 运动 action 客户端 ──
+    move_joint_cli_ = rclcpp_action::create_client<Move>(this, "/tl_driver/move_joint");
+    move_linear_cli_ = rclcpp_action::create_client<Move>(this, "/tl_driver/move_linear");
 
-    // ── 运行状态订阅（用于判断运动完成）──
-    arm_status_sub_ = this->create_subscription<ArmStatus>(
-        "/arm_status", 10, std::bind(&MoveControlDemo::onArmStatus, this, std::placeholders::_1));
-
-    RCLCPP_INFO(this->get_logger(), "  客户端/发布器/订阅创建完成");
+    RCLCPP_INFO(this->get_logger(), "  服务客户端 / action 客户端创建完成");
   }
 
   // ── 主流程（main 直接调用）──
-  void run();
+  bool run();
 
 private:
   // ── ROS2 通信 ──
@@ -97,12 +97,12 @@ private:
   rclcpp::Client<Trigger>::SharedPtr power_off_cli_;
   rclcpp::Client<SetCurrentMode>::SharedPtr set_mode_cli_;
   rclcpp::Client<SetSpeed>::SharedPtr set_speed_cli_;
-  rclcpp::Publisher<MoveCommand>::SharedPtr movej_pub_;
-  rclcpp::Publisher<MoveCommand>::SharedPtr movel_pub_;
-  rclcpp::Subscription<ArmStatus>::SharedPtr arm_status_sub_;
+  rclcpp_action::Client<Move>::SharedPtr move_joint_cli_;
+  rclcpp_action::Client<Move>::SharedPtr move_linear_cli_;
 
-  // 最近一次接收到的机械臂运行状态
-  std::string arm_run_state_ = "unknown";
+  // 最近一次 action goal 的执行状态
+  bool goal_done_ = false;
+  bool goal_success_ = false;
 
   // ── 参数 ──
   double global_speed_ = 30.0;   // 全局速度（%）
@@ -110,12 +110,6 @@ private:
   double linear_speed_ = 0.02;   // MoveL 速度（m/s）
   double acc_dec_ = 10.0;        // 加减速（1~100）
   double wait_timeout_s_ = 60.0; // 等待运动完成超时（秒）
-
-  // ── 话题回调 ──
-  void onArmStatus(const ArmStatus::SharedPtr msg)
-  {
-    arm_run_state_ = msg->run_state;
-  }
 
   // ── 辅助方法 ──
 
@@ -190,7 +184,7 @@ private:
     return resp;
   }
 
-  /// 短暂 spin 直到条件满足或超时（用于等待话题消息 / 运动状态变化）
+  /// 短暂 spin 直到条件满足或超时（用于等待 action result 回调）
   bool spinWaitFor(const std::function<bool()>& cond, double timeout_s)
   {
     auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(timeout_s);
@@ -233,34 +227,68 @@ private:
     return msg;
   }
 
-  /// 等待运动完成：先等 RUNNING（启动），再等 STOP（完成）
-  bool waitMotionDone(const std::string& label)
+  /// 发送运动 goal；返回 false 表示 action server 未就绪
+  bool sendMoveGoal(const rclcpp_action::Client<Move>::SharedPtr& cli, const MoveCommand& command,
+                    const std::string& label)
   {
-    RCLCPP_INFO(this->get_logger(), "  等待 %s 启动...", label.c_str());
-    if (!spinWaitFor(
-            [this]()
-            {
-              return arm_run_state_ == "RUNNING";
-            },
-            10.0))
+    if (!cli->action_server_is_ready())
     {
-      RCLCPP_WARN(this->get_logger(), "  未检测到运动启动（run_state=%s），继续等待完成", arm_run_state_.c_str());
+      RCLCPP_ERROR(this->get_logger(), "  %s action server 未就绪", label.c_str());
+      return false;
     }
 
-    RCLCPP_INFO(this->get_logger(), "  等待 %s 完成...", label.c_str());
+    goal_done_ = false;
+    goal_success_ = false;
+
+    Move::Goal goal;
+    goal.command = command;
+    goal.timeout_sec = std::max(1.0, wait_timeout_s_ - kActionResultMarginSec);
+
+    rclcpp_action::Client<Move>::SendGoalOptions options;
+    options.goal_response_callback = [this, label](const rclcpp_action::Client<Move>::GoalHandle::SharedPtr& handle)
+    {
+      if (handle)
+      {
+        RCLCPP_INFO(this->get_logger(), "  %s goal 已接受", label.c_str());
+      }
+      else
+      {
+        goal_done_ = true;
+        RCLCPP_ERROR(this->get_logger(), "  %s goal 被拒绝", label.c_str());
+      }
+    };
+    options.result_callback = [this, label](const rclcpp_action::Client<Move>::WrappedResult& result)
+    {
+      goal_success_ = result.code == rclcpp_action::ResultCode::SUCCEEDED && result.result && result.result->success;
+      goal_done_ = true;
+      if (goal_success_)
+      {
+        RCLCPP_INFO(this->get_logger(), "  ✓ %s action 完成", label.c_str());
+      }
+      else
+      {
+        RCLCPP_WARN(this->get_logger(), "  %s action 失败: %s", label.c_str(),
+                    result.result ? result.result->message.c_str() : "no result");
+      }
+    };
+    cli->async_send_goal(goal, options);
+    return true;
+  }
+
+  /// 等待 action result；返回 false 表示 goal 被拒绝、执行失败或等待超时
+  bool waitActionResult(const std::string& label)
+  {
     if (!spinWaitFor(
             [this]()
             {
-              return arm_run_state_ == "STOP";
+              return goal_done_;
             },
             wait_timeout_s_))
     {
-      RCLCPP_WARN(this->get_logger(), "  %s 等待超时（%.0fs），run_state=%s", label.c_str(), wait_timeout_s_,
-                  arm_run_state_.c_str());
+      RCLCPP_ERROR(this->get_logger(), "  %s 等待 action result 超时（%.0fs）", label.c_str(), wait_timeout_s_);
       return false;
     }
-    RCLCPP_INFO(this->get_logger(), "  ✓ %s 完成", label.c_str());
-    return true;
+    return goal_success_;
   }
 };
 
@@ -270,7 +298,7 @@ private:
 //  主流程实现（类外定义，main 直接调用）
 // ====================================================================
 
-void tl_example::MoveControlDemo::run()
+bool tl_example::MoveControlDemo::run()
 {
   // ── 1. 检查核心服务就绪 ──
   RCLCPP_INFO(this->get_logger(), "\n========== 1. 检查核心服务就绪 ==========");
@@ -278,7 +306,14 @@ void tl_example::MoveControlDemo::run()
   {
     RCLCPP_ERROR(this->get_logger(), "tl_driver 核心服务未就绪，请先启动 tl_driver 节点");
     rclcpp::shutdown();
-    return;
+    return false;
+  }
+  if (!move_joint_cli_->wait_for_action_server(std::chrono::seconds(3)) ||
+      !move_linear_cli_->wait_for_action_server(std::chrono::seconds(3)))
+  {
+    RCLCPP_ERROR(this->get_logger(), "tl_driver 运动 action 未就绪，请先启动 tl_driver 节点");
+    rclcpp::shutdown();
+    return false;
   }
 
   // ── 2. 切换示教模式 ──
@@ -295,7 +330,7 @@ void tl_example::MoveControlDemo::run()
   {
     RCLCPP_ERROR(this->get_logger(), "上电失败，退出测试");
     rclcpp::shutdown();
-    return;
+    return false;
   }
 
   // ── 4. 设置全局速度 ──
@@ -308,29 +343,27 @@ void tl_example::MoveControlDemo::run()
 
   // ── 5. MoveJ 关节空间运动 ──
   RCLCPP_INFO(this->get_logger(), "\n========== 5. MoveJ 运动控制（关节坐标，单位：rad）==========");
+  bool move_ok = false;
   {
     // 与 Python 示例一致：J1=20°, J2=10°, J3=-10°，其余 0
     MoveCommand msg = makeMoveCmd(0, {20.0 * kDegToRad, 10.0 * kDegToRad, -10.0 * kDegToRad, 0.0, 0.0, 0.0, 0.0});
     RCLCPP_INFO(this->get_logger(), "  目标关节角: [20, 10, -10, 0, 0, 0]°，速度 %.0f%%", motion_speed_);
-    movej_pub_->publish(msg);
-    if (!waitMotionDone("MoveJ"))
-    {
-      RCLCPP_WARN(this->get_logger(), "MoveJ 未确认完成，继续执行 MoveL");
-    }
+    move_ok = sendMoveGoal(move_joint_cli_, msg, "MoveJ") && waitActionResult("MoveJ");
   }
 
-  // ── 6. MoveL 笛卡尔直线运动 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 6. MoveL 运动控制（直角坐标，m / rad）==========");
+  // ── 6. MoveL 笛卡尔直线运动（MoveJ 成功后才执行）──
+  if (move_ok)
   {
+    RCLCPP_INFO(this->get_logger(), "\n========== 6. MoveL 运动控制（直角坐标，m / rad）==========");
     // 与 Python 示例一致：位置(0.28, 0.09, 0.27)m，姿态(3.14, 0, 0)rad
     MoveCommand msg = makeMoveCmd(1, {0.28, 0.09, 0.27, 3.14, 0.0, 0.0});
     RCLCPP_INFO(this->get_logger(), "  目标位姿: pos(0.28, 0.09, 0.27)m rpy(3.14, 0, 0)rad，速度 %.3fm/s",
                 linear_speed_);
-    movel_pub_->publish(msg);
-    if (!waitMotionDone("MoveL"))
-    {
-      RCLCPP_WARN(this->get_logger(), "MoveL 未确认完成");
-    }
+    move_ok = sendMoveGoal(move_linear_cli_, msg, "MoveL") && waitActionResult("MoveL");
+  }
+  else
+  {
+    RCLCPP_ERROR(this->get_logger(), "  MoveJ 未成功，跳过 MoveL");
   }
 
   // ── 7. 下电 ──
@@ -338,9 +371,17 @@ void tl_example::MoveControlDemo::run()
   callTrigger(power_off_cli_, "power_off");
 
   RCLCPP_INFO(this->get_logger(), "\n============================================================");
-  RCLCPP_INFO(this->get_logger(), "  运动控制测试完成，节点退出");
+  if (move_ok)
+  {
+    RCLCPP_INFO(this->get_logger(), "  运动控制测试成功，节点退出");
+  }
+  else
+  {
+    RCLCPP_ERROR(this->get_logger(), "  运动控制测试失败，节点退出");
+  }
   RCLCPP_INFO(this->get_logger(), "============================================================");
   rclcpp::shutdown();
+  return move_ok;
 }
 
 // ====================================================================
@@ -351,6 +392,5 @@ int main(int argc, char *argv[])
 {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<tl_example::MoveControlDemo>();
-  node->run(); // run() 内部已处理 rclcpp::shutdown()
-  return 0;
+  return node->run() ? 0 : 1; // run() 内部已处理 rclcpp::shutdown()
 }

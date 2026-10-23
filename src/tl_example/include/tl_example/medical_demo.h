@@ -8,9 +8,10 @@
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
-#include "tl_ros2_interface/msg/arm_status.hpp"
+#include "tl_ros2_interface/action/move.hpp"
 #include "tl_ros2_interface/msg/move_command.hpp"
 #include "tl_ros2_interface/srv/set_current_mode.hpp"
 #include "tl_ros2_interface/srv/set_speed.hpp"
@@ -19,9 +20,9 @@ namespace tl_example
 {
 
 /**
- * @brief 队列 MoveL 运动演示节点
+ * @brief MoveL 多点位运动演示节点
  *
- * 演示场景：通过状态机驱动，将 MoveL 指令逐条下发到 /tl_driver/moveL，
+ * 演示场景：通过状态机驱动，将 MoveL 指令逐条下发到 /tl_driver/move_linear action，
  * 模拟医学检验科机械臂的典型操作流程：
  *   安全位 → 样本架 → 取样 → 试剂架 → 分装加样 → 检测仪器进样口 → 放样 → 安全位
  *
@@ -35,8 +36,8 @@ public:
   explicit MedicalDemo(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
 
   // ── 类型定义 ──
-  using ArmStatus = tl_ros2_interface::msg::ArmStatus;
   using MoveCommand = tl_ros2_interface::msg::MoveCommand;
+  using Move = tl_ros2_interface::action::Move;
   using SetCurrentMode = tl_ros2_interface::srv::SetCurrentMode;
   using SetSpeed = tl_ros2_interface::srv::SetSpeed;
   using Trigger = std_srvs::srv::Trigger;
@@ -67,15 +68,13 @@ private:
   void onSetSpeedDone(rclcpp::Client<SetSpeed>::SharedFuture future);
 
   void moveNextStep();
-
-  void onArmStatus(const ArmStatus::SharedPtr msg);
+  void sendMoveL(const MoveCommand& msg);
 
   void startPowerOff();
   void onPowerOffDone(rclcpp::Client<Trigger>::SharedFuture future);
 
   // ── ROS2 通信 ──
-  rclcpp::Publisher<MoveCommand>::SharedPtr movel_pub_;
-  rclcpp::Subscription<ArmStatus>::SharedPtr arm_status_sub_;
+  rclcpp_action::Client<Move>::SharedPtr move_linear_cli_;
   rclcpp::Client<SetCurrentMode>::SharedPtr set_mode_cli_;
   rclcpp::Client<Trigger>::SharedPtr power_on_cli_;
   rclcpp::Client<Trigger>::SharedPtr power_off_cli_;
@@ -96,16 +95,16 @@ private:
   State state_ = State::INIT;
   size_t seq_index_ = 0;
 
-  // 运动等待（通过 /arm_status 判断运动完成）
-  std::string arm_run_state_ = "STOP";
-
+  // 运动等待（通过 action result 判断本步完成）
   enum class MovePhase
   {
     IDLE,
-    WAIT_RUNNING,
     WAIT_DONE
   };
   MovePhase move_phase_ = MovePhase::IDLE;
+  bool step_done_ = false;
+  bool step_success_ = false;
+  double action_wait_start_s_ = 0.0; // 等待 action server 的起始时刻（0=未开始）
 
   double demo_speed_ = 30.0;
   double safety_timeout_s_ = 60.0; // 安全超时（秒）
