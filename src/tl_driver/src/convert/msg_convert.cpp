@@ -19,15 +19,17 @@ tl::MoveCmd to_move_cmd(const tl_ros2_interface::msg::MoveCommand& msg, MotionKi
   cmd.acc = msg.acc;
   cmd.dec = msg.dec;
   cmd.pl = msg.pl;
-  cmd.time = msg.time;
+  // 以下字段在 ROS 接口中已裁剪，按控制器默认语义硬编码：
+  // time=0（无提前执行）、posidtype=0（一级变量）、configuration=0（不指定形态）、spin=0（非 MOVCA）。
+  cmd.time = 0;
   cmd.toolNum = msg.tool_num;
   cmd.userNum = msg.user_num;
-  cmd.posidtype = msg.posidtype;
-  cmd.configuration = msg.configuration;
-  cmd.spin = msg.spin;
+  cmd.posidtype = 0;
+  cmd.configuration = 0;
+  cmd.spin = 0;
   cmd.parasync = msg.para_sync;
 
-  cmd.targetPosValue = msg.target_pos_value;
+  cmd.targetPosValue.assign(msg.target_pos_value.begin(), msg.target_pos_value.end());
   if (msg.coord == 0)
   {
     // 关节坐标：前 7 位为 J1..J7（ROS rad → SDK 度）

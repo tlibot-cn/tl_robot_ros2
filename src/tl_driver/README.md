@@ -102,9 +102,8 @@ tl_driver:
     arm_port: "6001"                # 设置TCP连接时的端口  
     arm_port_aux: "7000"            # 设置机械臂连接时的辅助端口
     arm_type: "TCB710"              # 机械臂型号（仅作日志标识，不参与行为）
-    arm_joints: ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7"] # 关节名称（1～8 个，启动时校验）
-    publish_rate: 100.0             # /arm_status 发布频率（stream 模式下 /joint_states、/tcp_pose 跟随 7000 帧率），范围 1～1000，非法值启动即退出
-    state_source: "stream"          # "stream"=7000 端口连续状态流；"poll"=旧的同步查询（回滚开关）
+    arm_joints: ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7"] # 关节名称（1～7 个，启动时校验）
+    executor_threads: 8             # 执行器线程数，范围 1～64；默认 max(4, min(hardware_concurrency, 8))
     state_stream_interval_ms: 10    # 连续状态流间隔，范围 10～60000 ms
     joint_dynamics_rate: 10.0       # /tl_driver/joint_dynamics 频率，0=关闭
     joint_thermal_rate: 1.0         # /tl_driver/joint_thermal 频率，0～1，0=关闭
@@ -113,8 +112,8 @@ tl_driver:
 ```
 
 > `arm_port` / `arm_port_aux` 以字符串传给 SDK，不要写成整数。
-> 所有参数只在启动时读取（运行期 `ros2 param set` 会被明确拒绝并返回原因）；回滚到旧同步查询路径时用 `state_source:=poll`，此时位姿话题为 20 Hz。单个状态通道失效时只降级该通道。
-> `publish_rate` 只控制 `/arm_status` 的发布频率（以及回退轮询上限）：`state_source=stream` 时 `/joint_states`、`/tcp_pose` 由 7000 帧通知直接发布，频率取决于 `state_stream_interval_ms` 与控制器的实际推送率。该参数在启动时读取，非法值（非有限数或超出 1～1000 Hz）会启动失败；参数类型必须是浮点数（写 `100.0`；写整数 `100` 会被 ROS 判为类型错误并启动失败）。
+> 所有参数只在启动时读取（运行期 `ros2 param set` 会被明确拒绝并返回原因）。
+> `/joint_states`、`/tcp_pose` 由 7000 帧通知直接发布，频率取决于 `state_stream_interval_ms` 与控制器的实际推送率；`/arm_status` 在每次 10 Hz 运行状态查询成功后发布。状态流失效时位姿话题停更，1 Hz 看门狗持续重发 `mode=1`，不再回退 6001 同步查询。
 ## tl_driver功能包架构说明
 ### 功能包文件总览
 ```
@@ -212,4 +211,4 @@ tl_driver功能包的服务、话题与 action 较多，可以通过如下指令
 ![image](doc/tl_driver4.png)  
 主要为套用API实现的一些机械臂本体的功能，其详细介绍和使用在此不详细展开，可以通过专门的文档《[tl_driver接口说明书](doc/tl_driver接口说明书.md)》进行查看。
 
-状态话题化后，`/joint_states` 与 `/tcp_pose` 默认由 7000 端口 ACS/MCS 连续流驱动；诊断量走 `/tl_driver/joint_dynamics`、`/tl_driver/joint_thermal`，数字 IO 读写统一使用 `get_digital_input_output` / `set_digital_output` 服务（不发布 `io_state` 话题）。`/arm_status` 额外携带 1 Hz 查询缓存的 `speed` / `speed_valid`。长运动客户端可使用 `/tl_driver/move_joint`、`/tl_driver/move_linear`、`/tl_driver/play_track` action；`track_playback` 服务保留，action 的 cancel 因 SDK 无停止接口而一律拒绝。
+状态话题化后，`/joint_states` 与 `/tcp_pose` 默认由 7000 端口 ACS/MCS 连续流驱动；诊断量走 `/tl_driver/joint_dynamics`、`/tl_driver/joint_thermal`，数字 IO 读写统一使用 `get_digital_input_output` / `set_digital_output` 服务（不发布 `io_state` 话题）。`/arm_status` 额外携带 1 Hz 查询缓存的 `speed` / `speed_valid`。长运动客户端使用 `/tl_driver/move_joint`、`/tl_driver/move_linear`、`/tl_driver/play_track` action（`track_playback` 服务已删除）；action 的 cancel 因 SDK 无停止接口而一律拒绝。

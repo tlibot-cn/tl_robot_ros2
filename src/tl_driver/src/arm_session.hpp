@@ -82,9 +82,11 @@ public:
   /// @brief 停止两个通道的连续反馈（仅析构/断开路径）。
   void stop_state_stream();
 
-  /// @brief 只读取通道数值与帧元数据（100 Hz 发布路径）。
-  bool get_state_values(int channel, std::vector<double>& values, uint64_t& seq,
-                        std::chrono::steady_clock::time_point& received_at) const;
+  /// @brief 读取通道快照（定长数组 + 有效长度，状态帧发布线程路径）。
+  /// @param[in] channel 1=ACS，2=MCS
+  /// @param[out] frame 通道快照
+  /// @return 该通道至少收到过一帧时为 true
+  bool get_state_frame(int channel, arm_client::StateFrame& frame) const;
 
   /// @brief 通道在 `max_age` 内是否收到过帧。
   bool is_state_frame_fresh(int channel, std::chrono::milliseconds max_age) const;

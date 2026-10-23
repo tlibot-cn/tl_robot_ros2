@@ -204,25 +204,19 @@ private:
   MoveCommand makeMoveCmd(int coord, const std::vector<double>& pos) const
   {
     MoveCommand msg;
-    msg.target_pos_value.assign(14, 0.0);
-    for (size_t i = 0; i < pos.size() && i < 14; ++i)
+    msg.target_pos_value.fill(0.0);
+    for (size_t i = 0; i < pos.size() && i < msg.target_pos_value.size(); ++i)
     {
       msg.target_pos_value[i] = pos[i];
     }
-    msg.target_pos_name = "";
-    msg.target_pos_type = 0; // 自定义数组
-    msg.coord = coord;       // 0=关节 1=直角
+    msg.coord = coord; // 0=关节 1=直角
     msg.velocity = (coord == 0) ? motion_speed_ : linear_speed_;
     msg.velocity_sync = 0.0;
     msg.acc = acc_dec_;
     msg.dec = acc_dec_;
     msg.pl = 0; // 精确到达
-    msg.time = 0;
     msg.tool_num = 0;
     msg.user_num = 0;
-    msg.posidtype = 0;
-    msg.configuration = 0;
-    msg.spin = 0;
     msg.para_sync = false;
     return msg;
   }

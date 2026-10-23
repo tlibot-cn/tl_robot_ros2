@@ -114,8 +114,7 @@ bool ArmClient::stop_state_stream(int fd_aux, int channel, int position)
   return true;
 }
 
-bool ArmClient::get_state_values(int channel, std::vector<double>& values, uint64_t& seq,
-                                 std::chrono::steady_clock::time_point& received_at) const
+bool ArmClient::get_state_frame(int channel, StateFrame& frame) const
 {
   if (channel < 1 || channel >= static_cast<int>(frames_.size()))
   {
@@ -123,16 +122,14 @@ bool ArmClient::get_state_values(int channel, std::vector<double>& values, uint6
   }
 
   std::lock_guard<std::mutex> lock(frame_mutex_);
-  const StateFrame& frame = frames_[channel];
-  if (frame.seq == 0)
+  const StateFrame& snapshot = frames_[channel];
+  if (snapshot.seq == 0)
   {
     return false;
   }
 
   // 通道 1 只承载 ACS，通道 2 只承载 MCS（§14.2）。
-  values = channel == 1 ? frame.acs : frame.mcs;
-  seq = frame.seq;
-  received_at = frame.received_at;
+  frame = snapshot;
   return true;
 }
 
@@ -208,9 +205,16 @@ void ArmClient::on_state(const char *state)
 
   {
     std::lock_guard<std::mutex> lock(frame_mutex_);
+    if (parsed.channel < 1 || parsed.channel >= static_cast<int>(frames_.size()))
+    {
+      // 解析层已限制 channel ∈ [1, 9]，此处防御两个模块常量不同步。
+      return;
+    }
     StateFrame& frame = frames_[parsed.channel];
-    frame.acs = std::move(parsed.acs);
-    frame.mcs = std::move(parsed.mcs);
+    frame.acs = parsed.acs;
+    frame.mcs = parsed.mcs;
+    frame.acs_count = parsed.acs_count;
+    frame.mcs_count = parsed.mcs_count;
     frame.received_at = std::chrono::steady_clock::now();
     ++frame.seq;
     ++state_notify_seq_;
@@ -250,7 +254,7 @@ void ArmClient::update_frame_stats(int channel)
 
   const uint64_t frames = stats.frames.exchange(0, std::memory_order_relaxed);
   const double elapsed_s = static_cast<double>(now_ns - window_start) / 1e9;
-  RCLCPP_INFO(logger_, "[SDK]: channel %d state stream %.1f fps", channel, static_cast<double>(frames) / elapsed_s);
+  RCLCPP_DEBUG(logger_, "[SDK]: channel %d state stream %.1f fps", channel, static_cast<double>(frames) / elapsed_s);
 }
 
 bool ArmClient::should_log(std::atomic<int64_t>& last_ns, std::chrono::milliseconds period)

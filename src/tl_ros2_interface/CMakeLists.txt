@@ -36,7 +36,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/Jogging.srv"
   "srv/SetDragMode.srv"
   "srv/TrackSave.srv"
-  "srv/TrackPlayback.srv"
   "srv/SetToolParam.srv"
   "srv/SetUserCoord.srv"
   "srv/SetAxisZeroPos.srv"

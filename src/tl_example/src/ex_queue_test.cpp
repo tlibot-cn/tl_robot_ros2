@@ -299,24 +299,18 @@ private:
     auto req = std::make_shared<QueueMotionMoveJ::Request>();
     req->is_continue = is_continue;
 
-    req->cmd.target_pos_type = 0; // 0 = 直接点位（data）
-    req->cmd.target_pos_name = "";
     req->cmd.coord = 0; // 0 = 关节坐标系
     req->cmd.velocity = velocity_;
     req->cmd.velocity_sync = 0.0;
     req->cmd.acc = velocity_;
     req->cmd.dec = velocity_;
     req->cmd.pl = 0;
-    req->cmd.time = 0;
     req->cmd.tool_num = 0;
     req->cmd.user_num = 0;
-    req->cmd.posidtype = 0;
-    req->cmd.configuration = 0;
-    req->cmd.spin = 0;
     req->cmd.para_sync = false;
 
     // 关节角放在 index 0~6（官方示例 make_movej_cmd 布局，前 7 位为关节角）
-    req->cmd.target_pos_value.assign(14, 0.0);
+    req->cmd.target_pos_value.fill(0.0);
     for (size_t i = 0; i < joint_rad.size() && i < 7; ++i)
     {
       req->cmd.target_pos_value[i] = joint_rad[i];
@@ -334,24 +328,18 @@ private:
     auto req = std::make_shared<QueueMotionMoveJ::Request>();
     req->is_continue = is_continue;
 
-    req->cmd.target_pos_type = 0; // 0 = 直接点位（data）
-    req->cmd.target_pos_name = "";
     req->cmd.coord = 1;         // 1 = 基坐标系（直角坐标系）
     req->cmd.velocity = l_vel_; // m/s
     req->cmd.velocity_sync = 0.0;
     req->cmd.acc = 20.0; // 百分比，与线速度单位无关
     req->cmd.dec = 20.0;
     req->cmd.pl = 0;
-    req->cmd.time = 0;
     req->cmd.tool_num = 0;
     req->cmd.user_num = 0;
-    req->cmd.posidtype = 0;
-    req->cmd.configuration = 0;
-    req->cmd.spin = 0;
     req->cmd.para_sync = false;
 
     // 位姿放 index 0~5（官方示例 make_movel_cmd 布局），后 8 位置 0
-    req->cmd.target_pos_value.assign(14, 0.0);
+    req->cmd.target_pos_value.fill(0.0);
     for (size_t i = 0; i < pose.size() && i < 6; ++i)
     {
       req->cmd.target_pos_value[i] = pose[i];
