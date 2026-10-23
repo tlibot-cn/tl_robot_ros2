@@ -16,11 +16,12 @@
 
 - **破坏性变更**：`MoveCommand` 裁剪未使用字段（`target_pos_name`、`target_pos_type`、`time`、`posidtype`、`configuration`、`spin`），`target_pos_value` 改为 `float64[14]`；驱动按 SDK 默认语义硬编码（`PosType::data`、各整型 0）
 - **破坏性变更**：`JointDynamics` / `JointThermal` 诊断数组改为定长（本体 7、外部轴 5），力矩字段 `int32[]` → `float64[7/5]`；子查询失败或元素缺失时填 `quiet_NaN()`，消费方改用 `std::isnan()` 判定，不再用空数组
-- **破坏性变更**：删除 `state_source` 参数与 `poll` 回退路径；7000 状态流失效时 `/joint_states`、`/tcp_pose` 停更，1 Hz 看门狗持续重发 `mode=1`
+- **破坏性变更**：删除 `state_source` 参数与 `poll` 回退路径；7000 状态流无帧时 `/joint_states`、`/tcp_pose` 停更，需重启驱动恢复
 - **破坏性变更**：删除 `publish_rate` 参数；`/arm_status` 改为每次 10 Hz 运行状态查询成功后直接发布，不再由独立定时器重复发布缓存
-- tl_driver：回调组 13 → 8（短服务合并为 `service_group_`、删除 `timer_group_`），执行器线程数参数化 `executor_threads`（默认 `max(4, min(hardware_concurrency, 8))`，范围 1–64）
+- tl_driver：回调组 13 → 7（短服务合并为 `service_group_`、删除 `timer_group_` 与状态流看门狗组），执行器线程数参数化 `executor_threads`（默认 `max(4, min(hardware_concurrency, 8))`，范围 1–64）
 - tl_driver：`RobotStateFrameData` / `ArmClient::StateFrame` 改为 `std::array<double, 7>` + 有效长度，消除每帧 vector 分配；状态流 fps 日志由 INFO 降为 DEBUG
 - tl_driver：`arm_joints` 数量上限 8 → 7，与 7000 状态帧固定 7 轴、诊断消息定长 7 保持一致
+- tl_driver：删除 1 Hz 状态流看门狗（回调组 8 → 7）；状态流改在上下电与模式切换完成后启动，任一通道请求失败即启动失败；运行期控制器停推后需重启驱动恢复
 - 文档：说明书补充章节编号缺口说明、接口总矩阵（16.1）与移除清单（16.2）
 - **破坏性变更**：删除 `/tl_driver/track_playback` 服务与 `tl_ros2_interface/srv/TrackPlayback.srv`（服务数 36 → 35），轨迹回放统一走 `/tl_driver/play_track` action（校验、互斥、超时、进度反馈）
 - **破坏性变更**：移除 `/tl_driver/moveJ`、`/tl_driver/moveL` 话题订阅（订阅数 3 → 1），一次性运动统一走 `move_joint` / `move_linear` action；`tl_example` 的 `ex_move_control`、`medical_demo` 迁移到 action

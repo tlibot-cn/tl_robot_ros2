@@ -144,8 +144,7 @@ void DriverNode::create_callback_groups()
   topic_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   topic_options_.callback_group = topic_group_;
 
-  // 诊断话题与看门狗各自成组：热状态单次查询可达 150–350 ms，不能阻塞其他状态查询。
-  stream_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  // 诊断话题各自成组：热状态单次查询可达 150–350 ms，不能阻塞其他状态查询。
   dynamics_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   thermal_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   status_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -182,14 +181,6 @@ void DriverNode::register_entities()
   register_topics(*this);
 
   create_aux_timers();
-
-  stream_watchdog_timer_ = this->create_wall_timer(
-      std::chrono::seconds(1),
-      [this]()
-      {
-        check_state_stream();
-      },
-      stream_group_);
 
   actions_ = std::make_unique<tl_driver::MotionActionServers>(*this, action_group_);
 }
@@ -249,44 +240,6 @@ void DriverNode::create_aux_timers()
       status_group_);
 }
 
-void DriverNode::check_state_stream()
-{
-  if (!session_.is_connected())
-  {
-    return;
-  }
-
-  const auto max_age = std::chrono::milliseconds(3 * state_stream_interval_ms_);
-  for (int channel : {1, 2})
-  {
-    if (session_.is_state_frame_fresh(channel, max_age))
-    {
-      if (stream_request_failures_[channel] >= 3)
-      {
-        RCLCPP_INFO(this->get_logger(), "[StateStream]: channel %d recovered", channel);
-      }
-      stream_request_failures_[channel] = 0;
-      continue;
-    }
-
-    // 计数在“仍无新帧”时递增；请求返回 SUCCESS 不代表控制器真的推送，不能据此清零。
-    ++stream_request_failures_[channel];
-    if (stream_request_failures_[channel] == 3)
-    {
-      RCLCPP_WARN(this->get_logger(),
-                  "[StateStream]: channel %d has no fresh frames; retrying mode=1 every 5 s "
-                  "(dependent topic stays silent until frames resume)",
-                  channel);
-    }
-
-    // 前 3 s 每秒重试，之后每 5 s 重试一次，避免链路已断时刷屏。
-    if (stream_request_failures_[channel] <= 3 || stream_request_failures_[channel] % 5 == 0)
-    {
-      session_.request_state_stream(channel, state_stream_interval_ms_);
-    }
-  }
-}
-
 DriverNode::~DriverNode()
 {
   // 先停状态发布线程：它会读 7000 快照，必须在会话断开前退出。
@@ -312,17 +265,6 @@ void DriverNode::init()
 
   if (session_.connect(arm_ip_, arm_port_, arm_port_aux_))
   {
-    // 连续状态流：ACS（channel=1）/MCS（channel=2）。失败不阻塞启动，1 Hz 看门狗会重试。
-    if (session_.start_state_stream(state_stream_interval_ms_))
-    {
-      RCLCPP_INFO(this->get_logger(), "[StateStream]: ACS/MCS streams started at %d ms interval",
-                  state_stream_interval_ms_);
-    }
-    else
-    {
-      RCLCPP_WARN(this->get_logger(), "[StateStream]: failed to start state streams; watchdog will retry");
-    }
-
     // init() 在 spin() 之前执行，此处取得的 fd 在本次初始化中不会变化。
     const int fd = session_.fd();
 
@@ -348,6 +290,15 @@ void DriverNode::init()
     RCLCPP_INFO(this->get_logger(), "上电延时2s...");
     std::this_thread::sleep_for(std::chrono::seconds(2));
     RCLCPP_INFO(this->get_logger(), "上电延时完成");
+
+    // 连续状态流在上下电与模式切换完成后启动，避免订阅被控制器的电源状态变化清除。
+    // 没有同步查询回退路径：启动失败即退出，不带病运行。
+    if (!session_.start_state_stream(state_stream_interval_ms_))
+    {
+      throw std::runtime_error("[Init]: failed to start ACS/MCS state streams");
+    }
+    RCLCPP_INFO(this->get_logger(), "[StateStream]: ACS/MCS streams started at %d ms interval",
+                state_stream_interval_ms_);
 
     // 关节软件版本只在启动时记录；查询失败仅告警，不得阻断启动（部分固件要求伺服使能后才能查询）。
     for (int axis = 1; axis <= ndof_; ++axis)

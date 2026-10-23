@@ -63,7 +63,7 @@
 
 ## 四、线程与回调组
 
-- `tl_driver` 回调组均为 `MutuallyExclusive`，固定 8 组：`service_group_`（短服务）、`motion_service_group_`（长服务）、`topic_group_`、`stream_group_`、`dynamics_group_`、`thermal_group_`、`status_group_`、`action_group_`；`MultiThreadedExecutor` 线程数由 `executor_threads` 参数决定（默认 `max(4, min(hardware_concurrency, 8))`）。`timer_group_` 已随 100 Hz 状态发布定时器删除。
+- `tl_driver` 回调组均为 `MutuallyExclusive`，固定 7 组：`service_group_`（短服务）、`motion_service_group_`（长服务）、`topic_group_`、`dynamics_group_`、`thermal_group_`、`status_group_`、`action_group_`；`MultiThreadedExecutor` 线程数由 `executor_threads` 参数决定（默认 `max(4, min(hardware_concurrency, 8))`）。`timer_group_` 与状态流看门狗均已删除。
 - 回调里不做阻塞：SDK 同步调用、`sleep`、等 future 都占住 executor 线程。
 - 状态发布路径复用成员缓冲/消息（`StatePublishers`），不在发布回调内新建 vector/message；ServoJ 等高频路径禁止逐帧 `INFO`。
 - SDK 异步回调（`ArmClient`）只做缓冲更新与节流日志，禁止 `std::cout`；SDK 回调无 userdata，`ArmClient` 进程内单实例。

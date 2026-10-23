@@ -4,7 +4,7 @@
 /// @file publishers.hpp
 /// @brief 状态发布：/joint_states、/tcp_pose、/arm_status 与诊断话题。
 /// @note `/joint_states` 与 `/tcp_pose` 由 7000 端口连续状态帧通知的独立发布线程发布，
-///       不经过执行器；流失效时话题停更，1 Hz 看门狗重发 mode=1 请求，不再回退 6001 同步查询。
+///       不经过执行器；流中断时话题停更，不回退 6001 同步查询，也不自动重发订阅。
 ///       `/arm_status` 在每次 10 Hz 运行状态查询成功后发布（不再由独立定时器重复发布缓存）。
 
 #include <array>

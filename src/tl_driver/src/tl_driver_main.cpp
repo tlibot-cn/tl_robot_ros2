@@ -17,7 +17,7 @@ int main(int argc, char **argv)
   {
     auto node = std::make_shared<tl_driver::DriverNode>();
 
-    // 回调组固定 8 个（短服务/运动服务/topic/stream 看门狗/dynamics/thermal/status/action）。
+    // 回调组固定 7 个（短服务/运动服务/topic/dynamics/thermal/status/action）。
     // 线程数由 executor_threads 启动参数决定（默认 max(4, min(hardware_concurrency, 8))）。
     rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), node->executor_threads(), true);
     executor.add_node(node);
