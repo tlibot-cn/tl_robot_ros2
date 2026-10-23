@@ -4,7 +4,7 @@
 /// @file arm_client.hpp
 /// @brief SDK 返回值文本化，以及错误/告警与机器人状态异步推送。
 /// @note 状态帧按 `channel` 分流缓存（架构评审 §14）：回调只解析并写快照，
-///       发布由定时器读取快照完成。SDK 回调无 userdata，因此进程内只允许一个实例。
+///       发布由独立发布线程读取快照完成。SDK 回调无 userdata，因此进程内只允许一个实例。
 
 #include <array>
 #include <atomic>
@@ -13,12 +13,12 @@
 #include <cstdint>
 #include <mutex>
 #include <string>
-#include <vector>
 
 #include <rclcpp/clock.hpp>
 #include <rclcpp/logger.hpp>
 
 #include "arm_sdk.hpp"
+#include "convert/state_frame.hpp"
 
 namespace tl_driver::arm_client
 {
@@ -28,10 +28,13 @@ namespace tl_driver::arm_client
 const char *result_to_string(tl::Result ret) noexcept;
 
 /// @brief 单通道状态快照。
+/// @note 数值为定长数组，避免每帧动态分配；`*_count` 为有效元素个数，0 表示该字段缺失。
 struct StateFrame
 {
-  std::vector<double> acs;                             ///< ACS 关节角（度）
-  std::vector<double> mcs;                             ///< MCS 位姿（位置 mm、姿态度）
+  std::array<double, convert::kMaxStateAxes> acs = convert::invalid_axes(); ///< ACS 关节角（度）
+  std::array<double, convert::kMaxStateAxes> mcs = convert::invalid_axes(); ///< MCS 位姿（位置 mm、姿态度）
+  std::size_t acs_count{0};                                                 ///< ACS 有效元素个数
+  std::size_t mcs_count{0};                                                 ///< MCS 有效元素个数
   uint64_t seq{0};                                     ///< 该通道帧序号，0 表示尚未收到
   std::chrono::steady_clock::time_point received_at{}; ///< 接收时刻（单调时钟）
 };
@@ -74,14 +77,11 @@ public:
   /// @return SDK 返回 SUCCESS 时为 true
   bool stop_state_stream(int fd_aux, int channel, int position);
 
-  /// @brief 只读取通道数值向量与帧元数据（100 Hz 发布路径，避免拷贝原始报文）。
+  /// @brief 读取通道快照（定长数组 + 有效长度），无帧时返回 false。
   /// @param[in] channel 1=ACS，2=MCS
-  /// @param[out] values 通道数值（ACS 为度；MCS 为 mm/度）
-  /// @param[out] seq 帧序号
-  /// @param[out] received_at 接收时刻
+  /// @param[out] frame 通道快照（含数值、有效长度、帧序号与接收时刻）
   /// @return 该通道至少收到过一帧时为 true
-  bool get_state_values(int channel, std::vector<double>& values, uint64_t& seq,
-                        std::chrono::steady_clock::time_point& received_at) const;
+  bool get_state_frame(int channel, StateFrame& frame) const;
 
   /// @brief 判断通道最近是否有新帧。
   /// @param[in] channel 通道号
@@ -103,7 +103,7 @@ private:
   void on_error(int message_type, const char *message, int message_code);
   void on_state(const char *state);
   bool should_log(std::atomic<int64_t>& last_ns, std::chrono::milliseconds period);
-  /// @brief 累计通道帧率，每 5 s 输出一次 INFO（用于确认 7000 流实际推送率）。
+  /// @brief 累计通道帧率，每 5 s 输出一次 DEBUG（避免长期运行刷 INFO 日志）。
   void update_frame_stats(int channel);
 
   // SDK 回调无 userdata：用受锁保护的进程级指针转发到实例。

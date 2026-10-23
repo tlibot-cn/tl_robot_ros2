@@ -54,9 +54,8 @@ TL 系列机械臂 ROS2 接口说明
 * 5.21 [设置运行速度SetSpeed_srv](#设置运行速度SetSpeed_srv)
 * 5.22 [设置工具手参数SetToolParam_srv](#设置工具手参数SetToolParam_srv)
 * 5.23 [设置用户坐标系SetUserCoord_srv](#设置用户坐标系SetUserCoord_srv)
-* 5.24 [拖拽轨迹回放TrackPlayback_srv](#拖拽轨迹回放TrackPlayback_srv)
-* 5.25 [拖拽轨迹保存TrackSave_srv](#拖拽轨迹保存TrackSave_srv)
-* 5.26 [查询当前运行模式GetCurrentMode_srv](#查询当前运行模式GetCurrentMode_srv)
+* 5.24 [拖拽轨迹保存TrackSave_srv](#拖拽轨迹保存TrackSave_srv)
+* 5.25 [查询当前运行模式GetCurrentMode_srv](#查询当前运行模式GetCurrentMode_srv)
 
 ## tl_ros2_interface功能包说明
 tl_ros2_interface 功能包为 TL 系列机械臂在 ROS2 框架下提供消息（msg）和服务（srv）接口定义，供上层驱动或应用调用。该包本身没有可执行程序，主要作用为定义协议数据结构和服务接口。
@@ -112,8 +111,7 @@ tl_ros2_interface/
 │   ├── SetSpeed.srv
 │   ├── SetToolParam.srv
 │   ├── SetUserCoord.srv
-│   ├── TrackPlayback.srv
-│   └── TrackSave.srv
+│   ├── TrackSave.srv
 ```
 
 ## tl_ros2_interface消息（msg）说明
@@ -627,17 +625,6 @@ string message
 - 设置用户坐标系的笛卡尔位姿
 - user_num: 用户坐标系编号
 - pos: 笛卡尔位姿（position m、rpy rad；arm_angle 未使用）
-- 返回: success/message
-
-### 拖拽轨迹回放TrackPlayback_srv
-```
-int32 vel
----
-bool success
-string message
-```
-- 回放轨迹
-- vel: 回放速度百分比（1～100；SDK 未标注单位）
 - 返回: success/message
 
 ### TrackSave_srv

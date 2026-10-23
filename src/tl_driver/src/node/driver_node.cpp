@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <memory>
@@ -19,22 +20,17 @@ namespace tl_driver
 {
 namespace
 {
-constexpr double kMinPublishRate = 1.0;
-constexpr double kMaxPublishRate = 1000.0;
 constexpr int kMinStreamIntervalMs = 10;
 constexpr int kMaxStreamIntervalMs = 60000;
+constexpr int kMinExecutorThreads = 1;
+constexpr int kMaxExecutorThreads = 64;
 constexpr double kMaxAuxRate = 100.0;
 constexpr double kMaxThermalRate = 1.0;
-// 运行状态只用于 /arm_status 缓存；10 Hz 足够覆盖 STOP/PAUSE/RUNNING 切换，且不再占用 100 Hz 周期。
+// 运行状态用于 /arm_status；10 Hz 足够覆盖 STOP/PAUSE/RUNNING 切换。
 constexpr double kRunningStatusRate = 10.0;
 // 运行速度只用于 /arm_status.speed；1 Hz 足够反映 SetSpeed 后的变化，避免增加 6001 查询负载。
 constexpr double kSpeedQueryRate = 1.0;
 constexpr double kMaxActionTimeoutSec = 3600.0;
-
-bool is_valid_publish_rate(double rate)
-{
-  return std::isfinite(rate) && rate >= kMinPublishRate && rate <= kMaxPublishRate;
-}
 
 bool is_valid_rate(double rate, double max_rate)
 {
@@ -67,8 +63,10 @@ void DriverNode::declare_parameters()
   this->declare_parameter<std::vector<std::string>>("arm_joints",
                                                     {"joint1", "joint2", "joint3", "joint4", "joint5", "joint6"});
   this->declare_parameter("arm_type", "TCB605");
-  this->declare_parameter("publish_rate", 100.0);
-  this->declare_parameter("state_source", "stream");
+  // 执行器线程数：默认 max(4, min(hardware_concurrency, 8))，阻塞 I/O 场景可调到 16。
+  const unsigned int hardware_threads = std::thread::hardware_concurrency();
+  const unsigned int bounded_threads = std::max(4u, std::min(hardware_threads == 0 ? 4u : hardware_threads, 8u));
+  this->declare_parameter("executor_threads", static_cast<int>(bounded_threads));
   this->declare_parameter("state_stream_interval_ms", 10);
   this->declare_parameter("joint_dynamics_rate", 10.0);
   this->declare_parameter("joint_thermal_rate", 1.0);
@@ -80,8 +78,7 @@ void DriverNode::declare_parameters()
   arm_port_aux_ = this->get_parameter("arm_port_aux").as_string();
   arm_type_ = this->get_parameter("arm_type").as_string();
   arm_joints_ = this->get_parameter("arm_joints").as_string_array();
-  publish_rate_ = this->get_parameter("publish_rate").as_double();
-  state_source_ = this->get_parameter("state_source").as_string();
+  executor_threads_ = this->get_parameter("executor_threads").as_int();
   state_stream_interval_ms_ = this->get_parameter("state_stream_interval_ms").as_int();
   joint_dynamics_rate_ = this->get_parameter("joint_dynamics_rate").as_double();
   joint_thermal_rate_ = this->get_parameter("joint_thermal_rate").as_double();
@@ -89,13 +86,9 @@ void DriverNode::declare_parameters()
   track_action_timeout_ = this->get_parameter("track_action_timeout").as_double();
   ndof_ = static_cast<int>(arm_joints_.size());
 
-  if (!is_valid_publish_rate(publish_rate_))
+  if (executor_threads_ < kMinExecutorThreads || executor_threads_ > kMaxExecutorThreads)
   {
-    throw std::invalid_argument("publish_rate must be in [1.0, 1000.0] Hz");
-  }
-  if (state_source_ != "stream" && state_source_ != "poll")
-  {
-    throw std::invalid_argument("state_source must be 'stream' or 'poll'");
+    throw std::invalid_argument("executor_threads must be in [1, 64]");
   }
   if (state_stream_interval_ms_ < kMinStreamIntervalMs || state_stream_interval_ms_ > kMaxStreamIntervalMs)
   {
@@ -117,10 +110,10 @@ void DriverNode::declare_parameters()
   }
 
   constexpr int kMinJoints = 1;
-  constexpr int kMaxJoints = 8;
+  constexpr int kMaxJoints = 7;
   if (ndof_ < kMinJoints || ndof_ > kMaxJoints)
   {
-    throw std::invalid_argument("arm_joints size must be in [1, 8]");
+    throw std::invalid_argument("arm_joints size must be in [1, 7]");
   }
 
   read_only_param_handle_ = this->add_on_set_parameters_callback(
@@ -143,20 +136,15 @@ rcl_interfaces::msg::SetParametersResult DriverNode::on_parameters_set(const std
 
 void DriverNode::create_callback_groups()
 {
-  // 服务按域分组：同域内串行，跨域可并行（MultiThreadedExecutor）。
-  session_service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  // 短服务（session/config/io/state/transform）合并为一组；长服务（jogging/track/queue/servo）单独一组，
+  // 避免队列/轨迹等长调用阻塞状态查询与配置服务。同组内串行，跨组可并行（MultiThreadedExecutor）。
+  service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   motion_service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  transform_service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  config_service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  io_service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  state_service_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   topic_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   topic_options_.callback_group = topic_group_;
 
-  timer_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-
-  // 诊断话题与看门狗各自成组：热状态单次查询可达 150–350 ms，不能阻塞 100 Hz 位姿发布。
+  // 诊断话题与看门狗各自成组：热状态单次查询可达 150–350 ms，不能阻塞其他状态查询。
   stream_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   dynamics_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   thermal_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -173,24 +161,19 @@ void DriverNode::select_service_group(const rclcpp::CallbackGroup::SharedPtr& gr
 
 void DriverNode::register_entities()
 {
-  // 服务：每个域注册到各自的互斥回调组。
-  select_service_group(session_service_group_);
+  // 服务：短服务共用 service_group_，运动长服务独立。
+  select_service_group(service_group_);
   register_session_services(*this);
+  register_transform_services(*this);
+  register_config_services(*this);
+  register_io_services(*this);
+  register_state_services(*this);
   select_service_group(motion_service_group_);
   register_motion_services(*this);
-  select_service_group(transform_service_group_);
-  register_transform_services(*this);
-  select_service_group(config_service_group_);
-  register_config_services(*this);
-  select_service_group(io_service_group_);
-  register_io_services(*this);
-  select_service_group(state_service_group_);
-  register_state_services(*this);
   service_group_.reset(); // 注册结束，后续 create_service 未显式选组会抛异常
 
   // 话题pub
   StatePublishConfig publish_config;
-  publish_config.stream_enabled = state_source_ == "stream";
   publish_config.stream_interval_ms = state_stream_interval_ms_;
   publish_config.ndof = ndof_;
   publishers_ = std::make_unique<tl_driver::StatePublishers>(*this, session_, arm_joints_, publish_config);
@@ -198,35 +181,17 @@ void DriverNode::register_entities()
   // 话题sub
   register_topics(*this);
 
-  create_state_timer(publish_rate_);
   create_aux_timers();
 
-  if (state_source_ == "stream")
-  {
-    stream_watchdog_timer_ = this->create_wall_timer(
-        std::chrono::seconds(1),
-        [this]()
-        {
-          check_state_stream();
-        },
-        stream_group_);
-  }
-
-  actions_ = std::make_unique<tl_driver::MotionActionServers>(*this, action_group_);
-}
-
-void DriverNode::create_state_timer(double rate)
-{
-  // 直接使用浮点周期，避免截断到整毫秒造成系统性频率偏差（如 60 Hz → 62.5 Hz）。
-  const auto period = std::chrono::duration<double>(1.0 / rate);
-
-  state_publish_timer_ = this->create_wall_timer(
-      period,
+  stream_watchdog_timer_ = this->create_wall_timer(
+      std::chrono::seconds(1),
       [this]()
       {
-        publishers_->publish_arm_state();
+        check_state_stream();
       },
-      timer_group_);
+      stream_group_);
+
+  actions_ = std::make_unique<tl_driver::MotionActionServers>(*this, action_group_);
 }
 
 bool DriverNode::motion_action_active() const
@@ -286,7 +251,7 @@ void DriverNode::create_aux_timers()
 
 void DriverNode::check_state_stream()
 {
-  if (state_source_ != "stream" || !session_.is_connected())
+  if (!session_.is_connected())
   {
     return;
   }
@@ -310,7 +275,7 @@ void DriverNode::check_state_stream()
     {
       RCLCPP_WARN(this->get_logger(),
                   "[StateStream]: channel %d has no fresh frames; retrying mode=1 every 5 s "
-                  "(dependent topic falls back to polling)",
+                  "(dependent topic stays silent until frames resume)",
                   channel);
     }
 
@@ -348,19 +313,14 @@ void DriverNode::init()
   if (session_.connect(arm_ip_, arm_port_, arm_port_aux_))
   {
     // 连续状态流：ACS（channel=1）/MCS（channel=2）。失败不阻塞启动，1 Hz 看门狗会重试。
-    if (state_source_ == "stream")
+    if (session_.start_state_stream(state_stream_interval_ms_))
     {
-      if (session_.start_state_stream(state_stream_interval_ms_))
-      {
-        RCLCPP_INFO(this->get_logger(), "[StateStream]: ACS/MCS streams started at %d ms interval",
-                    state_stream_interval_ms_);
-      }
-      else
-      {
-        RCLCPP_WARN(this->get_logger(),
-                    "[StateStream]: failed to start state streams; watchdog will retry, or use "
-                    "state_source:=poll");
-      }
+      RCLCPP_INFO(this->get_logger(), "[StateStream]: ACS/MCS streams started at %d ms interval",
+                  state_stream_interval_ms_);
+    }
+    else
+    {
+      RCLCPP_WARN(this->get_logger(), "[StateStream]: failed to start state streams; watchdog will retry");
     }
 
     // init() 在 spin() 之前执行，此处取得的 fd 在本次初始化中不会变化。
@@ -407,10 +367,7 @@ void DriverNode::init()
 
     // 所有可能抛异常的初始化步骤已完成后再启动发布线程：
     // 若在 set_current_mode() 抛异常前启动，构造失败时 StatePublishers 析构若未 join 会 terminate。
-    if (state_source_ == "stream")
-    {
-      publishers_->start_stream_thread();
-    }
+    publishers_->start_stream_thread();
     return;
   }
   throw std::runtime_error("failed to connect to " + arm_ip_ + ":" + arm_port_ + "," + arm_port_aux_);

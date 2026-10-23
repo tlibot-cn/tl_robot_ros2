@@ -1,5 +1,5 @@
 # 轨迹回放 action（/tl_driver/play_track）
-# 回放是秒级到分钟级的长任务；现有 track_playback 服务保留。
+# 回放是秒级到分钟级的长任务；原 track_playback 服务已删除，统一使用本 action。
 # 控制器 SDK 没有回放停止接口，cancel 请求会被显式拒绝。
 
 # Goal

@@ -340,17 +340,6 @@ rclcpp_action::GoalResponse MotionActionServers::handle_move_goal(const rclcpp_a
   }
 
   const auto& command = goal->command;
-  if (command.target_pos_value.size() != 14)
-  {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: target_pos_value must have 14 elements, got %zu",
-                command.target_pos_value.size());
-    return rclcpp_action::GoalResponse::REJECT;
-  }
-  if (command.target_pos_type != 0)
-  {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: only target_pos_type=0 (array) is supported");
-    return rclcpp_action::GoalResponse::REJECT;
-  }
   for (const double value : command.target_pos_value)
   {
     if (!std::isfinite(value))
@@ -383,10 +372,9 @@ rclcpp_action::GoalResponse MotionActionServers::handle_move_goal(const rclcpp_a
     RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: velocity_sync out of range");
     return rclcpp_action::GoalResponse::REJECT;
   }
-  if (command.pl < 0 || command.pl > 5 || command.time < 0 || command.tool_num < 0 || command.user_num < 0 ||
-      (command.posidtype != 0 && command.posidtype != 1))
+  if (command.pl < 0 || command.pl > 5 || command.tool_num < 0 || command.user_num < 0)
   {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: invalid pl/time/tool_num/user_num/posidtype");
+    RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: invalid pl/tool_num/user_num");
     return rclcpp_action::GoalResponse::REJECT;
   }
   if (!std::isfinite(goal->timeout_sec) || goal->timeout_sec > kMaxActionTimeoutSec)
@@ -511,17 +499,26 @@ void MotionActionServers::execute_move_impl(const std::shared_ptr<GoalHandleMove
   const auto max_age = std::chrono::milliseconds(3 * node_.state_stream_interval_ms());
   const auto read_stream = [&](int channel, std::vector<double>& values)
   {
-    uint64_t seq = 0;
-    std::chrono::steady_clock::time_point received_at;
-    return node_.session().is_state_frame_fresh(channel, max_age) &&
-           node_.session().get_state_values(channel, values, seq, received_at);
+    arm_client::StateFrame frame;
+    if (!node_.session().is_state_frame_fresh(channel, max_age) || !node_.session().get_state_frame(channel, frame))
+    {
+      return false;
+    }
+    const std::size_t count = channel == 1 ? frame.acs_count : frame.mcs_count;
+    if (count == 0)
+    {
+      return false;
+    }
+    const auto& source = channel == 1 ? frame.acs : frame.mcs;
+    values.assign(source.begin(), source.begin() + count);
+    return true;
   };
 
   std::vector<double> start_acs;
   std::vector<double> start_mcs;
   const bool acs_start_fresh = read_stream(1, start_acs);
   const bool mcs_start_fresh = read_stream(2, start_mcs);
-  // 流不可用时用同步查询补起始位姿；否则位姿判据不可用（poll 回滚模式）。
+  // 流不可用时用同步查询补起始位姿；否则位姿判据不可用。
   if (!acs_start_fresh)
   {
     sample_position(fd, tl::Coord::JOINT, start_acs);
@@ -549,7 +546,7 @@ void MotionActionServers::execute_move_impl(const std::shared_ptr<GoalHandleMove
   const double timeout_sec = goal->timeout_sec > 0.0 ? goal->timeout_sec : node_.motion_action_timeout();
   const auto started = std::chrono::steady_clock::now();
   auto last_feedback = started;
-  auto last_sample = started - kSdkSamplePeriod; // 首轮立即采样，避免 poll 模式前 200 ms 无位姿
+  auto last_sample = started - kSdkSamplePeriod; // 首轮立即采样，避免同步采样前 200 ms 无位姿
   // 保留最近一次有效位姿；单次查询失败时不能清空，否则反馈与目标判定会随机失效。
   std::vector<double> current_acs;
   std::vector<double> current_mcs;

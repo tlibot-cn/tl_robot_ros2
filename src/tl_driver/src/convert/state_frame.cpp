@@ -69,21 +69,23 @@ bool to_channel(const Json& value, int& channel)
   return false;
 }
 
-/// @brief 数组转 double 向量；控制器可能把数值序列化为字符串。
-bool to_vector(const Json& value, std::vector<double>& out)
+/// @brief 数组写入定长轴缓冲；控制器可能把数值序列化为字符串。
+/// @param[out] out 已预填 NaN 的定长数组
+/// @param[out] count 有效元素个数
+/// @return 元素均为有限数值且不超过 `kMaxStateAxes` 时为 true
+bool to_axes(const Json& value, std::array<double, kMaxStateAxes>& out, std::size_t& count)
 {
-  if (!value.is_array())
+  if (!value.is_array() || value.size() > kMaxStateAxes)
   {
     return false;
   }
 
-  out.clear();
-  out.reserve(value.size());
+  std::size_t index = 0;
   for (const auto& item : value)
   {
     if (item.is_number())
     {
-      out.push_back(item.get<double>());
+      out[index++] = item.get<double>();
       continue;
     }
     if (item.is_string())
@@ -97,7 +99,7 @@ bool to_vector(const Json& value, std::vector<double>& out)
         {
           return false;
         }
-        out.push_back(parsed);
+        out[index++] = parsed;
         continue;
       }
       catch (const std::exception&)
@@ -107,6 +109,7 @@ bool to_vector(const Json& value, std::vector<double>& out)
     }
     return false;
   }
+  count = index;
   return true;
 }
 } // namespace
@@ -138,11 +141,11 @@ bool parse_robot_state_frame(const std::string& message, RobotStateFrameData& ou
   {
     return false;
   }
-  if (acs_field != nullptr && !to_vector(*acs_field, parsed.acs))
+  if (acs_field != nullptr && !to_axes(*acs_field, parsed.acs, parsed.acs_count))
   {
     return false;
   }
-  if (mcs_field != nullptr && !to_vector(*mcs_field, parsed.mcs))
+  if (mcs_field != nullptr && !to_axes(*mcs_field, parsed.mcs, parsed.mcs_count))
   {
     return false;
   }
@@ -150,21 +153,23 @@ bool parse_robot_state_frame(const std::string& message, RobotStateFrameData& ou
   // 不一致的帧若被接受，会让看门狗误判“通道健康”，对应话题却永远无数据。
   if (parsed.channel == 1)
   {
-    if (parsed.acs.empty())
+    if (parsed.acs_count == 0)
     {
       return false;
     }
-    parsed.mcs.clear();
+    parsed.mcs_count = 0;
+    parsed.mcs = invalid_axes();
   }
   else if (parsed.channel == 2)
   {
-    if (parsed.mcs.empty())
+    if (parsed.mcs_count == 0)
     {
       return false;
     }
-    parsed.acs.clear();
+    parsed.acs_count = 0;
+    parsed.acs = invalid_axes();
   }
-  else if (parsed.acs.empty() && parsed.mcs.empty())
+  else if (parsed.acs_count == 0 && parsed.mcs_count == 0)
   {
     return false;
   }

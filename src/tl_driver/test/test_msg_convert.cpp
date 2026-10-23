@@ -26,14 +26,16 @@ TEST(MsgConvert, ToMoveCmdMapsAllFields)
   msg.acc = 33.5;
   msg.dec = 44.5;
   msg.pl = 5;
-  msg.time = 6;
   msg.tool_num = 7;
   msg.user_num = 8;
-  msg.posidtype = 9;
-  msg.configuration = 10;
-  msg.spin = 11;
   msg.para_sync = true;
-  msg.target_pos_value = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.0};
+  msg.target_pos_value.fill(0.0);
+  msg.target_pos_value[0] = 1.0;
+  msg.target_pos_value[1] = 2.0;
+  msg.target_pos_value[2] = 3.0;
+  msg.target_pos_value[3] = 4.0;
+  msg.target_pos_value[4] = 5.0;
+  msg.target_pos_value[5] = 6.0;
 
   const tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(msg, tl_driver::convert::MotionKind::kLinear);
 
@@ -45,14 +47,15 @@ TEST(MsgConvert, ToMoveCmdMapsAllFields)
   EXPECT_DOUBLE_EQ(cmd.acc, 33.5);             // 百分比不换算
   EXPECT_DOUBLE_EQ(cmd.dec, 44.5);
   EXPECT_EQ(cmd.pl, 5);
-  EXPECT_EQ(cmd.time, 6);
+  // 已从消息中删除的字段按控制器默认语义硬编码。
+  EXPECT_EQ(cmd.time, 0);
   EXPECT_EQ(cmd.toolNum, 7);
   EXPECT_EQ(cmd.userNum, 8);
-  EXPECT_EQ(cmd.posidtype, 9);
-  EXPECT_EQ(cmd.configuration, 10);
-  EXPECT_EQ(cmd.spin, 11);
+  EXPECT_EQ(cmd.posidtype, 0);
+  EXPECT_EQ(cmd.configuration, 0);
+  EXPECT_EQ(cmd.spin, 0);
   EXPECT_EQ(cmd.parasync, true);
-  ASSERT_EQ(cmd.targetPosValue.size(), msg.target_pos_value.size());
+  ASSERT_EQ(cmd.targetPosValue.size(), 14u);
   // 笛卡尔坐标：前 3 位 m → mm，姿态 rad 原值
   EXPECT_DOUBLE_EQ(cmd.targetPosValue[0], 1000.0);
   EXPECT_DOUBLE_EQ(cmd.targetPosValue[1], 2000.0);
@@ -68,7 +71,9 @@ TEST(MsgConvert, ToMoveCmdConvertsJointRadiansToDegrees)
   MoveCommand msg;
   msg.coord = 0;
   msg.velocity = 50.0;
-  msg.target_pos_value = {M_PI, -M_PI / 2.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  msg.target_pos_value.fill(0.0);
+  msg.target_pos_value[0] = M_PI;
+  msg.target_pos_value[1] = -M_PI / 2.0;
 
   const tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(msg, tl_driver::convert::MotionKind::kJoint);
 
@@ -78,11 +83,14 @@ TEST(MsgConvert, ToMoveCmdConvertsJointRadiansToDegrees)
   EXPECT_DOUBLE_EQ(cmd.targetPosValue[2], 0.0);
 }
 
-TEST(MsgConvert, ToMoveCmdOnDefaultMessageKeepsEmptyTarget)
+TEST(MsgConvert, ToMoveCmdOnDefaultMessageKeepsZeroTarget)
 {
   const MoveCommand msg;
   const tl::MoveCmd cmd = tl_driver::convert::to_move_cmd(msg, tl_driver::convert::MotionKind::kJoint);
-  EXPECT_TRUE(cmd.targetPosValue.empty());
+  // 定长 14 维始终存在，未填写的位置为 0。
+  ASSERT_EQ(cmd.targetPosValue.size(), 14u);
+  EXPECT_DOUBLE_EQ(cmd.targetPosValue[0], 0.0);
+  EXPECT_DOUBLE_EQ(cmd.targetPosValue[13], 0.0);
   EXPECT_EQ(cmd.toolNum, 0);
   EXPECT_DOUBLE_EQ(cmd.velocity, 0.0);
 }

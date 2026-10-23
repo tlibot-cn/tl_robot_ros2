@@ -74,7 +74,6 @@ ros2 service call /tl_driver/get_current_mode tl_ros2_interface/srv/GetCurrentMo
 ```bash
 ros2 action send_goal /tl_driver/move_joint tl_ros2_interface/action/Move "{
   command: {
-    target_pos_type: 0,
     target_pos_value: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
     coord: 0,
@@ -91,7 +90,6 @@ ros2 action send_goal /tl_driver/move_joint tl_ros2_interface/action/Move "{
 ```bash
 ros2 action send_goal /tl_driver/move_linear tl_ros2_interface/action/Move "{
   command: {
-    target_pos_type: 0,
     target_pos_value: [0.2793, 0.0, 0.4716, 3.1414, 0.0, 0.0,
                        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
     coord: 1,
@@ -272,10 +270,9 @@ ros2 service call /tl_driver/set_axis_zero_pos tl_ros2_interface/srv/SetAxisZero
 ros2 service call /tl_driver/track_save tl_ros2_interface/srv/TrackSave "{traj_name: 'traj1'}"
 ```
 
-### `/tl_driver/track_playback` — `TrackPlayback`（vel）
-```bash
-ros2 service call /tl_driver/track_playback tl_ros2_interface/srv/TrackPlayback "{vel: 50}"
-```
+> 轨迹回放已迁移到 `/tl_driver/play_track` action（`TrackPlayback` 服务已删除）：
+> `ros2 action send_goal /tl_driver/play_track tl_ros2_interface/action/PlayTrack "{
+> vel: 50, timeout_sec: 600.0}" --feedback`
 
 ---
 
@@ -300,7 +297,7 @@ ros2 service call /tl_driver/queue_motion_set_status tl_ros2_interface/srv/Queue
 ```bash
 ros2 service call /tl_driver/queue_motion_movej tl_ros2_interface/srv/QueueMotionMoveJ "{
   is_continue: false,
-  cmd: {target_pos_type: 0, target_pos_value: [20.0,10.0,-10.0,0.0,0.0,0.0,0.0], coord: 0, velocity: 30.0, acc: 20.0, dec: 20.0, pl: 0}
+  cmd: {target_pos_value: [20.0,10.0,-10.0,0.0,0.0,0.0,0.0, 0.0,0.0,0.0,0.0,0.0,0.0,0.0], coord: 0, velocity: 30.0, acc: 20.0, dec: 20.0, pl: 0}
 }"
 ```
 

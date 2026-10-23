@@ -138,21 +138,19 @@ MedicalDemo::MoveCommand MedicalDemo::buildMoveL(const std::string& pos_key, dou
   const auto& pos = POSITIONS.at(pos_key);
 
   MoveCommand msg;
-  msg.target_pos_value = pos;
-  msg.target_pos_name = "";
-  msg.target_pos_type = 0; // 自定义数组模式
-  msg.coord = 1;           // 直角坐标系
+  msg.target_pos_value.fill(0.0);
+  for (size_t i = 0; i < pos.size() && i < msg.target_pos_value.size(); ++i)
+  {
+    msg.target_pos_value[i] = pos[i];
+  }
+  msg.coord = 1; // 直角坐标系
   msg.velocity = velocity;
   msg.velocity_sync = 0.0;
   msg.acc = 20.0; // 加减速度百分比
   msg.dec = 20.0;
   msg.pl = 0; // 精确到达
-  msg.time = 0;
   msg.tool_num = 0;
   msg.user_num = 0;
-  msg.posidtype = 0;
-  msg.configuration = 0;
-  msg.spin = 0;
   msg.para_sync = false;
   return msg;
 }

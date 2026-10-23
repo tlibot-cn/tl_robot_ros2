@@ -1,5 +1,0 @@
-# 轨迹回放
-int32 vel   # 回放速度百分比（SDK 未标注单位，按控制器口径 1~100）
----
-bool success
-string message

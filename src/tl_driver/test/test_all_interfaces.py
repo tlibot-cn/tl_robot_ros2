@@ -21,7 +21,7 @@ test_all_interfaces.py
 
 危险接口（会触发运动、改动标定/IP、删除文件等）默认跳过，仅打印提示：
   move_joint / move_linear action / start_jogging / queue_motion_movej / open_servoj /
-  track_playback / set_axis_zero_pos / set_controller_ip / set_default_cartesian_param
+  track_save / set_axis_zero_pos / set_controller_ip / set_default_cartesian_param
 
 @usage
   方式一（推荐，需已 source install/setup.bash）:
@@ -122,7 +122,6 @@ from tl_ros2_interface.srv import (
     SetSpeed,
     SetToolParam,
     SetUserCoord,
-    TrackPlayback,
     TrackSave,
 )
 
@@ -354,13 +353,10 @@ class DriverQuickTest(Node):
         cli = self.wait_service("/tl_driver/clear_error", Trigger)
         self.call_trigger(cli, "clear_error")
 
-        # 危险：start_jogging / track_playback
+        # 危险：start_jogging
         cli = self.wait_service("/tl_driver/start_jogging", Jogging, timeout_s=1.0)
         if cli:
             self.skip("start_jogging", "会触发运动")
-        cli = self.wait_service("/tl_driver/track_playback", TrackPlayback, timeout_s=1.0)
-        if cli:
-            self.skip("track_playback", "会触发运动")
 
     def test_mode_io(self):
         self.logger.info("\n========== §12 模式与 IO ==========")

@@ -25,11 +25,17 @@
 |V1.16 | 2026-10-22 | 查询类接口话题化：删除 `get_speed`、`get_robot_state`、`get_joint_temperature`、`get_joint_voltage`、`get_motor_current`、`get_joint_software_version`、`get_current_motor_torque`、`get_current_line_joint_speed`；删除 `io_state` 话题（数字 IO 读写统一走服务）；删除 `set_robot_joint_param`；力矩单位统一为额定扭矩千分之一（‰）|
 |V1.17 | 2026-10-23 | 文档更名《tl_driver接口说明书》：第 16 章解散，状态流与回滚参数并入 15.4、诊断话题说明并入 4.8/4.10、运动 Action 并入第 7 章 |
 |V1.18 | 2026-10-23 | 第 7 章由「实时运动控制接口」更名为「运动控制接口」；删除 `/tl_driver/moveJ`、`/tl_driver/moveL` 话题及 7.1/7.2 章节，运动 Action 章节改为 7.1/7.2 |
+|V1.19 | 2026-10-23 | `MoveCommand` 裁剪 6 个未使用字段并改定长 14 维；`JointDynamics`/`JointThermal` 定长数组 + NaN 语义（力矩改 float64）；删除 `state_source=poll` 与 `publish_rate`，`/arm_status` 随 10 Hz 查询发布；新增 `executor_threads`；补充接口矩阵与移除清单（第 16 章） |
+|V1.20 | 2026-10-23 | 删除 `/tl_driver/track_playback` 服务与 `TrackPlayback.srv`，轨迹回放统一走 `/tl_driver/play_track` action（服务数 36 → 35） |
 
 </div>
 
 ## 目录
+
+> 编号说明：章号与小节号沿用历史发布，删除的接口不再复用编号（2.1/2.2、3、4.12/4.16、5.3/5.4、11 等空缺即为已下线项），以免破坏外部既有引用。完整的接口总表与移除清单见 [16 接口矩阵与移除清单](#16-接口矩阵与移除清单)。
+
 * [1 通用约定](#1-通用约定)
+  * [1.5 接口条目与 QoS 约定](#15-接口条目与-qos-约定)
 * [2 连接管理接口](#2-连接管理接口)
   * [2.3 机械臂上电](#23-机械臂上电)
   * [2.4 机械臂下电](#24-机械臂下电)
@@ -92,7 +98,10 @@
   * [15.1 打开关节跟踪模式](#151-打开关节跟踪模式)
   * [15.2 关闭关节跟踪模式](#152-关闭关节跟踪模式)
   * [15.3 发送跟踪关节位置](#153-发送跟踪关节位置)
-  * [15.4 状态流与回滚参数](#154-状态流与回滚参数)
+  * [15.4 状态流参数](#154-状态流参数)
+* [16 接口矩阵与移除清单](#16-接口矩阵与移除清单)
+  * [16.1 接口总矩阵](#161-接口总矩阵)
+  * [16.2 已移除接口](#162-已移除接口)
 
 
 ## 1 通用约定
@@ -135,8 +144,20 @@
 | 温度 / 电压 / 电流 | ℃ / V / A | SDK 头未标注温度、电压；电流 SDK 头标 ‰，与本仓 A 口径不符 |
 
 - `MoveCommand.velocity`：MOVJ 为 %（0<v≤100）；MOVL 为 m/s（0<v≤1）。
-- `target_pos_type` 是点位类型（PosType），**不携带单位制**；`target_pos_value` 的布局与单位换算规则见 `MoveCommand.msg` 文件头。
+- `target_pos_value` 为定长 14 维，布局与单位换算规则见 `MoveCommand.msg` 文件头；点位类型固定为 `PosType::data`，消息中不再暴露 `target_pos_type`。
 - `/tl_driver/set_servoj_pos` 的 `data` 为 rad，**固定 7 元素**（6 轴末位补 0）。
+
+### 1.5 接口条目与 QoS 约定
+
+每个接口条目按固定顺序描述：名称与方向（话题/服务/action）、频率（静态话题标注，服务为事件驱动）、QoS、字段与单位、成功/失败语义、替代或移除关系、可复制命令。QoS 统一如下，条目内不再重复：
+
+| 类别 | QoS |
+| :---- | :---- |
+| 服务与 action | `rmw_qos_profile_services_default` |
+| `/joint_states`、`/tcp_pose`、`/arm_status` | `KeepLast(10)`，reliable |
+| `/tl_driver/joint_dynamics`、`/tl_driver/joint_thermal` | `KeepLast(1)`，reliable，`transient_local` |
+
+> 服务失败统一返回 `success=false` + `message`，不抛异常；话题无帧时停止发布，不重复发送过期值。
 
 ---
 ## 2 连接管理接口
@@ -247,7 +268,7 @@ ros2 topic echo /tcp_pose
 | speed | float64 | % | 0～100 | 当前全局运行速度；驱动以 1 Hz 查询并缓存 |
 | speed_valid | bool | — | — | `true` = 最近一次速度查询成功；`false` = 查询失败，`speed` 保持上次值 |
 
-> 服务 `/tl_driver/get_speed` 已删除；查询失败不会阻塞 100 Hz 的 `/arm_status` 发布，只把 `speed_valid` 置 `false`。
+> 服务 `/tl_driver/get_speed` 已删除；查询失败不会阻塞 `/arm_status` 的 10 Hz 发布，只把 `speed_valid` 置 `false`。
 #### 命令示例
 ```
 ros2 topic echo /arm_status --field speed
@@ -368,9 +389,11 @@ ros2 service call /tl_driver/get_robot_joint_param tl_ros2_interface/srv/GetRobo
 **输出/返回值**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| temperature | float64[] | ℃ | 各关节电机当前温度，数组长度 = 关节数 |
-| joint_voltage | float64[] | V | 机械臂本体各关节电压 |
-| positioner_voltage | float64[] | V | 外部轴各关节电压 |
+| temperature | float64[7] | ℃ | 各关节电机当前温度，定长 7；缺失元素为 NaN |
+| joint_voltage | float64[7] | V | 机械臂本体各关节电压，定长 7；缺失元素为 NaN |
+| positioner_voltage | float64[5] | V | 外部轴各关节电压，定长 5；缺失元素为 NaN |
+
+> 数组定长，查询失败或数据不足时缺失元素为 `quiet_NaN()`，消费方用 `std::isnan()` 判定，不再用空数组表示失败。
 
 > 默认 1 Hz（`joint_thermal_rate`，取 0 关闭）。温度/电压由同一次 SDK 查询产生，因此放在同一话题；单次查询约 150–350 ms，频率上限 1 Hz。`joint_thermal` 与 `joint_dynamics` 均为 `reliable` + `transient_local` + depth 1；每次热状态发布单独占用热状态回调组，不阻塞 `/joint_states`、`/tcp_pose` 的独立发布线程。服务 `/tl_driver/get_joint_temperature`、`/tl_driver/get_joint_voltage` 已删除。
 #### 命令示例
@@ -387,8 +410,8 @@ ros2 topic echo /tl_driver/joint_thermal --once
 **输出/返回值**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| joint_voltage | float64[] | V | 机械臂本体各关节电压 |
-| positioner_voltage | float64[] | V | 外部轴各关节电压 |
+| joint_voltage | float64[7] | V | 机械臂本体各关节电压，定长 7；缺失元素为 NaN |
+| positioner_voltage | float64[5] | V | 外部轴各关节电压，定长 5；缺失元素为 NaN |
 
 #### 命令示例
 ```
@@ -408,8 +431,8 @@ ros2 topic echo /tl_driver/joint_thermal --field positioner_voltage
 **输出/返回值**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| motor_current | float64[] | A | 机器人本体 7 轴电机电流 |
-| motor_current_sync | float64[] | A | 外部轴同步电机电流 |
+| motor_current | float64[7] | A | 机器人本体 7 轴电机电流；缺失元素为 NaN |
+| motor_current_sync | float64[5] | A | 外部轴同步电机电流；缺失元素为 NaN |
 
 > 默认 10 Hz（`joint_dynamics_rate`，取 0 关闭）。`joint_dynamics` 与 `joint_thermal` 均为 `reliable` + `transient_local` + depth 1。服务 `/tl_driver/get_motor_current` 已删除；数字 IO 不发布话题，读写分别使用 `get_digital_input_output` / `set_digital_output` 服务。
 #### 命令示例
@@ -533,7 +556,7 @@ ros2 service call /tl_driver/get_pos_reachable tl_ros2_interface/srv/GetPosReach
 | speed | float64 | 全局运行速度 %（1 Hz 查询缓存） |
 | speed_valid | bool | 速度字段是否有效 |
 
-> 运行状态以 10 Hz 查询并缓存，100 Hz 定时器只发布缓存值；查询失败时沿用上一次状态，不阻塞发布。
+> 运行状态以 10 Hz 查询，每次查询成功后直接发布 `/arm_status`（约 10 Hz）；查询失败时该周期不发布，避免发布过期状态。
 #### 命令示例
 ```
 ros2 topic echo /arm_status
@@ -552,8 +575,8 @@ ros2 topic echo /arm_status
 **输出/返回值**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| motor_torque | int32[] | ‰ 额定扭矩 | 机械臂本体当前各电机力矩（千分之一额定扭矩，数组长度 7） |
-| motor_torque_sync | int32[] | ‰ 额定扭矩 | 同步轴当前各电机力矩（数组长度 5） |
+| motor_torque | float64[7] | ‰ 额定扭矩 | 机械臂本体当前各电机力矩（千分之一额定扭矩，定长 7）；缺失元素为 NaN |
+| motor_torque_sync | float64[5] | ‰ 额定扭矩 | 同步轴当前各电机力矩（定长 5）；缺失元素为 NaN |
 
 > **单位**：力矩是额定扭矩的千分之一（‰），±1000 对应 ±100% 额定扭矩；不是 N·m，也不是百分比。服务 `/tl_driver/get_current_motor_torque` 已删除。
 #### 命令示例
@@ -573,9 +596,9 @@ ros2 topic echo /tl_driver/joint_dynamics --field motor_torque --once
 **输出/返回值**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
-| line_speed | float64 | m/s | 当前末端线速度 |
-| joint_speed | float64[] | rad/s | 机械臂本体当前各关节速度，数组长度 7 |
-| joint_speed_sync | float64[] | rad/s | 同步轴当前各关节速度，数组长度 5 |
+| line_speed | float64 | m/s | 当前末端线速度；查询失败为 NaN |
+| joint_speed | float64[7] | rad/s | 机械臂本体当前各关节速度，定长 7；缺失元素为 NaN |
+| joint_speed_sync | float64[5] | rad/s | 同步轴当前各关节速度，定长 5；缺失元素为 NaN |
 
 > 服务 `/tl_driver/get_current_line_joint_speed` 已删除。
 #### 命令示例
@@ -696,22 +719,18 @@ ros2 service call /tl_driver/coord_transform tl_ros2_interface/srv/CoordTransfor
 
 | 字段名 | 类型 | 单位 | 范围 | 说明 |
 |--------|------|------|------|------|
-| target_pos_value | float64[] | rad / m | — | 14 维（与 SDK `MoveCmd::targetPosValue` 一致）：前 7 位本体、后 7 位外部轴。`coord=0` 时 [0..6] 为关节角（rad）；`coord=1/2/3` 时 [0]X(m) [1]Y(m) [2]Z(m) [3]RX(rad) [4]RY(rad) [5]RZ(rad) [6]冗余臂角(rad)；[7..13] 外部轴按 SDK 原值透传 |
-| target_pos_name | string | — | — | 内置点位名，如 `"GP0001"`（`target_pos_type=5/6` 时使用） |
-| target_pos_type | int32 | — | 0～6 | 点位类型 PosType：0=自定义数组 1=P 2=E 3=RP 4=AP 5=系统内置GP 6=含外部轴的GE |
+| target_pos_value | float64[14] | rad / m | — | 定长 14 维（与 SDK `MoveCmd::targetPosValue` 一致）：前 7 位本体、后 7 位外部轴。`coord=0` 时 [0..6] 为关节角（rad）；`coord=1/2/3` 时 [0]X(m) [1]Y(m) [2]Z(m) [3]RX(rad) [4]RY(rad) [5]RZ(rad) [6]冗余臂角(rad)；[7..13] 外部轴按 SDK 原值透传 |
 | coord | int32 | — | 0～3 | 坐标系：0=关节（rad），1=直角，2=工具，3=用户（1/2/3 时位置 m、姿态 rad） |
 | velocity | float64 | % / m/s | — | MOVJ 为 %（0<v≤100）；MOVL 为 m/s（0<v≤1）；队列接口同此口径 |
 | velocity_sync | float64 | % / m/s | — | 外部轴同步速度：与 velocity 同口径（MOVJ %；MOVL m/s） |
 | acc | float64 | % | (0,100] | 加速度百分比 |
 | dec | float64 | % | (0,100] | 减速度百分比 |
 | pl | int32 | — | 0～5 | 平滑过渡等级：0=精确到达，非百分比 |
-| time | int32 | — | — | 提前执行时间（SDK 头未标注单位） |
 | tool_num | int32 | — | — | 工具坐标系编号 |
 | user_num | int32 | — | — | 用户坐标系编号 |
-| posidtype | int32 | — | — | 变量类型：0=一级(P/GP) 1=二级(P[I001]/GP[I001]) |
-| configuration | int32 | — | — | 形态配置 |
-| spin | int32 | — | 0～2 | 仅MOVCA指令使用：0=姿态不变，1=六轴不转，2=六轴旋转 |
 | para_sync | bool | — | — | `true` = 外部轴同步，`false` = 不同步 |
+
+> 点位类型固定为自定义数组（`PosType::data`）；`target_pos_name`、`target_pos_type`、`time`、`posidtype`、`configuration`、`spin` 已从消息中删除，驱动按控制器默认值硬编码（0 / 空串）。消息为定长数组，不再有长度校验。
 
 ## 7 运动控制接口
 ### 7.1 运动 Action
@@ -725,7 +744,7 @@ ros2 service call /tl_driver/coord_transform tl_ros2_interface/srv/CoordTransfor
 **Move goal**
 | 字段 | 类型 | 说明 |
 | :---- | :---- | :---- |
-| command | `MoveCommand` | 运动指令；`target_pos_value` 必须为 14 位，`target_pos_type` 必须为 0 |
+| command | `MoveCommand` | 运动指令；`target_pos_value` 为定长 14 维 |
 | timeout_sec | float64 | 超时秒数；<=0 时使用参数 `motion_action_timeout` |
 
 **Move feedback / result**
@@ -770,20 +789,14 @@ ros2 action send_goal /tl_driver/move_joint tl_ros2_interface/action/Move \
 "{command: {
   target_pos_value: [0.0, 0.0, 0.0, 0.0, 0.0, 0.174533, 0.0,
                      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-  target_pos_name: '',
-  target_pos_type: 0,
   coord: 0,
   velocity: 20.0,
   velocity_sync: 0.0,
   acc: 20.0,
   dec: 20.0,
   pl: 0,
-  time: 0,
   tool_num: 0,
   user_num: 0,
-  posidtype: 0,
-  configuration: 0,
-  spin: 0,
   para_sync: false
 }, timeout_sec: 10.0}" --feedback
 ```
@@ -795,10 +808,9 @@ ros2 action send_goal /tl_driver/move_joint tl_ros2_interface/action/Move \
 "{command: {
   target_pos_value: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-  target_pos_name: '', target_pos_type: 0, coord: 0,
+  coord: 0,
   velocity: 20.0, velocity_sync: 0.0, acc: 20.0, dec: 20.0,
-  pl: 0, time: 0, tool_num: 0, user_num: 0,
-  posidtype: 0, configuration: 0, spin: 0, para_sync: false
+  pl: 0, tool_num: 0, user_num: 0, para_sync: false
 }, timeout_sec: 10.0}" --feedback
 ```
 
@@ -811,20 +823,14 @@ ros2 action send_goal /tl_driver/move_linear tl_ros2_interface/action/Move \
 "{command: {
   target_pos_value: [0.2793, 0.0, 0.4716, 3.1414, 0.0, 0.0,
                      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-  target_pos_name: '',
-  target_pos_type: 0,
   coord: 1,
   velocity: 0.01,
   velocity_sync: 0.0,
   acc: 20.0,
   dec: 20.0,
   pl: 0,
-  time: 0,
   tool_num: 0,
   user_num: 0,
-  posidtype: 0,
-  configuration: 0,
-  spin: 0,
   para_sync: false
 }, timeout_sec: 10.0}" --feedback
 ```
@@ -836,14 +842,13 @@ ros2 action send_goal /tl_driver/move_linear tl_ros2_interface/action/Move \
 "{command: {
   target_pos_value: [0.2793, 0.0, 0.4216, 3.1414, 0.0, 0.0,
                      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-  target_pos_name: '', target_pos_type: 0, coord: 1,
+  coord: 1,
   velocity: 0.01, velocity_sync: 0.0, acc: 20.0, dec: 20.0,
-  pl: 0, time: 0, tool_num: 0, user_num: 0,
-  posidtype: 0, configuration: 0, spin: 0, para_sync: false
+  pl: 0, tool_num: 0, user_num: 0, para_sync: false
 }, timeout_sec: 10.0}" --feedback
 ```
 
-> `move_joint` 的 `velocity` 是百分比，`move_linear` 的 `velocity` 是 m/s；`target_pos_type` 必须为 0，数组长度不是 14 时 goal 会被直接拒绝。两个 action 的 cancel 都会被拒绝，测试时如遇异常直接拍急停。
+> `move_joint` 的 `velocity` 是百分比，`move_linear` 的 `velocity` 是 m/s；`target_pos_value` 为定长 14 维，`move_joint` 要求 `coord=0`、`move_linear` 要求 `coord=1`，非有限值会被拒绝。两个 action 的 cancel 都会被拒绝，测试时如遇异常直接拍急停。
 
 ## 8 坐标系与工具管理接口
 ### 8.1 设置工具手参数
@@ -1097,25 +1102,29 @@ ros2 service call /tl_driver/get_drag_status std_srvs/srv/Trigger "{}"
 ros2 service call /tl_driver/track_save tl_ros2_interface/srv/TrackSave "{traj_name: 'traj_test'}"
 ```
 ### 9.6 拖拽轨迹回放
-| 功能描述 | 回放已保存的拖拽轨迹 |
+| 功能描述 | 回放已保存的拖拽轨迹（已迁移到 `/tl_driver/play_track` action） |
 | :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/track_playback` |
-| 服务类型 | `tl_ros2_interface/srv/TrackPlayback` |
+| 通信机制 | ROS2 Action |
+| Action 名 | `/tl_driver/play_track` |
+| Action 类型 | `tl_ros2_interface/action/PlayTrack` |
+| 服务状态 | `/tl_driver/track_playback`（`TrackPlayback.srv`）已删除 |
 
 **输入参数**
 | 参数名 | 类型 | 单位 | 范围 | 说明 |
 |--------|------|------|------|------|
 | vel | int32 | % | 1～100 | 轨迹回放速度百分比 |
+| timeout_sec | float64 | s | ≤3600 | 超时；<=0 时取参数 `track_action_timeout`（默认 600 s） |
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
-| success | bool | `true` = 回放成功，`false` = 回放失败 |
-| message | string | 失败时包含错误描述 |
+| success | bool | result 中的最终结果 |
+| message | string | 失败原因或完成说明 |
+
+> 回放是秒级到分钟级长任务，Action 额外提供超时、进度反馈与运动互斥；cancel 因 SDK 无回放停止接口而显式拒绝。
 #### 命令示例
 ```
-ros2 service call /tl_driver/track_playback tl_ros2_interface/srv/TrackPlayback "{vel: 20}"
+ros2 action send_goal /tl_driver/play_track tl_ros2_interface/action/PlayTrack "{vel: 20, timeout_sec: 600.0}" --feedback
 ```
 ## 10 错误处理与零位标定接口
 ### 10.1 清除错误
@@ -1500,9 +1509,9 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 }"
 ```
 
-### 15.4 状态流与回滚参数
+### 15.4 状态流参数
 
-驱动连接成功后，在 7000 端口启动两个连续反馈通道，回调只解析并写快照；`/joint_states`、`/tcp_pose` 由帧通知唤醒的独立发布线程直接发布，不再经过 100 Hz 定时器，因此不受 6001 端口同步查询阻塞。`/arm_status` 由 10 Hz 查询缓存、100 Hz 定时器只发布缓存值。
+驱动连接成功后，在 7000 端口启动两个连续反馈通道，回调只解析并写快照；`/joint_states`、`/tcp_pose` 由帧通知唤醒的独立发布线程直接发布，不经过执行器或 6001 端口的同步查询。`/arm_status` 在每次 10 Hz 运行状态查询成功后发布。
 
 | 通道 | 请求 | 数据源 | 用途 |
 | :---- | :---- | :---- | :---- |
@@ -1511,9 +1520,108 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 
 | 参数 | 默认 | 范围 | 说明 |
 | :---- | ----: | :---- | :---- |
-| `state_source` | `stream` | `stream` / `poll` | `poll` 回退旧的同步查询路径（启动时生效） |
 | `state_stream_interval_ms` | 10 | 10–60000 | 连续反馈间隔 |
+| `executor_threads` | 8 | 1–64 | 执行器线程数；默认 `max(4, min(hardware_concurrency, 8))`，阻塞 I/O 场景可调到 16 |
 
-> 两个通道独立降级：某通道连续失效 3 s 后只有该通道改用同步查询（20 Hz），恢复连续 1 s 后切回状态流，另一通道不受影响。1 Hz 看门狗在通道超过 3×`state_stream_interval_ms` 无新帧时重发 `mode=1`（前 3 s 每秒一次，之后每 5 s 一次），3 次仍无新帧记录故障告警。`state_source=poll` 时两个通道都走同步查询，发布频率为 20 Hz。运行状态（`/arm_status`）由独立 10 Hz 定时器查询并缓存，运行速度由 1 Hz 定时器查询并写入同一缓存；100 Hz 定时器只发布缓存，查询不再进入 100 Hz 路径。
+> 状态流没有同步查询回退路径：某通道无新帧时对应话题停止发布（保持静默而不是发布过期值），1 Hz 看门狗在通道超过 3×`state_stream_interval_ms` 无新帧时重发 `mode=1`（前 3 s 每秒一次，之后每 5 s 一次），连续 3 s 无新帧记录故障告警。运行状态由 10 Hz 定时器查询，查询成功即发布 `/arm_status`；查询失败时该周期不发布（节流 WARN），不会用缓存值兜底。运行速度由 1 Hz 定时器查询并写入同一消息的 `speed` / `speed_valid`。
 >
 > 诊断话题频率参数 `joint_dynamics_rate` / `joint_thermal_rate` 见 [4.8](#48-查询关节温度)、[4.10](#410-查询电机电流)；运动 action 超时参数见 [7.1](#71-运动-action)。
+
+## 16 接口矩阵与移除清单
+
+### 16.1 接口总矩阵
+
+**话题**
+
+| 接口 | 类型 | 频率 | 字段单位 | 状态 |
+| :---- | :---- | :---- | :---- | :---- |
+| `/joint_states` | `sensor_msgs/msg/JointState` | 7000 帧率（默认 100 Hz） | position rad | 稳定 |
+| `/tcp_pose` | `CartesianPose` | 7000 帧率（默认 100 Hz） | position m、rpy rad | 稳定 |
+| `/arm_status` | `ArmStatus` | 10 Hz（每次状态查询成功） | speed % | 稳定 |
+| `/tl_driver/joint_dynamics` | `JointDynamics` | `joint_dynamics_rate`（默认 10 Hz） | m/s、rad/s、A、‰ | 稳定 |
+| `/tl_driver/joint_thermal` | `JointThermal` | `joint_thermal_rate`（默认 1 Hz） | ℃、V | 稳定 |
+| `/tl_driver/set_servoj_pos` | `std_msgs/msg/Float64MultiArray` | 事件驱动（≤250 Hz） | rad（6 或 7 元素） | 稳定 |
+
+**Action**
+
+| 接口 | 类型 | 频率 | 参数单位 | 状态 |
+| :---- | :---- | :---- | :---- | :---- |
+| `/tl_driver/move_joint` | `Move` | 事件驱动 | 关节 rad、速度 % | 稳定 |
+| `/tl_driver/move_linear` | `Move` | 事件驱动 | 位置 m、姿态 rad、速度 m/s | 稳定 |
+| `/tl_driver/play_track` | `PlayTrack` | 事件驱动 | 速度 % | 稳定 |
+
+**服务（35 个）**
+
+| 接口 | 类型 | 领域 | 单位/说明 | 状态 |
+| :---- | :---- | :---- | :---- | :---- |
+| `/tl_driver/power_on` | `Trigger` | session | 上电 | 稳定 |
+| `/tl_driver/power_off` | `Trigger` | session | 下电 | 稳定 |
+| `/tl_driver/get_controller_id` | `Trigger` | session | 控制器序列号 | 稳定 |
+| `/tl_driver/get_library_version` | `Trigger` | session | SDK 版本 | 稳定 |
+| `/tl_driver/set_controller_ip` | `SetControllerIP` | session | IP | 稳定 |
+| `/tl_driver/set_default_cartesian_param` | `Trigger` | config | 默认笛卡尔参数 | 稳定 |
+| `/tl_driver/set_drag_mode` | `SetDragMode` | config | 拖拽模式 | 稳定 |
+| `/tl_driver/get_dh_param` | `GetDHParam` | config | rad、m | 稳定 |
+| `/tl_driver/get_robot_joint_param` | `GetRobotJointParam` | config | rad、m、rad/s、rad/s² | 稳定 |
+| `/tl_driver/set_tool_param` | `SetToolParam` | config | m、rad、kg | 稳定 |
+| `/tl_driver/set_user_coord` | `SetUserCoord` | config | m、rad | 稳定 |
+| `/tl_driver/set_axis_zero_pos` | `SetAxisZeroPos` | config | rad | 稳定 |
+| `/tl_driver/set_coord_num` | `SetCoordNum` | config | 编号 | 稳定 |
+| `/tl_driver/get_coord_num` | `GetCoordNum` | config | 编号 | 稳定 |
+| `/tl_driver/get_pos_reachable` | `GetPosReachable` | config | 14 维协议包，原样透传 | 稳定 |
+| `/tl_driver/set_digital_output` | `SetDigitalOutput` | io | 数字输出 | 稳定 |
+| `/tl_driver/get_digital_input_output` | `GetDigitalInputOutput` | io | 数字输入输出 | 稳定 |
+| `/tl_driver/modbus_write` | `ModbusWrite` | io | Modbus | 稳定 |
+| `/tl_driver/modbus_read` | `ModbusRead` | io | Modbus | 稳定 |
+| `/tl_driver/set_speed` | `SetSpeed` | motion | % | 稳定 |
+| `/tl_driver/start_jogging` | `Jogging` | motion | rad/s、rad/s² | 稳定 |
+| `/tl_driver/stop_jogging` | `Jogging` | motion | — | 稳定 |
+| `/tl_driver/track_save` | `TrackSave` | motion | — | 稳定 |
+| `/tl_driver/open_servoj` | `OpenServoJ` | motion | rad/s、rad/s²、rad/s³ | 稳定 |
+| `/tl_driver/close_servoj` | `Trigger` | motion | — | 稳定 |
+| `/tl_driver/queue_motion_set_status` | `QueueMotionSetStatus` | motion | — | 稳定 |
+| `/tl_driver/queue_motion_movej` | `QueueMotionMoveJ` | motion | 嵌套 `MoveCommand` | 稳定 |
+| `/tl_driver/queue_motion_stop` | `Trigger` | motion | — | 稳定 |
+| `/tl_driver/set_current_mode` | `SetCurrentMode` | state | 模式 | 稳定 |
+| `/tl_driver/get_current_mode` | `GetCurrentMode` | state | 模式 | 稳定 |
+| `/tl_driver/get_drag_status` | `Trigger` | state | 拖拽状态 | 稳定 |
+| `/tl_driver/clear_error` | `Trigger` | state | 清错 | 稳定 |
+| `/tl_driver/coord_transform` | `CoordTransform` | transform | m、rad | 稳定 |
+| `/tl_driver/set_current_coord` | `SetCurrentCoord` | transform | 坐标系类型 | 稳定 |
+| `/tl_driver/get_current_coord` | `GetCurrentCoord` | transform | 坐标系类型 | 稳定 |
+
+> 服务均为请求/响应式，无固定频率；返回统一为 `success` + `message`，业务失败不抛异常。
+
+**消息类型（11 个）**
+
+| 消息 | 用途 | 状态 |
+| :---- | :---- | :---- |
+| `MoveCommand` | `Move` action goal 与 `queue_motion_movej` 的指令载荷 | 稳定 |
+| `Move`（action） | `move_joint` / `move_linear` | 稳定 |
+| `PlayTrack`（action） | `play_track` | 稳定 |
+| `ArmStatus` / `CartesianPose` | `/arm_status` / `/tcp_pose` | 稳定 |
+| `JointDynamics` / `JointThermal` | 诊断话题（定长数组 + NaN） | 稳定 |
+| `RobotDHParam` / `RobotJointParam` / `ToolParam` / `ModbusMasterParam` / `ModbusRTUParam` / `ModbusTCPParam` | 服务嵌套参数 | 稳定 |
+
+### 16.2 已移除接口
+
+| 接口 | 类型 | 替代 | 移除版本 |
+| :---- | :---- | :---- | :---- |
+| `get_quat2rpy`、`get_rpy2quat`、`get_rpy2r`、`get_tr2r`、`get_r2tr` | srv | 消费方本地数学库 | V1.9 |
+| `get_all_job_filename`、`job_run`、`job_delete`、`job_insert_moveJ`、`job_insert_moveL`、`job_insert_imove`、`job_insert_moveC` | srv | 无（非 ROS 驱动职责） | V1.9 |
+| `get_global_pos`、`set_global_pos` | srv | 无 | V1.9 |
+| `get_nexmotion_lib_version`、`set_dh_param`、`restore_default_dh_param`、`log_download` | srv | `get_library_version` / 无 | V1.9 |
+| `connect_arm`、`disconnect_arm` | srv | 节点启动自动连接、退出自动断开 | V1.11 |
+| `get_speed` | srv | `/arm_status.speed` / `speed_valid` | V1.16 |
+| `get_robot_state` | srv | `/joint_states`、`/tcp_pose`、`/arm_status` | V1.16 |
+| `get_joint_temperature`、`get_joint_voltage` | srv | `/tl_driver/joint_thermal` | V1.16 |
+| `get_motor_current`、`get_current_motor_torque`、`get_current_line_joint_speed` | srv | `/tl_driver/joint_dynamics` | V1.16 |
+| `get_joint_software_version` | srv | 启动日志逐轴打印 | V1.16 |
+| `set_robot_joint_param` | srv | 无 | V1.16 |
+| `io_state` | topic | `get_digital_input_output` / `set_digital_output` | V1.16 |
+| `IoState`、`ServolMove`、`JobFileName` | msg | 无 / 本地 IK / 无 | V1.10–V1.16 |
+| `set_servol_pos` | topic | 消费方本地 IK 后走 `set_servoj_pos` | V1.10 |
+| `moveJ`、`moveL` | topic | `move_joint` / `move_linear` action | V1.18 |
+| `track_playback` | srv | `/tl_driver/play_track` action | V1.20 |
+| `state_source`（`poll` 回退） | 参数 | 仅保留 7000 状态流 + 看门狗重试 | 本版本 |
+| `publish_rate` | 参数 | `/arm_status` 随 10 Hz 查询发布 | 本版本 |

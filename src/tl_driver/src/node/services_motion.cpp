@@ -19,7 +19,6 @@
 #include "tl_ros2_interface/srv/queue_motion_move_j.hpp"
 #include "tl_ros2_interface/srv/queue_motion_set_status.hpp"
 #include "tl_ros2_interface/srv/set_speed.hpp"
-#include "tl_ros2_interface/srv/track_playback.hpp"
 #include "tl_ros2_interface/srv/track_save.hpp"
 
 namespace tl_driver
@@ -109,29 +108,6 @@ void handle_track_save_service(DriverNode& node,
   tl::Result ret = tl::track_record_save(node.session().fd(), request->traj_name);
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Track save successfully" : "Failed to save track";
-}
-
-void handle_track_playback_service(DriverNode& node,
-                                   const std::shared_ptr<tl_ros2_interface::srv::TrackPlayback::Request> request,
-                                   std::shared_ptr<tl_ros2_interface::srv::TrackPlayback::Response> response)
-{
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-  if (node.motion_action_active())
-  {
-    response->success = false;
-    response->message = "A motion action is active";
-    return;
-  }
-
-  tl::Result ret = tl::track_record_playback(node.session().fd(), request->vel);
-  node.note_external_motion();
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Track playback successfully" : "Failed to playback track";
 }
 
 void handle_open_servoj_service(DriverNode& node,
@@ -313,9 +289,6 @@ void register_motion_services(DriverNode& node)
   node.create_service<tl_ros2_interface::srv::TrackSave>(
       "/tl_driver/track_save",
       std::bind(&handle_track_save_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
-  node.create_service<tl_ros2_interface::srv::TrackPlayback>(
-      "/tl_driver/track_playback",
-      std::bind(&handle_track_playback_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
   node.create_service<tl_ros2_interface::srv::OpenServoJ>(
       "/tl_driver/open_servoj",
       std::bind(&handle_open_servoj_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));

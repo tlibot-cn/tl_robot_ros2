@@ -57,16 +57,16 @@ public:
     return ndof_;
   }
 
-  /// @brief 状态数据源（`stream` / `poll`）。
-  const std::string& state_source() const noexcept
-  {
-    return state_source_;
-  }
-
   /// @brief 连续状态流间隔（ms），用于帧龄判定。
   int state_stream_interval_ms() const noexcept
   {
     return state_stream_interval_ms_;
+  }
+
+  /// @brief 执行器线程数（启动参数，构造期读取）。
+  int executor_threads() const noexcept
+  {
+    return executor_threads_;
   }
 
   /// @brief 是否有运动 action goal 正在执行。
@@ -172,10 +172,6 @@ private:
   /// @brief 参数更新回调：所有参数均在构造期读取，运行期修改一律拒绝。
   rcl_interfaces::msg::SetParametersResult on_parameters_set(const std::vector<rclcpp::Parameter>& parameters);
 
-  /// @brief 按启动参数创建状态发布定时器。
-  /// @param[in] rate 发布频率（Hz）
-  void create_state_timer(double rate);
-
   /// @brief 按配置创建诊断话题定时器（频率为 0 时不创建）。
   void create_aux_timers();
 
@@ -188,10 +184,9 @@ private:
   std::string arm_type_;
 
   std::vector<std::string> arm_joints_;
-  double publish_rate_{100.0};
+  int executor_threads_{8};
   int ndof_{0};
 
-  std::string state_source_{"stream"};
   int state_stream_interval_ms_{10};
   double joint_dynamics_rate_{10.0};
   double joint_thermal_rate_{1.0};
@@ -205,19 +200,12 @@ private:
 
   // 构造期当前注册目标；注册每个域前由 select_service_group() 切换。
   rclcpp::CallbackGroup::SharedPtr service_group_;
-  rclcpp::CallbackGroup::SharedPtr session_service_group_;
   rclcpp::CallbackGroup::SharedPtr motion_service_group_;
-  rclcpp::CallbackGroup::SharedPtr transform_service_group_;
-  rclcpp::CallbackGroup::SharedPtr config_service_group_;
-  rclcpp::CallbackGroup::SharedPtr io_service_group_;
-  rclcpp::CallbackGroup::SharedPtr state_service_group_;
-
   rclcpp::CallbackGroup::SharedPtr topic_group_;
-  rclcpp::CallbackGroup::SharedPtr timer_group_;
   rclcpp::CallbackGroup::SharedPtr stream_group_;
   rclcpp::CallbackGroup::SharedPtr dynamics_group_;
   rclcpp::CallbackGroup::SharedPtr thermal_group_;
-  // 运行状态/速度查询独立成组：同步查询不能与 100 Hz 发布或 dynamics 互相排队。
+  // 运行状态/速度查询独立成组：同步查询不能与 dynamics 或短服务互相排队。
   rclcpp::CallbackGroup::SharedPtr status_group_;
   rclcpp::CallbackGroup::SharedPtr action_group_;
   rclcpp::SubscriptionOptions topic_options_;
@@ -226,7 +214,6 @@ private:
   std::vector<rclcpp::ServiceBase::SharedPtr> services_;
   std::vector<rclcpp::SubscriptionBase::SharedPtr> subscriptions_;
 
-  rclcpp::TimerBase::SharedPtr state_publish_timer_;
   rclcpp::TimerBase::SharedPtr dynamics_timer_;
   rclcpp::TimerBase::SharedPtr thermal_timer_;
   rclcpp::TimerBase::SharedPtr status_query_timer_;

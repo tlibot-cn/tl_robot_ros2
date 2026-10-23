@@ -33,7 +33,9 @@
  */
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <cmath>
 #include <functional>
 #include <map>
 #include <memory>
@@ -284,6 +286,26 @@ private:
     RCLCPP_INFO(this->get_logger(), "      %s[%zu] = [%s]", prefix.c_str(), v.size(), s.c_str());
   }
 
+  /// 打印 float64 定长数组（NaN 表示查询失败/字段缺失）
+  template <std::size_t N>
+  void printArray(const std::array<double, N>& v, const std::string& prefix, size_t max = 16)
+  {
+    std::string s;
+    size_t n = std::min(v.size(), max);
+    for (size_t i = 0; i < n; ++i)
+    {
+      if (i)
+        s += ", ";
+      if (std::isnan(v[i]))
+        s += "nan";
+      else
+        s += std::to_string(v[i]);
+    }
+    if (v.size() > max)
+      s += ", ...";
+    RCLCPP_INFO(this->get_logger(), "      %s[%zu] = [%s]", prefix.c_str(), v.size(), s.c_str());
+  }
+
   // ── 测试方法 ──
   void testInfoQuery(); // §4 信息查询（按说明书编号 4.1~4.20 顺序打印）
 };
@@ -415,7 +437,7 @@ void tl_example::InfoQueryDemo::testInfoQuery()
         return got_thermal_;
       },
       2.0);
-  if (last_thermal_ && !last_thermal_->temperature.empty())
+  if (last_thermal_ && !std::isnan(last_thermal_->temperature[0]))
   {
     printArray(last_thermal_->temperature, "      temperature(℃) ");
   }
@@ -426,7 +448,7 @@ void tl_example::InfoQueryDemo::testInfoQuery()
 
   // [4.9] 查询关节电压（同一话题）
   RCLCPP_INFO(this->get_logger(), "  --- [4.9] 查询关节电压 /tl_driver/joint_thermal ---");
-  if (last_thermal_ && !last_thermal_->joint_voltage.empty())
+  if (last_thermal_ && !std::isnan(last_thermal_->joint_voltage[0]))
   {
     printArray(last_thermal_->joint_voltage, "      joint_voltage(V) ");
     printArray(last_thermal_->positioner_voltage, "      positioner_voltage(V) ");
@@ -444,7 +466,7 @@ void tl_example::InfoQueryDemo::testInfoQuery()
         return got_dynamics_;
       },
       2.0);
-  if (last_dynamics_ && !last_dynamics_->motor_current.empty())
+  if (last_dynamics_ && !std::isnan(last_dynamics_->motor_current[0]))
   {
     printArray(last_dynamics_->motor_current, "      motor_current(A) ");
   }
@@ -566,7 +588,7 @@ void tl_example::InfoQueryDemo::testInfoQuery()
         return got_dynamics_;
       },
       2.0);
-  if (last_dynamics_ && !last_dynamics_->motor_torque.empty())
+  if (last_dynamics_ && !std::isnan(last_dynamics_->motor_torque[0]))
   {
     printArray(last_dynamics_->motor_torque, "      motor_torque(‰ 额定) ");
   }

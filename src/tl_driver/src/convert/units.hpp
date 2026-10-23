@@ -6,6 +6,7 @@
 /// @note ROS 侧遵循 REP 103（m / rad / m·s⁻¹ / rad·s⁻¹）；SDK / 控制器侧为
 ///       mm / 度 / 度·s⁻¹。所有换算只允许出现在本层或调用本层的边界代码中。
 
+#include <array>
 #include <cstddef>
 #include <vector>
 
@@ -61,6 +62,17 @@ constexpr double rad_s_to_rpm(double rad_s)
 inline void joint_deg_to_rad(std::vector<double>& values, std::size_t count)
 {
   const std::size_t n = count < values.size() ? count : values.size();
+  for (std::size_t i = 0; i < n; ++i)
+  {
+    values[i] = deg_to_rad(values[i]);
+  }
+}
+
+/// @brief 原地把前 count 个关节角由度转换为弧度（定长缓冲）。
+template <std::size_t N>
+inline void joint_deg_to_rad(std::array<double, N>& values, std::size_t count)
+{
+  const std::size_t n = count < N ? count : N;
   for (std::size_t i = 0; i < n; ++i)
   {
     values[i] = deg_to_rad(values[i]);
