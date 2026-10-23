@@ -27,6 +27,7 @@
 |V1.18 | 2026-10-23 | 第 7 章由「实时运动控制接口」更名为「运动控制接口」；删除 `/tl_driver/moveJ`、`/tl_driver/moveL` 话题及 7.1/7.2 章节，运动 Action 章节改为 7.1/7.2 |
 |V1.19 | 2026-10-23 | `MoveCommand` 裁剪 6 个未使用字段并改定长 14 维；`JointDynamics`/`JointThermal` 定长数组 + NaN 语义（力矩改 float64）；删除 `state_source=poll` 与 `publish_rate`，`/arm_status` 随 10 Hz 查询发布；新增 `executor_threads`；补充接口矩阵与移除清单（第 16 章） |
 |V1.20 | 2026-10-23 | 删除 `/tl_driver/track_playback` 服务与 `TrackPlayback.srv`，轨迹回放统一走 `/tl_driver/play_track` action（服务数 36 → 35） |
+|V1.21 | 2026-10-23 | 删除 1 Hz 状态流看门狗；状态流改在上下电完成后启动，启动失败即退出（回调组 8 → 7） |
 
 </div>
 
@@ -1523,7 +1524,7 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 | `state_stream_interval_ms` | 10 | 10–60000 | 连续反馈间隔 |
 | `executor_threads` | 8 | 1–64 | 执行器线程数；默认 `max(4, min(hardware_concurrency, 8))`，阻塞 I/O 场景可调到 16 |
 
-> 状态流没有同步查询回退路径：某通道无新帧时对应话题停止发布（保持静默而不是发布过期值），1 Hz 看门狗在通道超过 3×`state_stream_interval_ms` 无新帧时重发 `mode=1`（前 3 s 每秒一次，之后每 5 s 一次），连续 3 s 无新帧记录故障告警。运行状态由 10 Hz 定时器查询，查询成功即发布 `/arm_status`；查询失败时该周期不发布（节流 WARN），不会用缓存值兜底。运行速度由 1 Hz 定时器查询并写入同一消息的 `speed` / `speed_valid`。
+> 状态流没有同步查询回退路径：某通道无新帧时对应话题停止发布（保持静默而不是发布过期值）。状态流在上下电与模式切换完成后启动，任一通道请求失败则驱动启动失败；运行期控制器停止推帧后需要重启驱动恢复（不设看门狗重试）。运行状态由 10 Hz 定时器查询，查询成功即发布 `/arm_status`；查询失败时该周期不发布（节流 WARN），不会用缓存值兜底。运行速度由 1 Hz 定时器查询并写入同一消息的 `speed` / `speed_valid`。
 >
 > 诊断话题频率参数 `joint_dynamics_rate` / `joint_thermal_rate` 见 [4.8](#48-查询关节温度)、[4.10](#410-查询电机电流)；运动 action 超时参数见 [7.1](#71-运动-action)。
 
@@ -1623,5 +1624,5 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 | `set_servol_pos` | topic | 消费方本地 IK 后走 `set_servoj_pos` | V1.10 |
 | `moveJ`、`moveL` | topic | `move_joint` / `move_linear` action | V1.18 |
 | `track_playback` | srv | `/tl_driver/play_track` action | V1.20 |
-| `state_source`（`poll` 回退） | 参数 | 仅保留 7000 状态流 + 看门狗重试 | 本版本 |
+| `state_source`（`poll` 回退） | 参数 | 仅保留 7000 状态流 | 本版本 |
 | `publish_rate` | 参数 | `/arm_status` 随 10 Hz 查询发布 | 本版本 |

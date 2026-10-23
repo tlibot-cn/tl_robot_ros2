@@ -113,7 +113,7 @@ tl_driver:
 
 > `arm_port` / `arm_port_aux` 以字符串传给 SDK，不要写成整数。
 > 所有参数只在启动时读取（运行期 `ros2 param set` 会被明确拒绝并返回原因）。
-> `/joint_states`、`/tcp_pose` 由 7000 帧通知直接发布，频率取决于 `state_stream_interval_ms` 与控制器的实际推送率；`/arm_status` 在每次 10 Hz 运行状态查询成功后发布。状态流失效时位姿话题停更，1 Hz 看门狗持续重发 `mode=1`，不再回退 6001 同步查询。
+> `/joint_states`、`/tcp_pose` 由 7000 帧通知直接发布，频率取决于 `state_stream_interval_ms` 与控制器的实际推送率；`/arm_status` 在每次 10 Hz 运行状态查询成功后发布。状态流在上下电完成后启动，启动失败则驱动启动失败；运行期若控制器停止推帧，对应话题停更，需要重启驱动恢复（无同步查询回退、无看门狗重试）。
 ## tl_driver功能包架构说明
 ### 功能包文件总览
 ```

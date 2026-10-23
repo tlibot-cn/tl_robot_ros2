@@ -73,7 +73,7 @@ public:
   /// @note 必须在 `start_robot_state_channel()`（connect 内）之后调用，否则回调不会收到帧。
   bool start_state_stream(int interval_ms);
 
-  /// @brief 单独重启一个通道的连续反馈（看门狗使用）。
+  /// @brief 单独请求一个通道进入连续反馈（`start_state_stream` 内部使用）。
   /// @param[in] channel 1=ACS，2=MCS
   /// @param[in] interval_ms 推送间隔
   /// @return SDK 请求成功时为 true

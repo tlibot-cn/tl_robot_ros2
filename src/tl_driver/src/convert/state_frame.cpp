@@ -150,7 +150,7 @@ bool parse_robot_state_frame(const std::string& message, RobotStateFrameData& ou
     return false;
   }
   // 通道与载荷必须一致：channel=1 只承载 ACS，channel=2 只承载 MCS。
-  // 不一致的帧若被接受，会让看门狗误判“通道健康”，对应话题却永远无数据。
+  // 不一致的帧若被接受，对应话题会永远无数据，还会掩盖控制器协议异常。
   if (parsed.channel == 1)
   {
     if (parsed.acs_count == 0)

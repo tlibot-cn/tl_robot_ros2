@@ -2,7 +2,6 @@
 #define TL_DRIVER__DRIVER_NODE_HPP_
 
 // common
-#include <array>
 #include <chrono>
 #include <exception>
 #include <functional>
@@ -175,9 +174,6 @@ private:
   /// @brief 按配置创建诊断话题定时器（频率为 0 时不创建）。
   void create_aux_timers();
 
-  /// @brief 1 Hz 状态流看门狗：通道超时未更新时重发 mode=1 请求。
-  void check_state_stream();
-
   std::string arm_ip_{"192.168.1.13"};
   std::string arm_port_{"6001"};
   std::string arm_port_aux_{"7000"};
@@ -202,7 +198,6 @@ private:
   rclcpp::CallbackGroup::SharedPtr service_group_;
   rclcpp::CallbackGroup::SharedPtr motion_service_group_;
   rclcpp::CallbackGroup::SharedPtr topic_group_;
-  rclcpp::CallbackGroup::SharedPtr stream_group_;
   rclcpp::CallbackGroup::SharedPtr dynamics_group_;
   rclcpp::CallbackGroup::SharedPtr thermal_group_;
   // 运行状态/速度查询独立成组：同步查询不能与 dynamics 或短服务互相排队。
@@ -218,11 +213,7 @@ private:
   rclcpp::TimerBase::SharedPtr thermal_timer_;
   rclcpp::TimerBase::SharedPtr status_query_timer_;
   rclcpp::TimerBase::SharedPtr speed_query_timer_;
-  rclcpp::TimerBase::SharedPtr stream_watchdog_timer_;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr read_only_param_handle_;
-
-  // 看门狗连续失败计数，仅由 stream_group_ 内的 1 Hz 定时器读写。
-  std::array<int, 3> stream_request_failures_{0, 0, 0};
 };
 
 } // namespace tl_driver
