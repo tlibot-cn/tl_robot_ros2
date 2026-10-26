@@ -1,7 +1,11 @@
 # ============================================================
 # 天链机器人 ROS2 工作空间 — GitHub Actions 发布流程（打标签触发）
 #
-# 单 job 流程:
+# 两个 job:
+#   build   — tl_driver 编译验证（复用 build.yml，x86_64 + arm64 矩阵）。
+#             release job 以 needs 依赖它：任一架构建失败则整个发版
+#             中断，不会创建 Release。
+#   release — 单 job 内的发布流水:
 #   1. guard   — 校验发布条件（两个判据都满足才发布）:
 #                a. 标签名符合 v主.次.补[-rc/beta] 命名规则
 #                   （alpha 等其它后缀、里程碑/内部标记不发布）
@@ -17,11 +21,11 @@
 #                章节 + 完整变更日志链接，附源码归档；
 #                rc/beta 标记为 prerelease）
 #
-# 不做 CI 构建: 依赖环境过重（MoveIt/RViz/ros2_control 全量安装），
-# 发布前请在本地 Docker 环境完成编译验证。
+# 构建范围仅限 tl_driver（含依赖 tl_ros2_interface）；其余包依赖
+# MoveIt/RViz/ros2_control 全量依赖，仍由本地 Docker 环境验证。
 #
 # 触发: 任意 tag 推送；不满足发布条件时仅提示并跳过 Release 说明生成、
-#       格式检查与发布。
+#       格式检查与发布（构建仍会执行，代价是几分钟的运行器时间）。
 # 日常验证（push/PR）见 .github/workflows/ci.yml
 # ============================================================
 name: Release
@@ -34,8 +38,16 @@ permissions:
   contents: write   # 创建 GitHub Release 需要写权限
 
 jobs:
+  # ----------------------------------------------------------
+  # tl_driver 构建 — 复用 build.yml（linux-x86_64 / linux-arm64）
+  # ----------------------------------------------------------
+  build:
+    name: tl_driver 构建
+    uses: ./.github/workflows/build.yml
+
   release:
     name: 发布 (guard + Release 说明 + 格式检查 + 源码打包 + GitHub Release)
+    needs: build
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

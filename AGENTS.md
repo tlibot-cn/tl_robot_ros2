@@ -75,7 +75,7 @@ ROS 侧统一 REP 103（m / rad / rad/s），控制器/SDK 侧 mm / 度 / %，�
 | `src/tl_moveit2_config/` | 14 个 `tl_<arm_type>_config` 子包 |
 | `src/tl_example/` | 8 个示例可执行程序 + `scripts/servoj_test.py` |
 | `scripts/` | 格式化、Release 说明、工作空间测量 |
-| `.github/workflows/` | `ci.yml`（格式检查）、`release.yml`（打标签发布） |
+| `.github/workflows/` | `ci.yml`（格式检查 + tl_driver 双架构构建）、`build.yml`（可复用构建工作流）、`release.yml`（打标签发布） |
 
 ## Development Commands
 
@@ -161,7 +161,7 @@ ros2 launch tl_gazebo gazebo_tcb610_demo.launch.py          # Gazebo
 | `src/tl_teleop/src/tl_teleop.cpp` | VR 遥操作与 100 Hz 循环 |
 | `src/tl_teleop_f710/src/tl_teleop_f710_node.cpp` / `_sim_bridge.cpp` | 手柄控制与仿真桥接 |
 | `scripts/format-cpp.sh` / `scripts/release-notes.sh` | CI 使用的格式化与发布说明脚本 |
-| `.github/workflows/ci.yml` / `release.yml` | 格式检查 / 打标签发布 |
+| `.github/workflows/ci.yml` / `build.yml` / `release.yml` | 格式检查 + 构建调度 / 可复用 tl_driver 构建 / 打标签发布 |
 
 ## Runtime/Tooling Preferences
 
@@ -171,8 +171,8 @@ ros2 launch tl_gazebo gazebo_tcb610_demo.launch.py          # Gazebo
 - **格式化工具版本**：CI 固定 `clang-format==14.0.6`、`black==26.5.1`；本地保持一致，避免版本漂移误报。
 - **C++ 风格**：`.clang-format` 基于 Google，Allman 大括号、2 空格、120 列、`SortIncludes: false`。
 - **Python 风格**：`pyproject.toml`，black/ruff/isort 均 100 列；isort/ruff **不在 CI**，只有 black 强制。
-- **CI 只做格式检查**：`ci.yml` 不编译、不跑测试；纯 `.md` / `docs/**` 提交不触发。改了 C++ 必须本地 `colcon build`。
-- **Release**：标签须匹配 `[vV]?主.次.补[-(rc|beta)N]` 且提交是远端 `master`/`dev` 祖先，否则静默跳过；说明取自 `CHANGELOG.md` 对应章节，缺失即失败。发版顺序：推分支等 CI 绿 → `git tag Vx.y.z` → `git push origin Vx.y.z`。
+- **CI = 格式检查 + tl_driver 双架构构建**：`ci.yml` 在 push/PR 上跑格式检查，并通过 `build.yml` 在 `ubuntu-22.04`（x86_64）与 `ubuntu-22.04-arm`（arm64）上于 `ros:humble-ros-base` 容器内编译 `tl_ros2_interface` + `tl_driver`（`--packages-up-to tl_driver`），产物用 `readelf` 核对机器类型，防误链另一架构的 `libtl_host.so`；其余包不在 CI 构建，改了它们的 C++ 仍需本地 `colcon build`。纯 `.md` / `docs/**` 提交不触发；`release.yml` 的发布 job 以 `needs` 依赖同一构建，构建失败不发布。
+- **Release**：标签须匹配 `[vV]?主.次.补[-(rc|beta)N]` 且提交是远端 `master`/`dev` 祖先，否则静默跳过；说明取自 `CHANGELOG.md` 对应章节，缺失即失败。发版顺序：推分支等 CI 绿 → `git tag Vx.y.z` → `git push origin Vx.y.z`（标签推送会重跑双架构构建，通过后才创建 Release）。
 
 ## Testing & QA
 
