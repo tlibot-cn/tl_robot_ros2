@@ -1,16 +1,20 @@
 # ============================================================
 # 天链机器人 ROS2 工作空间 — GitHub Actions CI（日常验证）
 #
-# 流程: format-check — 格式检查（clang-format 检查 C++ + black 检查 Python）
+# 流程:
+#   format-check — 格式检查（clang-format 检查 C++ + black 检查 Python）
+#   build        — tl_driver 编译验证（x86_64 + arm64 矩阵，
+#                  实现见可复用工作流 build.yml）
 #
 # 触发规则:
-#   - push 到 master/dev → 格式检查
-#   - 所有 pull_request  → 格式检查
+#   - push 到 master/dev → 格式检查 + tl_driver 构建
+#   - 所有 pull_request  → 格式检查 + tl_driver 构建
 #   - 仅改动文档（**.md、docs/**）时不触发（注意：paths-ignore 未含
 #     .github/**，改 workflow 本身仍会触发一次）
 #
-# 不做 CI 构建: 依赖环境过重（MoveIt/RViz/ros2_control 全量安装），
-# 编译验证由本地 Docker 开发环境完成。
+# 构建范围仅限 tl_driver（含其依赖 tl_ros2_interface）: 其余包依赖
+# MoveIt/RViz/ros2_control 全量依赖，体积与耗时不成比例，仍由本地
+# Docker 开发环境做全量编译验证。
 #
 # 环境: clang-format / black 经 pip 固定版本（14.0.6 / 26.5.1），
 # 与本地工具链一致，避免版本漂移导致 CI 误报。
@@ -69,3 +73,11 @@ jobs:
             echo "::error::存在未格式化的 Python 文件，请运行 black . 后提交"
             exit 1
           fi
+
+  # ----------------------------------------------------------
+  # tl_driver 构建 — 复用 build.yml，矩阵内跑 linux-x86_64 与
+  # linux-arm64 两种架构；与格式检查互不依赖，可并行
+  # ----------------------------------------------------------
+  build:
+    name: tl_driver 构建
+    uses: ./.github/workflows/build.yml

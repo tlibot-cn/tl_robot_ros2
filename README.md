@@ -50,8 +50,10 @@ pip install black isort ruff
 ### CI 格式检查
 
 仓库已接入 GitHub Actions（`.github/workflows/ci.yml`）：push 到 master/dev、
-提交 PR 时自动执行格式检查（纯文档变更不触发），格式不合格会阻断合并。
-发布流程见 `.github/workflows/release.yml`（打版本标签触发）。提交前本地先跑一遍格式化：
+提交 PR 时自动执行格式检查（纯文档变更不触发），格式不合格会阻断合并；
+同时以矩阵方式编译 `tl_driver`（`linux-x86_64` + `linux-arm64`，复用
+`.github/workflows/build.yml`），编译失败同样阻断合并。发布流程见
+`.github/workflows/release.yml`（打版本标签触发，发版前先跑同一套双架构构建）。提交前本地先跑一遍格式化：
 
 ```bash
 ./scripts/format-cpp.sh
