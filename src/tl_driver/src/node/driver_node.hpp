@@ -12,7 +12,6 @@
 #include <vector>
 
 // ROS2
-#include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rmw/qos_profiles.h>
 #include <rclcpp/rclcpp.hpp>
 
@@ -168,9 +167,6 @@ private:
   /// @brief 按域注册全部服务、话题与 action。
   void register_entities();
 
-  /// @brief 参数更新回调：所有参数均在构造期读取，运行期修改一律拒绝。
-  rcl_interfaces::msg::SetParametersResult on_parameters_set(const std::vector<rclcpp::Parameter>& parameters);
-
   /// @brief 按配置创建诊断话题定时器（频率为 0 时不创建）。
   void create_aux_timers();
 
@@ -213,7 +209,6 @@ private:
   rclcpp::TimerBase::SharedPtr thermal_timer_;
   rclcpp::TimerBase::SharedPtr status_query_timer_;
   rclcpp::TimerBase::SharedPtr speed_query_timer_;
-  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr read_only_param_handle_;
 };
 
 } // namespace tl_driver
