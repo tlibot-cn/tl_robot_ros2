@@ -100,15 +100,17 @@
 
 ## CI 与发版（`.github/workflows/`）
 
-两个 workflow 都跑在 `ubuntu-24.04`，工具经 pip 固定版本（`clang-format==14.0.6`、`black==26.5.1`），与本地工具链一致，避免版本漂移误报。**两者都不编译**（MoveIt/RViz/ros2_control 依赖过重）—— 改了 C++ 必须本地 Docker 里 `colcon build` 过一遍。
+格式检查都跑在 `ubuntu-24.04`，工具经 pip 固定版本（`clang-format==14.0.6`、`black==26.5.1`），与本地工具链一致，避免版本漂移误报。**编译验证只覆盖 `tl_driver` 及其依赖 `tl_ros2_interface`**（`build.yml`，双架构）—— 其余包依赖过重（MoveIt/RViz/ros2_control），改了它们的 C++ 仍必须本地 Docker 里 `colcon build` 过一遍。
 
-**`ci.yml`（日常验证）**：push 到 `master`/`dev`/`V2` 与所有 PR 触发；`paths-ignore: **.md`、`docs/**`（纯文档提交**完全不触发**，改 `.github/**` 仍会触发）。只做格式检查：
+**`build.yml`（可复用构建，`workflow_call`）**：矩阵 `linux-x86_64`（`ubuntu-22.04`）与 `linux-arm64`（`ubuntu-22.04-arm` 原生 ARM 运行器，不用 QEMU），统一在 `ros:humble-ros-base` 容器内 `apt` 补装最小依赖后 `colcon build --packages-up-to tl_driver`。末尾用 `readelf` 核对 `install/tl_driver/lib/tl_driver/tl_driver` 与已安装 `libtl_host.so` 的 ELF `Machine` 字段：`tl_driver` 的 CMakeLists 按 `CMAKE_SYSTEM_PROCESSOR` 选 `lib/x86` 或 `lib/arm` 下的预编译 SDK 库，选错也能编译通过并出包，只有比对机器类型才拦得住。
 
-- C++：`scripts/format-cpp.sh` 原地格式化后 `git diff --exit-code` 判断是否产生改动（自动跳过 `src/*/lib/include/` 下 SDK 头）
-- Python：`black --check .`
+**`ci.yml`（日常验证）**：push 到 `master`/`dev`/`V2` 与所有 PR 触发；`paths-ignore: **.md`、`docs/**`（纯文档提交**完全不触发**，改 `.github/**` 仍会触发）。两个并行 job：
+
+- `format-check`：C++ `scripts/format-cpp.sh` 原地格式化后 `git diff --exit-code` 判断是否产生改动（自动跳过 `src/*/lib/include/` 下 SDK 头）；Python `black --check .`
+- `build`：调用 `build.yml`，双架构编译 `tl_driver`
 - 同分支新推送会取消仍在跑的旧 CI（`concurrency`）
 
-**`release.yml`（打标签触发，任意 tag 推送）**，五步：
+**`release.yml`（打标签触发，任意 tag 推送）**，先 `build`（同上双架构构建，失败即不发布），再由 `release` job 走五步：
 
 1. **guard**：标签名须匹配 `[vV]?主.次.补[-(rc|beta)N]` **且**标签提交是远端 `master`/`dev`/`V2` 的祖先，两条都满足才发布；否则只留 notice、**静默跳过**（其余后缀如 alpha、里程碑标记一律不发布）。带 `-rc`/`-beta` 的标为 prerelease。**V2 为独立版本线，其标签只发布 V2 系列版本。**
 2. **notes**：`scripts/release-notes.sh <tag>` 从 `CHANGELOG.md` 抽对应版本章节作正文（`V2.0.1` → `## [2.0.1]`，rc/beta 回退基础版本章节），末尾附完整变更日志链接，不用 GitHub 自动生成的提交/PR 列表。**找不到章节或章节为空 → 失败退出、不创建 Release**。
