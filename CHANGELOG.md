@@ -12,6 +12,11 @@
 
 ## [Unreleased]
 
+### 2026-10-26
+
+- tl_driver：11 个自声明参数改以 `read_only` descriptor 声明，运行期 `ros2 param set` 由 rclcpp 直接拒绝（删除原 on-set 回调与 handle）；rclcpp 内建参数（`use_sim_time` 等）保持标准可变语义（81177b2）
+- tl_driver：`/arm_status` 运行状态与速度查询合并到同一 10 Hz 定时器（速度每 10 tick 查一次），删除 `speed_query_timer_`、`status_mutex_` 与发布前消息拷贝，查询频率与失败语义不变（27e4f38）
+
 ### 2026-10-23
 
 - **破坏性变更**：`MoveCommand` 裁剪未使用字段（`target_pos_name`、`target_pos_type`、`time`、`posidtype`、`configuration`、`spin`），`target_pos_value` 改为 `float64[14]`；驱动按 SDK 默认语义硬编码（`PosType::data`、各整型 0）
