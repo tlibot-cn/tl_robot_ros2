@@ -49,7 +49,7 @@ pip install black isort ruff
 
 ### 格式检查（CI 强制）
 
-格式检查由 GitHub Actions 执行（`.github/workflows/ci.yml`）：push 到 `master`/`dev`/`V2` 分支与所有 PR 都会运行 clang-format + black 检查（仅改 `**.md` 等文档时不触发）。提交前本地先跑一遍格式化即可：
+格式检查由 GitHub Actions 执行（`.github/workflows/ci.yml`）：push 到 `master`/`dev`/`V2` 分支与所有 PR 都会运行 clang-format + black 检查（仅改 `**.md` 等文档时不触发）；同一套触发还会以矩阵方式编译 `tl_driver`（`linux-x86_64` + `linux-arm64`，见 `.github/workflows/build.yml`），编译失败同样阻断合并。提交前本地先跑一遍格式化即可：
 
 ```bash
 ./scripts/format-cpp.sh

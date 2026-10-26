@@ -1,0 +1,90 @@
+# ============================================================
+# 天链机器人 ROS2 工作空间 — tl_driver 构建（可复用工作流）
+#
+# 被 ci.yml（push / pull_request）与 release.yml（打标签）以
+# `uses: ./.github/workflows/build.yml` 调用；两份调用方共享同一份
+# 构建逻辑，避免架构矩阵与依赖清单漂移。
+#
+# 矩阵: linux-x86_64 (ubuntu-22.04) + linux-arm64 (ubuntu-22.04-arm)
+#   arm64 用 GitHub 原生 ARM 运行器（仓库为 public），不做 QEMU
+#   模拟——交叉编译所需工具链与原生编译差一个数量级的耗时。
+#
+# 构建环境: 官方多架构镜像 ros:humble-ros-base（与目标环境 Humble
+#   一致），在容器内只补装 tl_driver 所需的最小依赖，不装
+#   MoveIt/RViz/ros2_control（本包用不到）。
+#
+# 构建范围: `colcon build --packages-up-to tl_driver`，即
+#   tl_ros2_interface → tl_driver 两包；两者之外的包不参与。
+#
+# 架构核对: tl_driver 的 CMakeLists 按 CMAKE_SYSTEM_PROCESSOR 选择
+#   lib/x86 或 lib/arm 下的预编译 libtl_host.so，并在安装时把选中
+#   的那份一起装到 install/tl_driver/lib/tl_driver/。因此最后用
+#   readelf 核对「可执行文件」与「已安装的 SDK 库」机器类型，任一
+#   不匹配即失败——防止在 arm64 上误链 x86 库（或反之）时 CI 假绿。
+# ============================================================
+name: Build
+
+on:
+  workflow_call:
+
+jobs:
+  tl_driver:
+    name: tl_driver (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ros:humble-ros-base
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: linux-x86_64
+            runner: ubuntu-22.04
+            sdk_lib: x86
+            # readelf -h 输出中 Machine 字段的期望值
+            expect_machine: Advanced Micro Devices X86-64
+          - arch: linux-arm64
+            runner: ubuntu-22.04-arm
+            sdk_lib: arm
+            expect_machine: AArch64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装构建依赖
+        run: |
+          apt-get update
+          # 已由 ros:humble-ros-base 提供的包重复安装是无操作，保留显式
+          # 清单是为了让 tl_driver 的依赖不隐式依赖基础镜像的当前内容
+          apt-get install -y --no-install-recommends \
+            build-essential cmake python3-dev \
+            python3-colcon-common-extensions nlohmann-json3-dev \
+            ros-humble-ament-cmake ros-humble-ament-cmake-gtest \
+            ros-humble-rclcpp ros-humble-rclcpp-action ros-humble-rcl-interfaces \
+            ros-humble-std-msgs ros-humble-std-srvs ros-humble-sensor-msgs \
+            ros-humble-geometry-msgs ros-humble-action-msgs \
+            ros-humble-rosidl-default-generators ros-humble-rosidl-default-runtime
+
+      - name: 构建 tl_ros2_interface + tl_driver
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon build --packages-up-to tl_driver \
+            --cmake-args -DCMAKE_BUILD_TYPE=Release \
+                         -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          echo "::notice::tl_driver 构建完成（${{ matrix.arch }}）"
+
+      - name: 核对产物架构
+        shell: bash
+        run: |
+          check_arch() {
+            local path="$1"
+            test -f "$path" || { echo "::error::缺少产物 $path"; exit 1; }
+            local machine
+            machine=$(readelf -h "$path" | sed -n 's/^  *Machine: *//p')
+            echo "$path → $machine"
+            if [ "$machine" != "${{ matrix.expect_machine }}" ]; then
+              echo "::error::$path 架构为 '$machine'，期望 '${{ matrix.expect_machine }}'"
+              exit 1
+            fi
+          }
+          check_arch install/tl_driver/lib/tl_driver/tl_driver
+          check_arch install/tl_driver/lib/tl_driver/libtl_host.so
