@@ -208,7 +208,6 @@ private:
   rclcpp::TimerBase::SharedPtr dynamics_timer_;
   rclcpp::TimerBase::SharedPtr thermal_timer_;
   rclcpp::TimerBase::SharedPtr status_query_timer_;
-  rclcpp::TimerBase::SharedPtr speed_query_timer_;
 };
 
 } // namespace tl_driver

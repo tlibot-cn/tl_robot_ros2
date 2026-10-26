@@ -30,8 +30,9 @@ constexpr double kMaxAuxRate = 100.0;
 constexpr double kMaxThermalRate = 1.0;
 // 运行状态用于 /arm_status；10 Hz 足够覆盖 STOP/PAUSE/RUNNING 切换。
 constexpr double kRunningStatusRate = 10.0;
-// 运行速度只用于 /arm_status.speed；1 Hz 足够反映 SetSpeed 后的变化，避免增加 6001 查询负载。
-constexpr double kSpeedQueryRate = 1.0;
+// 速度与运行状态共用同一个定时器：每 N 次状态查询查一次速度（10 Hz / 10 = 1 Hz），
+// 1 Hz 足够反映 SetSpeed 后的变化，避免增加 6001 查询负载。
+constexpr unsigned kStatusTicksPerSpeedQuery = 10u;
 constexpr double kMaxActionTimeoutSec = 3600.0;
 
 bool is_valid_rate(double rate, double max_rate)
@@ -217,16 +218,13 @@ void DriverNode::create_aux_timers()
       thermal_group_);
   status_query_timer_ = make_timer(
       kRunningStatusRate,
-      [this]()
+      [this, tick = 0u]() mutable
       {
-        publishers_->query_running_status();
-      },
-      status_group_);
-  speed_query_timer_ = make_timer(
-      kSpeedQueryRate,
-      [this]()
-      {
-        publishers_->query_speed();
+        // 首次 tick 就带速度查询，之后每 kStatusTicksPerSpeedQuery 次一次（1 Hz）；
+        // tick 在 [0, N) 内回绕，长期运行不会溢出。
+        const bool query_speed = (tick == 0u);
+        tick = (tick + 1u) % kStatusTicksPerSpeedQuery;
+        publishers_->publish_arm_status(query_speed);
       },
       status_group_);
 }

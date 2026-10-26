@@ -11,7 +11,6 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <mutex>
 #include <string>
 #include <thread>
 
@@ -54,11 +53,9 @@ public:
   void start_stream_thread();
   void stop_stream_thread();
 
-  /// @brief 10 Hz 定时器入口：同步查询运行状态，更新缓存并发布 /arm_status。
-  void query_running_status();
-
-  /// @brief 1 Hz 定时器入口：查询运行速度并写入 /arm_status 缓存。
-  void query_speed();
+  /// @brief 10 Hz 定时器入口：查询运行状态，更新缓存并发布 /arm_status。
+  /// @param[in] query_speed 本次是否同时查询运行速度（每 10 次状态查询一次，即 1 Hz）
+  void publish_arm_status(bool query_speed);
 
   /// @brief 发布 `/tl_driver/joint_dynamics`（默认 10 Hz）。
   void publish_dynamics();
@@ -105,9 +102,8 @@ private:
   std::array<double, convert::kMaxStateAxes> joint_pose_{};
   sensor_msgs::msg::JointState joint_state_msg_;
   tl_ros2_interface::msg::CartesianPose tcp_pose_msg_;
-  // /arm_status 缓存：10 Hz 查询线程写、1 Hz 速度查询线程改 speed 字段，统一由 status_mutex_ 保护。
+  // /arm_status 缓存：只由 status 定时器线程访问（速度与运行状态在同一回调内更新）。
   tl_ros2_interface::msg::ArmStatus arm_status_msg_;
-  std::mutex status_mutex_;
   tl_ros2_interface::msg::JointDynamics joint_dynamics_msg_;
   tl_ros2_interface::msg::JointThermal joint_thermal_msg_;
 

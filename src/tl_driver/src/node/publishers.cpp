@@ -249,15 +249,36 @@ void StatePublishers::publish_tcp_pose_from_mcs(const std::array<double, convert
   tcp_pose_pub_->publish(msg);
 }
 
-void StatePublishers::query_running_status()
+void StatePublishers::publish_arm_status(bool query_speed)
 {
   if (!session_.is_connected())
   {
     return;
   }
 
+  const int fd = session_.fd();
+
+  // 速度先查：运行状态查询失败时不发布，但仍让速度缓存保持新鲜，
+  // 恢复后的第一条 /arm_status 不会带很久以前的速度。
+  if (query_speed)
+  {
+    int speed = 0;
+    const tl::Result speed_ret = tl::get_speed(fd, speed);
+    if (speed_ret == tl::Result::SUCCESS)
+    {
+      arm_status_msg_.speed = static_cast<double>(speed);
+      arm_status_msg_.speed_valid = true;
+    }
+    else
+    {
+      arm_status_msg_.speed_valid = false;
+      RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000, "[Read Speed]: failed, result=%s",
+                           arm_client::result_to_string(speed_ret));
+    }
+  }
+
   tl::RunState running_status = tl::RunState::STOP;
-  const tl::Result ret = tl::get_robot_running_state(session_.fd(), running_status);
+  const tl::Result ret = tl::get_robot_running_state(fd, running_status);
   if (ret != tl::Result::SUCCESS)
   {
     RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000,
@@ -285,36 +306,10 @@ void StatePublishers::query_running_status()
       break;
   }
 
-  // 拷贝后发布：避免持锁执行 DDS 写，也避免与 1 Hz 速度查询互相阻塞。
-  tl_ros2_interface::msg::ArmStatus msg;
-  {
-    std::lock_guard<std::mutex> lock(status_mutex_);
-    arm_status_msg_.stamp = node_.now();
-    arm_status_msg_.run_state = std::move(state);
-    msg = arm_status_msg_;
-  }
-  running_status_pub_->publish(msg);
-}
-
-void StatePublishers::query_speed()
-{
-  if (!session_.is_connected())
-  {
-    return;
-  }
-
-  int speed = 0;
-  const tl::Result ret = tl::get_speed(session_.fd(), speed);
-  std::lock_guard<std::mutex> lock(status_mutex_);
-  if (ret != tl::Result::SUCCESS)
-  {
-    arm_status_msg_.speed_valid = false;
-    RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000, "[Read Speed]: failed, result=%s",
-                         arm_client::result_to_string(ret));
-    return;
-  }
-  arm_status_msg_.speed = static_cast<double>(speed);
-  arm_status_msg_.speed_valid = true;
+  // 只有一个定时器线程读写该缓存，可直接复用消息发布，无需加锁或拷贝。
+  arm_status_msg_.stamp = node_.now();
+  arm_status_msg_.run_state = std::move(state);
+  running_status_pub_->publish(arm_status_msg_);
 }
 
 void StatePublishers::publish_dynamics()
