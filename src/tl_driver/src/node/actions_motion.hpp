@@ -77,6 +77,22 @@ private:
   /// @brief 工作线程主循环：串行执行已接受的 goal。
   void worker_loop();
 
+  /// @brief goal 的公共准入检查：连接、外部运动窗口、字段校验、超时参数、运行状态、运动槽。
+  /// @param[in] timeout_sec goal 指定的超时（秒），<=0 表示使用节点参数
+  /// @param[in] action_name 日志前缀（"move"/"play"）
+  /// @param[in] field_error 字段校验的拒绝原因；合法时为 nullptr（最先报出的仍是连接/外部运动问题）
+  /// @return 通过时为 ACCEPT_AND_EXECUTE，否则已记录 WARN 并返回 REJECT
+  rclcpp_action::GoalResponse precheck_goal(double timeout_sec, const char *action_name, const char *field_error);
+
+  /// @brief 是否处于外部运动指令后的拒绝窗口内。
+  bool external_motion_recent() const;
+
+  /// @brief 轮询期的全局中止原因；正常时返回 nullptr。
+  const char *abort_cause() const;
+
+  /// @brief 把 job 放入工作线程的串行队列。
+  void enqueue(std::function<void()> job);
+
   /// @brief 尝试占用唯一的运动槽；已占用时返回 false。
   bool acquire_motion_slot();
 

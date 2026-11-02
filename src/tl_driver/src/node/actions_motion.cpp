@@ -6,10 +6,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include "arm_client.hpp"
 #include "arm_sdk.hpp"
@@ -36,6 +38,14 @@ constexpr double kCartesianMoveEpsilonM = 1e-3;  // m，1 mm，位姿变化判�
 constexpr double kCartesianMoveEpsilonMm = 1.0;  // mm，progress 起点判据
 constexpr double kCartesianReachEpsilonMm = 2.0; // mm，目标到达判据
 constexpr double kMaxActionTimeoutSec = 3600.0;
+constexpr std::size_t kCartesianDims = 3; // 位置判据只比较 x/y/z
+
+/// @brief steady_clock 当前时刻（ns），用于外部运动拒绝窗口。
+int64_t steady_now_ns()
+{
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
 
 bool read_run_state(const DriverNode& node, tl::RunState& state)
 {
@@ -46,6 +56,64 @@ bool read_run_state(const DriverNode& node, tl::RunState& state)
   return tl::get_robot_running_state(node.session().fd(), state) == tl::Result::SUCCESS;
 }
 
+/// @brief 发送 goal 终态；发送失败不能反向抛出，否则会越过工作线程的异常边界。
+template <typename GoalHandleT, typename ResultT>
+void finish_goal(const std::shared_ptr<GoalHandleT>& goal_handle, const std::shared_ptr<ResultT>& result, bool success,
+                 std::string message) noexcept
+{
+  result->success = success;
+  result->message = std::move(message);
+  try
+  {
+    if (!goal_handle->is_executing())
+    {
+      return;
+    }
+    if (success)
+    {
+      goal_handle->succeed(result);
+    }
+    else
+    {
+      goal_handle->abort(result);
+    }
+  }
+  catch (...)
+  {
+  }
+}
+
+/// @brief 工作线程异常边界：实现抛异常时转为 abort，绝不让异常逃出 worker_loop。
+template <typename ExecuteFn, typename AbortFn>
+void run_guarded(ExecuteFn&& execute, AbortFn&& abort_fn)
+{
+  try
+  {
+    execute();
+  }
+  catch (const std::exception& e)
+  {
+    abort_fn(std::string("Internal error: ") + e.what());
+  }
+  catch (...)
+  {
+    abort_fn("Internal error: unknown exception");
+  }
+}
+
+/// @brief 三个 action server 共用的创建壳：Humble 的 create_server 需要逐个传 Node 接口。
+template <typename ActionT, typename GoalCb, typename CancelCb, typename AcceptedCb>
+typename rclcpp_action::Server<ActionT>::SharedPtr create_action_server(DriverNode& node, const char *name,
+                                                                        GoalCb goal_callback, CancelCb cancel_callback,
+                                                                        AcceptedCb accepted_callback,
+                                                                        const rcl_action_server_options_t& options,
+                                                                        const rclcpp::CallbackGroup::SharedPtr& group)
+{
+  return rclcpp_action::create_server<ActionT>(node.get_node_base_interface(), node.get_node_clock_interface(),
+                                               node.get_node_logging_interface(), node.get_node_waitables_interface(),
+                                               name, std::move(goal_callback), std::move(cancel_callback),
+                                               std::move(accepted_callback), options, group);
+}
 
 tl_ros2_interface::msg::CartesianPose make_current_pose(const DriverNode& node, const std::vector<double>& mcs)
 {
@@ -91,86 +159,123 @@ bool sample_position(int fd, tl::Coord coord, std::vector<double>& out)
   return true;
 }
 
-/// @brief 按坐标系估算完成度；无法估算时返回 -1。
-double compute_progress(const tl_ros2_interface::action::Move::Goal& goal, const std::vector<double>& start_acs,
-                        const std::vector<double>& start_mcs, const std::vector<double>& current_acs,
-                        const std::vector<double>& current_mcs)
+/// @brief 目标位姿，已换算成与状态采样一致的比较域：coord=0 为关节角（度），coord=1 为位置（mm）。
+struct MotionTarget
 {
-  const auto& target = goal.command.target_pos_value;
-  if (goal.command.coord == 0)
+  int coord = -1;
+  std::vector<double> values;
+};
+
+/// @brief 目标换算到采样域，避免在每轮判据里重复 rad→度 / m→mm。
+MotionTarget make_target(const tl_ros2_interface::action::Move::Goal& goal)
+{
+  MotionTarget target;
+  target.coord = goal.command.coord;
+  const auto& source = goal.command.target_pos_value;
+  if (target.coord == 0)
   {
-    if (start_acs.empty() || current_acs.empty() || target.size() < start_acs.size())
+    target.values.reserve(source.size());
+    for (const double rad : source)
+    {
+      target.values.push_back(convert::rad_to_deg(rad));
+    }
+  }
+  else if (target.coord == 1 && source.size() >= kCartesianDims)
+  {
+    target.values.reserve(kCartesianDims);
+    for (std::size_t i = 0; i < kCartesianDims; ++i)
+    {
+      target.values.push_back(convert::m_to_mm(source[i]));
+    }
+  }
+  return target;
+}
+
+/// @brief 前 count 个分量绝对差之和（关节进度判据）。
+double sum_abs_delta(const std::vector<double>& a, const std::vector<double>& b, std::size_t count)
+{
+  double total = 0.0;
+  for (std::size_t i = 0; i < count; ++i)
+  {
+    total += std::abs(a[i] - b[i]);
+  }
+  return total;
+}
+
+/// @brief 前 count 个分量绝对差的最大值（“已运动/已到达”判据，单关节超差即不满足）。
+double max_abs_delta(const std::vector<double>& a, const std::vector<double>& b, std::size_t count)
+{
+  double worst = 0.0;
+  for (std::size_t i = 0; i < count; ++i)
+  {
+    worst = std::max(worst, std::abs(a[i] - b[i]));
+  }
+  return worst;
+}
+
+/// @brief 前 3 个分量（mm）的欧氏距离。
+double distance_mm(const std::vector<double>& a, const std::vector<double>& b)
+{
+  return std::hypot(std::hypot(a[0] - b[0], a[1] - b[1]), a[2] - b[2]);
+}
+
+/// @brief 按坐标系估算完成度；无法估算时返回 -1。
+double compute_progress(const MotionTarget& target, const std::vector<double>& start,
+                        const std::vector<double>& current)
+{
+  if (target.coord == 0)
+  {
+    const std::size_t count = start.size();
+    if (count == 0 || current.empty() || target.values.size() < count)
     {
       return -1.0;
     }
-    const std::size_t count = start_acs.size();
-    double initial = 0.0;
-    double remaining = 0.0;
-    for (std::size_t i = 0; i < count; ++i)
-    {
-      const double target_deg = convert::rad_to_deg(target[i]);
-      initial += std::abs(target_deg - start_acs[i]);
-      remaining += std::abs(target_deg - current_acs[i]);
-    }
+    const double initial = sum_abs_delta(target.values, start, count);
     if (initial < kJointMoveEpsilonDeg)
     {
       return 1.0;
     }
-    return std::clamp(1.0 - remaining / initial, 0.0, 1.0);
+    return std::clamp(1.0 - sum_abs_delta(target.values, current, count) / initial, 0.0, 1.0);
   }
 
-  if (goal.command.coord == 1)
+  if (target.coord == 1)
   {
-    if (start_mcs.size() < 3 || current_mcs.size() < 3 || target.size() < 3)
+    if (start.size() < kCartesianDims || current.size() < kCartesianDims || target.values.size() < kCartesianDims)
     {
       return -1.0;
     }
-    const double tx = convert::m_to_mm(target[0]);
-    const double ty = convert::m_to_mm(target[1]);
-    const double tz = convert::m_to_mm(target[2]);
-    const double initial = std::hypot(std::hypot(tx - start_mcs[0], ty - start_mcs[1]), tz - start_mcs[2]);
-    const double remaining = std::hypot(std::hypot(tx - current_mcs[0], ty - current_mcs[1]), tz - current_mcs[2]);
+    const double initial = distance_mm(target.values, start);
     if (initial < kCartesianMoveEpsilonMm)
     {
       return 1.0;
     }
-    return std::clamp(1.0 - remaining / initial, 0.0, 1.0);
+    return std::clamp(1.0 - distance_mm(target.values, current) / initial, 0.0, 1.0);
   }
 
   return -1.0;
 }
 
-bool pose_changed(const tl_ros2_interface::action::Move::Goal& goal, const std::vector<double>& start_acs,
-                  const std::vector<double>& start_mcs, const std::vector<double>& current_acs,
-                  const std::vector<double>& current_mcs)
+/// @brief 是否已离开起始位姿；实际判定由调用方连续确认，以滤掉单帧噪声。
+bool pose_changed(const MotionTarget& target, const std::vector<double>& start, const std::vector<double>& current)
 {
-  if (goal.command.coord == 0)
+  if (target.coord == 0)
   {
-    const std::size_t count = std::min(start_acs.size(), current_acs.size());
-    for (std::size_t i = 0; i < count; ++i)
-    {
-      if (std::abs(convert::deg_to_rad(current_acs[i] - start_acs[i])) > kJointMoveEpsilonRad)
-      {
-        return true;
-      }
-    }
-    return false;
+    const std::size_t count = std::min(start.size(), current.size());
+    return count > 0 && convert::deg_to_rad(max_abs_delta(start, current, count)) > kJointMoveEpsilonRad;
   }
 
-  if (goal.command.coord == 1)
+  if (target.coord == 1)
   {
-    if (start_mcs.size() < 3 || current_mcs.size() < 3)
+    if (start.size() < kCartesianDims || current.size() < kCartesianDims)
     {
       return false;
     }
-    const double dx = convert::mm_to_m(current_mcs[0] - start_mcs[0]);
-    const double dy = convert::mm_to_m(current_mcs[1] - start_mcs[1]);
-    const double dz = convert::mm_to_m(current_mcs[2] - start_mcs[2]);
-    return std::hypot(std::hypot(dx, dy), dz) > kCartesianMoveEpsilonM;
+    return convert::mm_to_m(distance_mm(start, current)) > kCartesianMoveEpsilonM;
   }
 
   return false;
 }
+
 /// @brief 目标到达判定；action 仅支持 coord=0（关节）与 coord=1（基坐标）。
 enum class TargetState
 {
@@ -179,41 +284,138 @@ enum class TargetState
   kUnknown
 };
 
-TargetState evaluate_target(const tl_ros2_interface::action::Move::Goal& goal, const std::vector<double>& current_acs,
-                            const std::vector<double>& current_mcs)
+TargetState evaluate_target(const MotionTarget& target, const std::vector<double>& current)
 {
-  const auto& target = goal.command.target_pos_value;
-  if (goal.command.coord == 0)
+  if (target.coord == 0)
   {
-    const std::size_t count = std::min(target.size(), current_acs.size());
+    const std::size_t count = std::min(target.values.size(), current.size());
     if (count == 0)
     {
       return TargetState::kUnknown;
     }
-    for (std::size_t i = 0; i < count; ++i)
-    {
-      if (std::abs(convert::rad_to_deg(target[i]) - current_acs[i]) > kJointReachEpsilonDeg)
-      {
-        return TargetState::kNotReached;
-      }
-    }
-    return TargetState::kReached;
+    const bool reached = max_abs_delta(target.values, current, count) <= kJointReachEpsilonDeg;
+    return reached ? TargetState::kReached : TargetState::kNotReached;
   }
 
-  if (goal.command.coord == 1)
+  if (target.coord == 1)
   {
-    if (target.size() < 3 || current_mcs.size() < 3)
+    if (target.values.size() < kCartesianDims || current.size() < kCartesianDims)
     {
       return TargetState::kUnknown;
     }
-    const double dx = convert::m_to_mm(target[0]) - current_mcs[0];
-    const double dy = convert::m_to_mm(target[1]) - current_mcs[1];
-    const double dz = convert::m_to_mm(target[2]) - current_mcs[2];
-    const double distance = std::hypot(std::hypot(dx, dy), dz);
-    return distance <= kCartesianReachEpsilonMm ? TargetState::kReached : TargetState::kNotReached;
+    const bool reached = distance_mm(target.values, current) <= kCartesianReachEpsilonMm;
+    return reached ? TargetState::kReached : TargetState::kNotReached;
   }
 
   return TargetState::kUnknown;
+}
+
+/// @brief 轮询期的运行状态判定：封装“连续非 RUNNING 才判结束”的确认与两个超时窗口。
+class RunStateWatcher
+{
+public:
+  /// @brief 单轮判定；字段互相独立，调用方按原有优先级取用（结束优先于超时）。
+  struct Status
+  {
+    bool ended = false;       // 连续多次非 RUNNING，判定控制器已结束
+    bool not_started = false; // 起始窗口内未进入 RUNNING 且未观察到位姿变化
+    bool timed_out = false;   // 总超时
+  };
+
+  explicit RunStateWatcher(double timeout_sec) : timeout_sec_(timeout_sec) {}
+
+  /// @brief 已观察到位姿变化，可豁免起始超时。
+  void mark_motion_observed() noexcept
+  {
+    motion_observed_ = true;
+  }
+
+  /// @param[in] state_ok 本轮状态查询是否成功
+  /// @param[in] state 控制器运行状态
+  /// @param[in] target_reached 目标位姿是否已到达（短运动可能在首次轮询前就结束）
+  /// @param[in] now 本轮时刻
+  Status update(bool state_ok, tl::RunState state, bool target_reached, std::chrono::steady_clock::time_point now)
+  {
+    if (state_ok && state == tl::RunState::RUNNING)
+    {
+      saw_running_ = true;
+      motion_observed_ = true;
+      inactive_confirm_ = 0;
+      stopped_since_ = {};
+    }
+    else if (state_ok && (saw_running_ || target_reached))
+    {
+      // 控制器状态更新有约 200 ms 延迟；连续多次非 RUNNING 才判定结束。
+      if (stopped_since_ == std::chrono::steady_clock::time_point{})
+      {
+        stopped_since_ = now;
+      }
+      ++inactive_confirm_;
+    }
+    else
+    {
+      inactive_confirm_ = 0;
+      stopped_since_ = {};
+    }
+
+    Status status;
+    status.ended = state_ok && (saw_running_ || target_reached) && inactive_confirm_ >= kInactiveConfirmPolls;
+    const double elapsed = std::chrono::duration<double>(now - started_).count();
+    status.not_started =
+        !saw_running_ && !motion_observed_ && elapsed >= std::chrono::duration<double>(kMotionStartTimeout).count();
+    status.timed_out = elapsed >= timeout_sec_;
+    return status;
+  }
+
+  /// @brief 首次判定非 RUNNING 的时刻；结束确认后用于等待目标收敛。
+  std::chrono::steady_clock::time_point stopped_since() const noexcept
+  {
+    return stopped_since_;
+  }
+
+private:
+  double timeout_sec_;
+  std::chrono::steady_clock::time_point started_{std::chrono::steady_clock::now()};
+  std::chrono::steady_clock::time_point stopped_since_{};
+  bool saw_running_ = false;
+  bool motion_observed_ = false;
+  int inactive_confirm_ = 0;
+};
+
+/// @brief 校验 MoveCommand 的取值；合法时返回 nullptr，否则返回拒绝原因。
+const char *validate_move_command(const tl_ros2_interface::msg::MoveCommand& command, bool linear)
+{
+  for (const double value : command.target_pos_value)
+  {
+    if (!std::isfinite(value))
+    {
+      return "target_pos_value contains non-finite value";
+    }
+  }
+  if ((linear && command.coord != 1) || (!linear && command.coord != 0))
+  {
+    return "move_joint requires coord=0, move_linear requires coord=1";
+  }
+  if (!std::isfinite(command.velocity) || !std::isfinite(command.acc) || !std::isfinite(command.dec) ||
+      command.velocity <= 0.0 || command.acc <= 0.0 || command.acc > 100.0 || command.dec <= 0.0 || command.dec > 100.0)
+  {
+    return "invalid velocity/acc/dec";
+  }
+  // MOVJ 速度单位为 %，MOVL 为 m/s（MOVL 上限 1 m/s）。
+  if (linear ? command.velocity > 1.0 : command.velocity > 100.0)
+  {
+    return "velocity out of range";
+  }
+  if (!std::isfinite(command.velocity_sync) || command.velocity_sync < 0.0 ||
+      (linear ? command.velocity_sync > 1.0 : command.velocity_sync > 100.0))
+  {
+    return "velocity_sync out of range";
+  }
+  if (command.pl < 0 || command.pl > 5 || command.tool_num < 0 || command.user_num < 0)
+  {
+    return "invalid pl/tool_num/user_num";
+  }
+  return nullptr;
 }
 
 } // namespace
@@ -223,56 +425,43 @@ MotionActionServers::MotionActionServers(DriverNode& node, const rclcpp::Callbac
   // Humble 的 create_server 接收 rcl_action_server_options_t 与独立回调组参数。
   const rcl_action_server_options_t options = rcl_action_server_get_default_options();
 
-  const auto handle_goal_joint = [this](const rclcpp_action::GoalUUID& uuid, std::shared_ptr<const Move::Goal> goal)
+  const auto move_goal = [this](bool linear)
   {
-    (void)uuid;
-    return handle_move_goal(uuid, std::move(goal), false);
+    return [this, linear](const rclcpp_action::GoalUUID& uuid, std::shared_ptr<const Move::Goal> goal)
+    {
+      return handle_move_goal(uuid, std::move(goal), linear);
+    };
   };
-  const auto handle_goal_linear = [this](const rclcpp_action::GoalUUID& uuid, std::shared_ptr<const Move::Goal> goal)
-  {
-    (void)uuid;
-    return handle_move_goal(uuid, std::move(goal), true);
-  };
-  const auto handle_cancel_move = [this](const std::shared_ptr<GoalHandleMove> goal_handle)
+  const auto move_cancel = [this](const std::shared_ptr<GoalHandleMove> goal_handle)
   {
     return handle_move_cancel(goal_handle);
   };
-  const auto handle_accepted_joint = [this](const std::shared_ptr<GoalHandleMove> goal_handle)
+  const auto move_accepted = [this](bool linear)
   {
-    handle_move_accepted(goal_handle, false);
+    return [this, linear](const std::shared_ptr<GoalHandleMove> goal_handle)
+    {
+      handle_move_accepted(goal_handle, linear);
+    };
   };
-  const auto handle_accepted_linear = [this](const std::shared_ptr<GoalHandleMove> goal_handle)
+  const auto play_goal = [this](const rclcpp_action::GoalUUID& uuid, std::shared_ptr<const PlayTrack::Goal> goal)
   {
-    handle_move_accepted(goal_handle, true);
-  };
-
-  move_joint_server_ = rclcpp_action::create_server<Move>(
-      node_.get_node_base_interface(), node_.get_node_clock_interface(), node_.get_node_logging_interface(),
-      node_.get_node_waitables_interface(), "/tl_driver/move_joint", handle_goal_joint, handle_cancel_move,
-      handle_accepted_joint, options, group);
-  move_linear_server_ = rclcpp_action::create_server<Move>(
-      node_.get_node_base_interface(), node_.get_node_clock_interface(), node_.get_node_logging_interface(),
-      node_.get_node_waitables_interface(), "/tl_driver/move_linear", handle_goal_linear, handle_cancel_move,
-      handle_accepted_linear, options, group);
-
-  const auto handle_goal_play = [this](const rclcpp_action::GoalUUID& uuid, std::shared_ptr<const PlayTrack::Goal> goal)
-  {
-    (void)uuid;
     return handle_play_goal(uuid, std::move(goal));
   };
-  const auto handle_cancel_play = [this](const std::shared_ptr<GoalHandlePlayTrack> goal_handle)
+  const auto play_cancel = [this](const std::shared_ptr<GoalHandlePlayTrack> goal_handle)
   {
     return handle_play_cancel(goal_handle);
   };
-  const auto handle_accepted_play = [this](const std::shared_ptr<GoalHandlePlayTrack> goal_handle)
+  const auto play_accepted = [this](const std::shared_ptr<GoalHandlePlayTrack> goal_handle)
   {
     handle_play_accepted(goal_handle);
   };
 
-  play_track_server_ = rclcpp_action::create_server<PlayTrack>(
-      node_.get_node_base_interface(), node_.get_node_clock_interface(), node_.get_node_logging_interface(),
-      node_.get_node_waitables_interface(), "/tl_driver/play_track", handle_goal_play, handle_cancel_play,
-      handle_accepted_play, options, group);
+  move_joint_server_ = create_action_server<Move>(node_, "/tl_driver/move_joint", move_goal(false), move_cancel,
+                                                  move_accepted(false), options, group);
+  move_linear_server_ = create_action_server<Move>(node_, "/tl_driver/move_linear", move_goal(true), move_cancel,
+                                                   move_accepted(true), options, group);
+  play_track_server_ = create_action_server<PlayTrack>(node_, "/tl_driver/play_track", play_goal, play_cancel,
+                                                       play_accepted, options, group);
 
   worker_ = std::thread(&MotionActionServers::worker_loop, this);
 }
@@ -289,9 +478,31 @@ MotionActionServers::~MotionActionServers()
 
 void MotionActionServers::note_external_motion()
 {
-  const int64_t now_ns =
-      std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-  last_external_motion_ns_.store(now_ns, std::memory_order_release);
+  last_external_motion_ns_.store(steady_now_ns(), std::memory_order_release);
+}
+
+bool MotionActionServers::external_motion_recent() const
+{
+  const int64_t last_ns = last_external_motion_ns_.load(std::memory_order_acquire);
+  if (last_ns == 0)
+  {
+    return false;
+  }
+  const int64_t grace_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(kExternalMotionGrace).count();
+  return steady_now_ns() - last_ns < grace_ns;
+}
+
+const char *MotionActionServers::abort_cause() const
+{
+  if (stop_worker_.load(std::memory_order_acquire))
+  {
+    return "Driver is shutting down";
+  }
+  if (!node_.session().is_connected())
+  {
+    return "Arm disconnected";
+  }
+  return nullptr;
 }
 
 bool MotionActionServers::acquire_motion_slot()
@@ -305,67 +516,33 @@ void MotionActionServers::release_motion_slot()
   motion_active_.store(false, std::memory_order_release);
 }
 
-rclcpp_action::GoalResponse MotionActionServers::handle_move_goal(const rclcpp_action::GoalUUID&,
-                                                                  std::shared_ptr<const Move::Goal> goal, bool linear)
+rclcpp_action::GoalResponse MotionActionServers::precheck_goal(double timeout_sec, const char *action_name,
+                                                               const char *field_error)
 {
   if (!node_.session().is_connected())
   {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: arm is not connected");
+    RCLCPP_WARN(node_.get_logger(), "[Action]: %s goal rejected: arm is not connected", action_name);
     return rclcpp_action::GoalResponse::REJECT;
   }
 
-  const int64_t last_external_ns = last_external_motion_ns_.load(std::memory_order_acquire);
-  const int64_t now_ns =
-      std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-  if (last_external_ns != 0 &&
-      now_ns - last_external_ns < std::chrono::duration_cast<std::chrono::nanoseconds>(kExternalMotionGrace).count())
+  if (external_motion_recent())
   {
     RCLCPP_WARN(node_.get_logger(),
-                "[Action]: move goal rejected: an external motion command was issued less than 500 ms ago");
+                "[Action]: %s goal rejected: an external motion command was issued less than %ld ms ago", action_name,
+                static_cast<long>(kExternalMotionGrace.count()));
     return rclcpp_action::GoalResponse::REJECT;
   }
 
-  const auto& command = goal->command;
-  for (const double value : command.target_pos_value)
+  // 字段校验放在连接/外部运动之后：保持现场排障时首个 WARN 仍是根因。
+  if (field_error != nullptr)
   {
-    if (!std::isfinite(value))
-    {
-      RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: target_pos_value contains non-finite value");
-      return rclcpp_action::GoalResponse::REJECT;
-    }
-  }
-  if ((linear && command.coord != 1) || (!linear && command.coord != 0))
-  {
-    RCLCPP_WARN(node_.get_logger(),
-                "[Action]: move goal rejected: move_joint requires coord=0, move_linear requires coord=1");
+    RCLCPP_WARN(node_.get_logger(), "[Action]: %s goal rejected: %s", action_name, field_error);
     return rclcpp_action::GoalResponse::REJECT;
   }
-  if (!std::isfinite(command.velocity) || !std::isfinite(command.acc) || !std::isfinite(command.dec) ||
-      command.velocity <= 0.0 || command.acc <= 0.0 || command.acc > 100.0 || command.dec <= 0.0 || command.dec > 100.0)
+
+  if (!std::isfinite(timeout_sec) || timeout_sec > kMaxActionTimeoutSec)
   {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: invalid velocity/acc/dec");
-    return rclcpp_action::GoalResponse::REJECT;
-  }
-  // MOVJ 速度单位为 %，MOVL 为 m/s（MOVL 上限 1 m/s）。
-  if (linear ? command.velocity > 1.0 : command.velocity > 100.0)
-  {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: velocity out of range");
-    return rclcpp_action::GoalResponse::REJECT;
-  }
-  if (!std::isfinite(command.velocity_sync) || command.velocity_sync < 0.0 ||
-      (linear ? command.velocity_sync > 1.0 : command.velocity_sync > 100.0))
-  {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: velocity_sync out of range");
-    return rclcpp_action::GoalResponse::REJECT;
-  }
-  if (command.pl < 0 || command.pl > 5 || command.tool_num < 0 || command.user_num < 0)
-  {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: invalid pl/tool_num/user_num");
-    return rclcpp_action::GoalResponse::REJECT;
-  }
-  if (!std::isfinite(goal->timeout_sec) || goal->timeout_sec > kMaxActionTimeoutSec)
-  {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: timeout_sec must be <= %.0f s",
+    RCLCPP_WARN(node_.get_logger(), "[Action]: %s goal rejected: timeout_sec must be <= %.0f s", action_name,
                 kMaxActionTimeoutSec);
     return rclcpp_action::GoalResponse::REJECT;
   }
@@ -373,26 +550,33 @@ rclcpp_action::GoalResponse MotionActionServers::handle_move_goal(const rclcpp_a
   tl::RunState state = tl::RunState::STOP;
   if (!read_run_state(node_, state))
   {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: failed to read run state");
+    RCLCPP_WARN(node_.get_logger(), "[Action]: %s goal rejected: failed to read run state", action_name);
     return rclcpp_action::GoalResponse::REJECT;
   }
   if (state == tl::RunState::RUNNING)
   {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: arm is already RUNNING");
+    RCLCPP_WARN(node_.get_logger(), "[Action]: %s goal rejected: arm is already RUNNING", action_name);
     return rclcpp_action::GoalResponse::REJECT;
   }
   if (state == tl::RunState::PAUSE)
   {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: arm is PAUSED (disable queue motion mode first)");
+    RCLCPP_WARN(node_.get_logger(), "[Action]: %s goal rejected: arm is PAUSED (disable queue motion mode first)",
+                action_name);
     return rclcpp_action::GoalResponse::REJECT;
   }
   if (!acquire_motion_slot())
   {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: move goal rejected: another motion action is active");
+    RCLCPP_WARN(node_.get_logger(), "[Action]: %s goal rejected: another motion action is active", action_name);
     return rclcpp_action::GoalResponse::REJECT;
   }
 
   return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+}
+
+rclcpp_action::GoalResponse MotionActionServers::handle_move_goal(const rclcpp_action::GoalUUID&,
+                                                                  std::shared_ptr<const Move::Goal> goal, bool linear)
+{
+  return precheck_goal(goal->timeout_sec, "move", validate_move_command(goal->command, linear));
 }
 
 rclcpp_action::CancelResponse MotionActionServers::handle_move_cancel(const std::shared_ptr<GoalHandleMove>)
@@ -403,20 +587,24 @@ rclcpp_action::CancelResponse MotionActionServers::handle_move_cancel(const std:
   return rclcpp_action::CancelResponse::REJECT;
 }
 
+void MotionActionServers::enqueue(std::function<void()> job)
+{
+  {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    jobs_.push_back(std::move(job));
+  }
+  queue_cv_.notify_one();
+}
+
 void MotionActionServers::handle_move_accepted(const std::shared_ptr<GoalHandleMove> goal_handle, bool linear)
 {
   RCLCPP_INFO(node_.get_logger(), "[Action]: move goal accepted on %s",
               linear ? "/tl_driver/move_linear" : "/tl_driver/move_joint");
-
-  {
-    std::lock_guard<std::mutex> lock(queue_mutex_);
-    jobs_.push_back(
-        [this, goal_handle, linear]()
-        {
-          execute_move(goal_handle, linear);
-        });
-  }
-  queue_cv_.notify_one();
+  enqueue(
+      [this, goal_handle, linear]()
+      {
+        execute_move(goal_handle, linear);
+      });
 }
 
 void MotionActionServers::execute_move(const std::shared_ptr<GoalHandleMove> goal_handle, bool linear)
@@ -426,59 +614,32 @@ void MotionActionServers::execute_move(const std::shared_ptr<GoalHandleMove> goa
     abort_move(goal_handle, "Driver is shutting down; goal was not started");
     return;
   }
-  try
-  {
-    execute_move_impl(goal_handle, linear);
-  }
-  catch (const std::exception& e)
-  {
-    abort_move(goal_handle, std::string("Internal error: ") + e.what());
-  }
-  catch (...)
-  {
-    abort_move(goal_handle, "Internal error: unknown exception");
-  }
+  run_guarded(
+      [this, &goal_handle, linear]()
+      {
+        execute_move_impl(goal_handle, linear);
+      },
+      [this, &goal_handle](const std::string& message)
+      {
+        abort_move(goal_handle, message);
+      });
 }
 
 void MotionActionServers::abort_move(const std::shared_ptr<GoalHandleMove>& goal_handle,
                                      const std::string& message) noexcept
 {
   release_motion_slot();
-  auto result = std::make_shared<Move::Result>();
-  result->success = false;
-  result->message = message;
-  try
-  {
-    if (goal_handle->is_executing())
-    {
-      goal_handle->abort(result);
-    }
-  }
-  catch (...)
-  {
-    // 终态发送失败不能反向抛出，否则会越过 worker 的异常边界。
-  }
+  finish_goal(goal_handle, std::make_shared<Move::Result>(), false, message);
 }
 
 void MotionActionServers::execute_move_impl(const std::shared_ptr<GoalHandleMove>& goal_handle, bool linear)
 {
   const auto goal = goal_handle->get_goal();
   const auto result = std::make_shared<Move::Result>();
-  const auto abort_goal = [&](const std::string& message)
+  const auto finish = [&](bool success, const std::string& message)
   {
     release_motion_slot();
-    result->success = false;
-    result->message = message;
-    try
-    {
-      if (goal_handle->is_executing())
-      {
-        goal_handle->abort(result);
-      }
-    }
-    catch (...)
-    {
-    }
+    finish_goal(goal_handle, result, success, message);
   };
 
   const int fd = node_.session().fd();
@@ -516,7 +677,7 @@ void MotionActionServers::execute_move_impl(const std::shared_ptr<GoalHandleMove
 
   if (stop_worker_.load(std::memory_order_acquire))
   {
-    abort_goal("Driver is shutting down; motion command not sent");
+    finish(false, "Driver is shutting down; motion command not sent");
     return;
   }
 
@@ -525,34 +686,28 @@ void MotionActionServers::execute_move_impl(const std::shared_ptr<GoalHandleMove
   const tl::Result ret = linear ? tl::robot_movel(fd, cmd) : tl::robot_movej(fd, cmd);
   if (ret != tl::Result::SUCCESS)
   {
-    abort_goal(std::string("Failed to send motion command: ") + arm_client::result_to_string(ret));
+    finish(false, std::string("Failed to send motion command: ") + arm_client::result_to_string(ret));
     return;
   }
 
+  const MotionTarget target = make_target(*goal);
+  const bool joint = target.coord == 0;
+  const std::vector<double>& start_sample = joint ? start_acs : start_mcs;
   const double timeout_sec = goal->timeout_sec > 0.0 ? goal->timeout_sec : node_.motion_action_timeout();
-  const auto started = std::chrono::steady_clock::now();
-  auto last_feedback = started;
-  auto last_sample = started - kSdkSamplePeriod; // 首轮立即采样，避免同步采样前 200 ms 无位姿
+  RunStateWatcher watcher(timeout_sec);
+  auto last_feedback = std::chrono::steady_clock::now();
+  auto last_sample = last_feedback - kSdkSamplePeriod; // 首轮立即采样，避免同步采样前 200 ms 无位姿
   // 保留最近一次有效位姿；单次查询失败时不能清空，否则反馈与目标判定会随机失效。
   std::vector<double> current_acs;
   std::vector<double> current_mcs;
   std::vector<double> sample;
-  bool saw_running = false;
-  bool saw_motion = false;
   int motion_confirm = 0;
-  int inactive_confirm = 0;
-  std::chrono::steady_clock::time_point stopped_since{};
 
   while (rclcpp::ok())
   {
-    if (stop_worker_.load(std::memory_order_acquire))
+    if (const char *cause = abort_cause())
     {
-      abort_goal("Driver is shutting down; controller may still be moving (SDK has no stop interface)");
-      return;
-    }
-    if (!node_.session().is_connected())
-    {
-      abort_goal("Arm disconnected; controller may still be moving (SDK has no stop interface)");
+      finish(false, std::string(cause) + "; controller may still be moving (SDK has no stop interface)");
       return;
     }
 
@@ -571,16 +726,17 @@ void MotionActionServers::execute_move_impl(const std::shared_ptr<GoalHandleMove
       }
       last_sample = now;
     }
+    const std::vector<double>& current_sample = joint ? current_acs : current_mcs;
 
     tl::RunState state = tl::RunState::STOP;
     const bool state_ok = read_run_state(node_, state);
 
     // 位姿变化连续确认，避免单帧噪声/残留差值触发“已运动”。
-    if (pose_changed(*goal, start_acs, start_mcs, current_acs, current_mcs))
+    if (pose_changed(target, start_sample, current_sample))
     {
       if (++motion_confirm >= kMotionConfirmPolls)
       {
-        saw_motion = true;
+        watcher.mark_motion_observed();
       }
     }
     else
@@ -588,76 +744,44 @@ void MotionActionServers::execute_move_impl(const std::shared_ptr<GoalHandleMove
       motion_confirm = 0;
     }
 
-    const TargetState target_state = evaluate_target(*goal, current_acs, current_mcs);
+    const TargetState target_state = evaluate_target(target, current_sample);
+    const RunStateWatcher::Status status = watcher.update(state_ok, state, target_state == TargetState::kReached, now);
 
-    if (state_ok && state == tl::RunState::RUNNING)
+    if (status.ended)
     {
-      saw_running = true;
-      saw_motion = true;
-      inactive_confirm = 0;
-      stopped_since = {};
-    }
-    else if (state_ok && (saw_running || target_state == TargetState::kReached))
-    {
-      // 控制器状态更新有约 200 ms 延迟；连续多次非 RUNNING 才判定结束。
-      if (stopped_since == std::chrono::steady_clock::time_point{})
+      if (target_state == TargetState::kReached)
       {
-        stopped_since = now;
+        finish(true, std::string("Motion finished, run_state=") + run_state_text(state));
+        return;
       }
-      if (++inactive_confirm >= kInactiveConfirmPolls)
+      // 非 RUNNING 但目标未到/不可校验：再给 2 s 收敛或补采时间，仍不满足则明确失败。
+      if (now - watcher.stopped_since() >= kMotionSettleTimeout)
       {
-        if (target_state == TargetState::kReached)
-        {
-          result->success = true;
-          result->message = std::string("Motion finished, run_state=") + run_state_text(state);
-          release_motion_slot();
-          try
-          {
-            if (goal_handle->is_executing())
-            {
-              goal_handle->succeed(result);
-            }
-          }
-          catch (...)
-          {
-          }
-          return;
-        }
-        // 非 RUNNING 但目标未到/不可校验：再给 2 s 收敛或补采时间，仍不满足则明确失败。
-        if (now - stopped_since >= kMotionSettleTimeout)
-        {
-          abort_goal(target_state == TargetState::kUnknown
-                         ? "Motion ended but current target pose is unavailable (run_state=" +
-                               std::string(run_state_text(state)) + ")"
-                         : "Motion ended before reaching target (run_state=" + std::string(run_state_text(state)) +
-                               ")");
-          return;
-        }
+        finish(false,
+               target_state == TargetState::kUnknown
+                   ? "Motion ended but current target pose is unavailable (run_state=" +
+                         std::string(run_state_text(state)) + ")"
+                   : "Motion ended before reaching target (run_state=" + std::string(run_state_text(state)) + ")");
+        return;
       }
     }
-    else
-    {
-      inactive_confirm = 0;
-      stopped_since = {};
-    }
 
-    const auto elapsed = now - started;
-    if (!saw_running && !saw_motion && elapsed >= kMotionStartTimeout)
+    if (status.not_started)
     {
-      abort_goal("Motion did not start within 3 s");
+      finish(false, "Motion did not start within 3 s");
       return;
     }
-    if (std::chrono::duration<double>(elapsed).count() >= timeout_sec)
+    if (status.timed_out)
     {
-      abort_goal("Motion timeout after " + std::to_string(timeout_sec) +
-                 " s; controller may still be moving (SDK has no stop interface)");
+      finish(false, "Motion timeout after " + std::to_string(timeout_sec) +
+                        " s; controller may still be moving (SDK has no stop interface)");
       return;
     }
 
     if (now - last_feedback >= kFeedbackPeriod)
     {
       auto feedback = std::make_shared<Move::Feedback>();
-      feedback->progress = compute_progress(*goal, start_acs, start_mcs, current_acs, current_mcs);
+      feedback->progress = compute_progress(target, start_sample, current_sample);
       feedback->current_pose = make_current_pose(node_, current_mcs);
       feedback->state = state_ok ? run_state_text(state) : "UNKNOWN";
       goal_handle->publish_feedback(feedback);
@@ -667,62 +791,14 @@ void MotionActionServers::execute_move_impl(const std::shared_ptr<GoalHandleMove
     std::this_thread::sleep_for(kPollPeriod);
   }
 
-  abort_goal("ROS context stopped");
+  finish(false, "ROS context stopped");
 }
 
 rclcpp_action::GoalResponse MotionActionServers::handle_play_goal(const rclcpp_action::GoalUUID&,
                                                                   std::shared_ptr<const PlayTrack::Goal> goal)
 {
-  if (!node_.session().is_connected())
-  {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: play goal rejected: arm is not connected");
-    return rclcpp_action::GoalResponse::REJECT;
-  }
-  const int64_t last_external_ns = last_external_motion_ns_.load(std::memory_order_acquire);
-  const int64_t now_ns =
-      std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-  if (last_external_ns != 0 &&
-      now_ns - last_external_ns < std::chrono::duration_cast<std::chrono::nanoseconds>(kExternalMotionGrace).count())
-  {
-    RCLCPP_WARN(node_.get_logger(),
-                "[Action]: play goal rejected: an external motion command was issued less than 500 ms ago");
-    return rclcpp_action::GoalResponse::REJECT;
-  }
-  if (goal->vel < 1 || goal->vel > 100)
-  {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: play goal rejected: vel must be in [1, 100]");
-    return rclcpp_action::GoalResponse::REJECT;
-  }
-  if (!std::isfinite(goal->timeout_sec) || goal->timeout_sec > kMaxActionTimeoutSec)
-  {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: play goal rejected: timeout_sec must be <= %.0f s",
-                kMaxActionTimeoutSec);
-    return rclcpp_action::GoalResponse::REJECT;
-  }
-
-  tl::RunState state = tl::RunState::STOP;
-  if (!read_run_state(node_, state))
-  {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: play goal rejected: failed to read run state");
-    return rclcpp_action::GoalResponse::REJECT;
-  }
-  if (state == tl::RunState::RUNNING)
-  {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: play goal rejected: arm is already RUNNING");
-    return rclcpp_action::GoalResponse::REJECT;
-  }
-  if (state == tl::RunState::PAUSE)
-  {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: play goal rejected: arm is PAUSED (disable queue motion mode first)");
-    return rclcpp_action::GoalResponse::REJECT;
-  }
-  if (!acquire_motion_slot())
-  {
-    RCLCPP_WARN(node_.get_logger(), "[Action]: play goal rejected: another motion action is active");
-    return rclcpp_action::GoalResponse::REJECT;
-  }
-
-  return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+  const char *field_error = (goal->vel < 1 || goal->vel > 100) ? "vel must be in [1, 100]" : nullptr;
+  return precheck_goal(goal->timeout_sec, "play", field_error);
 }
 
 rclcpp_action::CancelResponse MotionActionServers::handle_play_cancel(const std::shared_ptr<GoalHandlePlayTrack>)
@@ -735,15 +811,11 @@ rclcpp_action::CancelResponse MotionActionServers::handle_play_cancel(const std:
 void MotionActionServers::handle_play_accepted(const std::shared_ptr<GoalHandlePlayTrack> goal_handle)
 {
   RCLCPP_INFO(node_.get_logger(), "[Action]: play goal accepted on /tl_driver/play_track");
-  {
-    std::lock_guard<std::mutex> lock(queue_mutex_);
-    jobs_.push_back(
-        [this, goal_handle]()
-        {
-          execute_play(goal_handle);
-        });
-  }
-  queue_cv_.notify_one();
+  enqueue(
+      [this, goal_handle]()
+      {
+        execute_play(goal_handle);
+      });
 }
 
 void MotionActionServers::execute_play(const std::shared_ptr<GoalHandlePlayTrack> goal_handle)
@@ -753,137 +825,78 @@ void MotionActionServers::execute_play(const std::shared_ptr<GoalHandlePlayTrack
     abort_play(goal_handle, "Driver is shutting down; goal was not started");
     return;
   }
-  try
-  {
-    execute_play_impl(goal_handle);
-  }
-  catch (const std::exception& e)
-  {
-    abort_play(goal_handle, std::string("Internal error: ") + e.what());
-  }
-  catch (...)
-  {
-    abort_play(goal_handle, "Internal error: unknown exception");
-  }
+  run_guarded(
+      [this, &goal_handle]()
+      {
+        execute_play_impl(goal_handle);
+      },
+      [this, &goal_handle](const std::string& message)
+      {
+        abort_play(goal_handle, message);
+      });
 }
 
 void MotionActionServers::abort_play(const std::shared_ptr<GoalHandlePlayTrack>& goal_handle,
                                      const std::string& message) noexcept
 {
   release_motion_slot();
-  auto result = std::make_shared<PlayTrack::Result>();
-  result->success = false;
-  result->message = message;
-  try
-  {
-    if (goal_handle->is_executing())
-    {
-      goal_handle->abort(result);
-    }
-  }
-  catch (...)
-  {
-  }
+  finish_goal(goal_handle, std::make_shared<PlayTrack::Result>(), false, message);
 }
 
 void MotionActionServers::execute_play_impl(const std::shared_ptr<GoalHandlePlayTrack>& goal_handle)
 {
   const auto goal = goal_handle->get_goal();
   const auto result = std::make_shared<PlayTrack::Result>();
-  const auto abort_goal = [&](const std::string& message)
+  const auto finish = [&](bool success, const std::string& message)
   {
     release_motion_slot();
-    result->success = false;
-    result->message = message;
-    try
-    {
-      if (goal_handle->is_executing())
-      {
-        goal_handle->abort(result);
-      }
-    }
-    catch (...)
-    {
-    }
+    finish_goal(goal_handle, result, success, message);
   };
 
   if (stop_worker_.load(std::memory_order_acquire))
   {
-    abort_goal("Driver is shutting down; playback command not sent");
+    finish(false, "Driver is shutting down; playback command not sent");
     return;
   }
 
   const tl::Result ret = tl::track_record_playback(node_.session().fd(), goal->vel);
   if (ret != tl::Result::SUCCESS)
   {
-    abort_goal(std::string("Failed to start track playback: ") + arm_client::result_to_string(ret));
+    finish(false, std::string("Failed to start track playback: ") + arm_client::result_to_string(ret));
     return;
   }
 
   const double timeout_sec = goal->timeout_sec > 0.0 ? goal->timeout_sec : node_.track_action_timeout();
-  const auto started = std::chrono::steady_clock::now();
-  auto last_feedback = started;
-  bool saw_running = false;
-  int inactive_confirm = 0;
+  RunStateWatcher watcher(timeout_sec);
+  auto last_feedback = std::chrono::steady_clock::now();
 
   while (rclcpp::ok())
   {
-    if (stop_worker_.load(std::memory_order_acquire))
+    if (const char *cause = abort_cause())
     {
-      abort_goal("Driver is shutting down; playback may still be running (SDK has no stop interface)");
-      return;
-    }
-    if (!node_.session().is_connected())
-    {
-      abort_goal("Arm disconnected; playback may still be running (SDK has no stop interface)");
+      finish(false, std::string(cause) + "; playback may still be running (SDK has no stop interface)");
       return;
     }
 
     tl::RunState state = tl::RunState::STOP;
     const bool state_ok = read_run_state(node_, state);
     const auto now = std::chrono::steady_clock::now();
-    const auto elapsed = now - started;
+    const RunStateWatcher::Status status = watcher.update(state_ok, state, false, now);
 
-    if (state_ok && state == tl::RunState::RUNNING)
+    if (status.ended)
     {
-      saw_running = true;
-      inactive_confirm = 0;
-    }
-    else if (state_ok && saw_running)
-    {
-      // 状态更新有约 200 ms 延迟，连续多次非 RUNNING 才判定结束。
-      if (++inactive_confirm >= kInactiveConfirmPolls)
-      {
-        result->success = true;
-        result->message = std::string("Track playback finished, run_state=") + run_state_text(state);
-        release_motion_slot();
-        try
-        {
-          if (goal_handle->is_executing())
-          {
-            goal_handle->succeed(result);
-          }
-        }
-        catch (...)
-        {
-        }
-        return;
-      }
-    }
-    else
-    {
-      inactive_confirm = 0;
-    }
-
-    if (!saw_running && elapsed >= kMotionStartTimeout)
-    {
-      abort_goal("Track playback did not start within 3 s");
+      finish(true, std::string("Track playback finished, run_state=") + run_state_text(state));
       return;
     }
-    if (std::chrono::duration<double>(elapsed).count() >= timeout_sec)
+    if (status.not_started)
     {
-      abort_goal("Track playback timeout after " + std::to_string(timeout_sec) +
-                 " s; playback may still be running (SDK has no stop interface)");
+      finish(false, "Track playback did not start within 3 s");
+      return;
+    }
+    if (status.timed_out)
+    {
+      finish(false, "Track playback timeout after " + std::to_string(timeout_sec) +
+                        " s; playback may still be running (SDK has no stop interface)");
       return;
     }
 
@@ -899,7 +912,7 @@ void MotionActionServers::execute_play_impl(const std::shared_ptr<GoalHandlePlay
     std::this_thread::sleep_for(kPollPeriod);
   }
 
-  abort_goal("ROS context stopped");
+  finish(false, "ROS context stopped");
 }
 
 void MotionActionServers::worker_loop()
