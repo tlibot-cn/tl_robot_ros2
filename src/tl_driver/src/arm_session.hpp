@@ -44,7 +44,8 @@ public:
 
   /// @brief 设置控制器错误/告警处理函数（转发到 ArmClient）。
   /// @param[in] handler 处理函数；`nullptr` 注销
-  /// @note 在 SDK 回调线程上调用 handler，实现必须非阻塞、不得回调本类。
+  /// @note 在 SDK 回调线程上同步调用 handler；实现须短小，且不得回调 `ArmClient`。
+  ///       本类的 `is_connected()` / `fd()` 等访问不取该回调锁，可在 handler 中使用。
   void set_error_handler(arm_client::ArmClient::ErrorHandler handler);
 
   /// @brief 断开两个端口并清零 fd。

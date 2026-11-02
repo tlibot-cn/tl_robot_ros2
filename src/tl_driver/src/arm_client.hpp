@@ -56,8 +56,9 @@ public:
   ArmClient& operator=(const ArmClient&) = delete;
 
   /// @brief 控制器错误/告警的处理函数。
-  /// @note 在 SDK 回调线程上、持有实例注册锁时调用：必须非阻塞，且不得回调 ArmClient 的
-  ///       任何方法（会在 `registry_mutex_` 上自锁）。
+  /// @note 在 SDK 回调线程上、持有 `registry_mutex_` 时同步调用：实现须短小（目标 < 1 ms，
+  ///       避免阻塞同锁保护的 7000 状态帧回调），且不得回调 `ArmClient` 的任何方法
+  ///       （`std::mutex` 非递归，会自锁）。
   using ErrorHandler = std::function<void(int message_type, const std::string& message, int message_code)>;
 
   /// @brief 在指定端口注册错误/告警异步推送回调。
