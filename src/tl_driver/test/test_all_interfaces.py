@@ -322,10 +322,14 @@ class DriverQuickTest(Node):
         else:
             self.logger.warn("      未收到 /tl_driver/line_speed")
 
-        # 错误/告警是事件驱动话题：自检期间没有故障时收不到消息属于正常现象。
+        # 错误/告警是事件驱动话题：自检期间没有故障时收不到消息属于正常现象，
+        # 但“无发布者”说明驱动未运行或话题名/QoS 变更，两者必须区分，避免假通过。
         self.logger.info("  --- /tl_driver/error_info（错误/告警，事件驱动）---")
+        publisher_count = self.count_publishers("/tl_driver/error_info")
         self.spin_for(1.0)
-        if self.error_info is not None:
+        if publisher_count == 0:
+            self.logger.warn("      /tl_driver/error_info 无发布者（驱动未运行或话题名/QoS 变更）")
+        elif self.error_info is not None:
             self.logger.info(
                 f"      type={self.error_info.message_type} "
                 f"code={self.error_info.message_code} msg={self.error_info.message}"
