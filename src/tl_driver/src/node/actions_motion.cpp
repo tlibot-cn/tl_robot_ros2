@@ -226,7 +226,7 @@ double compute_progress(const MotionTarget& target, const std::vector<double>& s
   if (target.coord == 0)
   {
     const std::size_t count = start.size();
-    if (count == 0 || current.empty() || target.values.size() < count)
+    if (count == 0 || current.size() < count || target.values.size() < count)
     {
       return -1.0;
     }
