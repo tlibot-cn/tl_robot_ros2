@@ -167,7 +167,7 @@ private:
   /// @brief 按域注册全部服务、话题与 action。
   void register_entities();
 
-  /// @brief 按配置创建诊断话题定时器（频率为 0 时不创建）。
+  /// @brief 按配置创建监测与反馈定时器（频率为 0 时不创建）。
   void create_aux_timers();
 
   std::string arm_ip_{"192.168.1.13"};
@@ -180,8 +180,8 @@ private:
   int ndof_{0};
 
   int state_stream_interval_ms_{10};
-  double joint_dynamics_rate_{10.0};
-  double joint_thermal_rate_{1.0};
+  double joint_monitor_rate_{2.0};
+  double feedback_rate_{100.0};
   double motion_action_timeout_{60.0};
   double track_action_timeout_{600.0};
 
@@ -194,10 +194,8 @@ private:
   rclcpp::CallbackGroup::SharedPtr service_group_;
   rclcpp::CallbackGroup::SharedPtr motion_service_group_;
   rclcpp::CallbackGroup::SharedPtr topic_group_;
-  rclcpp::CallbackGroup::SharedPtr dynamics_group_;
-  rclcpp::CallbackGroup::SharedPtr thermal_group_;
-  // 运行状态/速度查询独立成组：同步查询不能与 dynamics 或短服务互相排队。
-  rclcpp::CallbackGroup::SharedPtr status_group_;
+  rclcpp::CallbackGroup::SharedPtr monitor_group_;
+  rclcpp::CallbackGroup::SharedPtr feedback_group_;
   rclcpp::CallbackGroup::SharedPtr action_group_;
   rclcpp::SubscriptionOptions topic_options_;
 
@@ -205,9 +203,8 @@ private:
   std::vector<rclcpp::ServiceBase::SharedPtr> services_;
   std::vector<rclcpp::SubscriptionBase::SharedPtr> subscriptions_;
 
-  rclcpp::TimerBase::SharedPtr dynamics_timer_;
-  rclcpp::TimerBase::SharedPtr thermal_timer_;
-  rclcpp::TimerBase::SharedPtr status_query_timer_;
+  rclcpp::TimerBase::SharedPtr monitor_timer_;
+  rclcpp::TimerBase::SharedPtr feedback_timer_;
 };
 
 } // namespace tl_driver

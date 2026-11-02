@@ -47,7 +47,6 @@
 
 #include <sensor_msgs/msg/joint_state.hpp>
 
-#include "tl_ros2_interface/msg/arm_status.hpp"
 #include "tl_ros2_interface/srv/open_servo_j.hpp"
 #include "tl_ros2_interface/srv/set_current_mode.hpp"
 
@@ -56,7 +55,6 @@ namespace tl_example
 
 // 类型别名 — 简化代码
 using Trigger = std_srvs::srv::Trigger;
-using ArmStatus = tl_ros2_interface::msg::ArmStatus;
 using JointState = sensor_msgs::msg::JointState;
 using Float64Array = std_msgs::msg::Float64MultiArray;
 using OpenServoJ = tl_ros2_interface::srv::OpenServoJ;
@@ -109,9 +107,7 @@ public:
     // ── 高频下发话题（100Hz 向 7000 端口发送目标关节角度，单位 rad）──
     servoj_pos_pub_ = this->create_publisher<Float64Array>("/tl_driver/set_servoj_pos", 10);
 
-    // ── 状态订阅（运行状态 + 关节角度，用于验证实时跟踪）──
-    arm_status_sub_ = this->create_subscription<ArmStatus>(
-        "/arm_status", 10, std::bind(&ServoJDemo::onArmStatus, this, std::placeholders::_1));
+    // ── 状态订阅（关节角度，用于验证实时跟踪）──
     joint_state_sub_ = this->create_subscription<JointState>(
         "/joint_states", 10, std::bind(&ServoJDemo::onJointState, this, std::placeholders::_1));
 
@@ -131,11 +127,8 @@ private:
   rclcpp::Client<OpenServoJ>::SharedPtr open_servoj_cli_;
   rclcpp::Client<Trigger>::SharedPtr close_servoj_cli_;
   rclcpp::Publisher<Float64Array>::SharedPtr servoj_pos_pub_;
-  rclcpp::Subscription<ArmStatus>::SharedPtr arm_status_sub_;
   rclcpp::Subscription<JointState>::SharedPtr joint_state_sub_;
 
-  // 最近一次接收到的机械臂运行状态（/arm_status）
-  std::string arm_run_state_ = "unknown";
   // 最近一次接收到的关节角度（话题为弧度，打印时转角度）
   JointState::SharedPtr last_joint_state_;
 
@@ -148,10 +141,6 @@ private:
   int period_ms_ = 10;
 
   // ── 话题回调 ──
-  void onArmStatus(const ArmStatus::SharedPtr msg)
-  {
-    arm_run_state_ = msg->run_state;
-  }
   void onJointState(const JointState::SharedPtr msg)
   {
     last_joint_state_ = msg;

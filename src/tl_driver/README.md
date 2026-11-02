@@ -105,15 +105,15 @@ tl_driver:
     arm_joints: ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7"] # 关节名称（1～7 个，启动时校验）
     executor_threads: 8             # 执行器线程数，范围 1～64；默认 max(4, min(hardware_concurrency, 8))
     state_stream_interval_ms: 10    # 连续状态流间隔，范围 10～60000 ms
-    joint_dynamics_rate: 10.0       # /tl_driver/joint_dynamics 频率，0=关闭
-    joint_thermal_rate: 1.0         # /tl_driver/joint_thermal 频率，0～1，0=关闭
+    joint_monitor_rate: 2.0         # /tl_driver/joint_monitor（电流/温度/电压）频率，0～2，0=关闭
+    feedback_rate: 100.0            # /tl_driver/joint_speed + line_speed + joint_torque 反馈发布频率，0～100，0=关闭
     motion_action_timeout: 60.0     # move_joint/move_linear 默认超时，秒
     track_action_timeout: 600.0     # play_track 默认超时，秒
 ```
 
 > `arm_port` / `arm_port_aux` 以字符串传给 SDK，不要写成整数。
 > `tl_driver` 自身声明的参数只在启动时读取：以 read-only descriptor 声明，运行期 `ros2 param set` 会被 rclcpp 拒绝；启动参数覆盖（launch/YAML）不受影响。rclcpp 内建参数（如 `use_sim_time`）保持标准可变语义。
-> `/joint_states`、`/tcp_pose` 由 7000 帧通知直接发布，频率取决于 `state_stream_interval_ms` 与控制器的实际推送率；`/arm_status` 在每次 10 Hz 运行状态查询成功后发布。状态流在上下电完成后启动，启动失败则驱动启动失败；运行期若控制器停止推帧，对应话题停更，需要重启驱动恢复（无同步查询回退、无看门狗重试）。
+> `/joint_states`、`/tcp_pose` 由 7000 帧通知直接发布，频率取决于 `state_stream_interval_ms` 与控制器的实际推送率；运行状态改由 `/tl_driver/get_arm_status` 服务按需查询，不再周期发布。状态流在上下电完成后启动，启动失败则驱动启动失败；运行期若控制器停止推帧，对应话题停更，需要重启驱动恢复（无同步查询回退、无看门狗重试）。
 ## tl_driver功能包架构说明
 ### 功能包文件总览
 ```
@@ -188,9 +188,9 @@ tl_driver:
 │   │   ├── actions_motion.cpp   # action server（move_joint/move_linear/play_track）
 │   │   ├── publishers.{hpp,cpp} # 状态流/诊断话题发布
 │   │   ├── services_session.cpp # 会话类服务（连接/上下电/清错）
-│   │   ├── services_state.cpp   # 状态类服务（库版本/当前模式）；状态量改由话题发布
+│   │   ├── services_state.cpp   # 状态类服务（库版本/当前模式/运行状态）
 │   │   ├── services_config.cpp  # 配置类服务（DH 查询/关节参数/工具/坐标系/可达性）
-│   │   ├── services_transform.cpp # 坐标系服务（坐标系变换、当前坐标系读写）
+│   │   ├── services_transform.cpp # 坐标系服务（变换、当前坐标系、fk/ik）
 │   │   ├── services_motion.cpp  # 运动类服务（速度/点动/轨迹/队列/ServoJ 开关）
 │   │   ├── services_io.cpp      # IO 类服务（数字 IO、Modbus）
 │   │   ├── topics.cpp           # 话题订阅（servoJ 目标位置）
@@ -211,4 +211,4 @@ tl_driver功能包的服务、话题与 action 较多，可以通过如下指令
 ![image](doc/tl_driver4.png)  
 主要为套用API实现的一些机械臂本体的功能，其详细介绍和使用在此不详细展开，可以通过专门的文档《[tl_driver接口说明书](doc/tl_driver接口说明书.md)》进行查看。
 
-状态话题化后，`/joint_states` 与 `/tcp_pose` 默认由 7000 端口 ACS/MCS 连续流驱动；诊断量走 `/tl_driver/joint_dynamics`、`/tl_driver/joint_thermal`，数字 IO 读写统一使用 `get_digital_input_output` / `set_digital_output` 服务（不发布 `io_state` 话题）。`/arm_status` 额外携带 1 Hz 查询缓存的 `speed` / `speed_valid`。长运动客户端使用 `/tl_driver/move_joint`、`/tl_driver/move_linear`、`/tl_driver/play_track` action（`track_playback` 服务已删除）；action 的 cancel 因 SDK 无停止接口而一律拒绝。
+状态话题化后，`/joint_states` 与 `/tcp_pose` 默认由 7000 端口 ACS/MCS 连续流驱动；反馈与监测数据按查询拆分：`/tl_driver/joint_monitor`（电流/温度/电压同帧查询，默认 2 Hz）、`/tl_driver/joint_torque`、`/tl_driver/joint_speed` 与 `/tl_driver/line_speed`（后三个在同一个定时器内先后发布，共用 `feedback_rate`，默认 100 Hz）；控制器错误/告警由 6001 主端口异步回调驱动，事件逐条发布到 `/tl_driver/error_info`。运行速度改用 `/tl_driver/get_speed` 服务查询，运行状态改用 `/tl_driver/get_arm_status` 服务查询；数字 IO 读写统一使用 `get_digital_input_output` / `set_digital_output` 服务（不发布 `io_state` 话题）。长运动客户端使用 `/tl_driver/move_joint`、`/tl_driver/move_linear`、`/tl_driver/play_track` action（`track_playback` 服务已删除）；action 的 cancel 因 SDK 无停止接口而一律拒绝。正逆运动学使用 `/tl_driver/fk`、`/tl_driver/ik` 服务。

@@ -1,15 +1,17 @@
 /// @file services_state.cpp
-/// @brief 状态类服务：控制器 IP/序列号、库版本、拖拽状态与模式的实现。
+/// @brief 状态类服务：控制器 IP/序列号、库版本、拖拽状态、模式与运行状态的实现。
 
 #include <functional>
 #include <memory>
 #include <string>
 
+#include "arm_client.hpp"
 #include "arm_sdk.hpp"
 #include "node/registrars.hpp"
 #include "node/driver_node.hpp"
 
 #include "std_srvs/srv/trigger.hpp"
+#include "tl_ros2_interface/srv/get_arm_status.hpp"
 #include "tl_ros2_interface/srv/get_current_mode.hpp"
 #include "tl_ros2_interface/srv/set_controller_ip.hpp"
 #include "tl_ros2_interface/srv/set_current_mode.hpp"
@@ -137,6 +139,44 @@ void handle_get_current_mode_service(DriverNode& node,
   response->message = response->success ? "Get current mode successfully" : "Failed to get current mode";
 }
 
+void handle_get_arm_status_service(DriverNode& node,
+                                   const std::shared_ptr<tl_ros2_interface::srv::GetArmStatus::Request> request,
+                                   std::shared_ptr<tl_ros2_interface::srv::GetArmStatus::Response> response)
+{
+  (void)request;
+  response->run_state = "UNKNOWN";
+  if (!node.session().is_connected())
+  {
+    response->success = false;
+    response->message = "Arm is not connected";
+    return;
+  }
+
+  tl::RunState state = tl::RunState::STOP;
+  const tl::Result ret = tl::get_robot_running_state(node.session().fd(), state);
+  if (ret != tl::Result::SUCCESS)
+  {
+    response->success = false;
+    response->message = std::string("Failed to get arm status, result=") + arm_client::result_to_string(ret);
+    return;
+  }
+
+  switch (state)
+  {
+    case tl::RunState::STOP:
+    case tl::RunState::PAUSE:
+    case tl::RunState::RUNNING:
+      break;
+    default:
+      RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 5000, "[Service get_arm_status]: unknown run state %d",
+                           static_cast<int>(state));
+      break;
+  }
+  response->run_state = run_state_text(state);
+  response->success = true;
+  response->message = "Get arm status successfully";
+}
+
 } // namespace
 
 void register_state_services(DriverNode& node)
@@ -159,5 +199,8 @@ void register_state_services(DriverNode& node)
   node.create_service<tl_ros2_interface::srv::GetCurrentMode>(
       "/tl_driver/get_current_mode",
       std::bind(&handle_get_current_mode_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetArmStatus>(
+      "/tl_driver/get_arm_status",
+      std::bind(&handle_get_arm_status_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
 }
 } // namespace tl_driver

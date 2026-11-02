@@ -7,9 +7,9 @@
  *   2. queue_motion_set_status(true)  —— 打开队列模式（控制器先下电再上电）
  *   3. 添加 moveJ #1（相对当前位姿偏移 d1 rad，is_continue=true 先排队、不立即动）
  *   4. 添加 moveJ #2（相对当前位姿偏移 d2 rad，is_continue=false 触发执行）
- *   5. 轮询 /arm_status 等待运动开始（run_state=RUNNING）
+ *   5. 轮询 get_arm_status 等待运动开始（run_state=RUNNING）
  *   6. queue_motion_stop              —— 运动中测试停止服务
- *   7. 轮询 /arm_status 等待运动停止（run_state=STOP）
+ *   7. 轮询 get_arm_status 等待运动停止（run_state=STOP）
  *   8. queue_motion_set_status(false) —— 关闭队列模式（执行伺服下电）
  *
  * 说明：
@@ -41,9 +41,9 @@
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
-#include "tl_ros2_interface/msg/arm_status.hpp"
 #include "tl_ros2_interface/msg/cartesian_pose.hpp"
 #include "tl_ros2_interface/msg/move_command.hpp"
+#include "tl_ros2_interface/srv/get_arm_status.hpp"
 #include "tl_ros2_interface/srv/queue_motion_move_j.hpp"
 #include "tl_ros2_interface/srv/queue_motion_set_status.hpp"
 #include "tl_ros2_interface/srv/set_current_mode.hpp"
@@ -51,10 +51,11 @@
 namespace tl_example
 {
 
-using ArmStatus = tl_ros2_interface::msg::ArmStatus;
 using CartesianPose = tl_ros2_interface::msg::CartesianPose;
 using JointState = sensor_msgs::msg::JointState;
 using MoveCommand = tl_ros2_interface::msg::MoveCommand;
+
+using GetArmStatus = tl_ros2_interface::srv::GetArmStatus;
 
 using QueueMotionSetStatus = tl_ros2_interface::srv::QueueMotionSetStatus;
 using QueueMotionMoveJ = tl_ros2_interface::srv::QueueMotionMoveJ;
@@ -62,6 +63,8 @@ using SetCurrentMode = tl_ros2_interface::srv::SetCurrentMode;
 
 constexpr double kDegToRad = M_PI / 180.0;
 constexpr double kRadToDeg = 180.0 / M_PI;
+// 轮询状态查询使用短超时：异常时也要保持接近 50 ms 的采样节奏。
+constexpr auto kStatusQueryTimeout = std::chrono::milliseconds(500);
 
 /**
  * @brief 队列运动测试节点
@@ -105,12 +108,11 @@ public:
     stop_cli_ = this->create_client<std_srvs::srv::Trigger>("/tl_driver/queue_motion_stop");
     power_on_cli_ = this->create_client<std_srvs::srv::Trigger>("/tl_driver/power_on");
     set_mode_cli_ = this->create_client<SetCurrentMode>("/tl_driver/set_current_mode");
+    arm_status_cli_ = this->create_client<GetArmStatus>("/tl_driver/get_arm_status");
 
     // ── 话题订阅 ──
     joint_state_sub_ = this->create_subscription<JointState>(
         "/joint_states", 10, std::bind(&QueueTestDemo::jointStateCb, this, std::placeholders::_1));
-    arm_status_sub_ = this->create_subscription<ArmStatus>(
-        "/arm_status", 10, std::bind(&QueueTestDemo::armStatusCb, this, std::placeholders::_1));
     tcp_pose_sub_ = this->create_subscription<CartesianPose>(
         "/tcp_pose", 10, std::bind(&QueueTestDemo::tcpPoseCb, this, std::placeholders::_1));
 
@@ -124,7 +126,8 @@ public:
 
     // 1. 等待服务就绪
     if (!waitService("queue_motion_set_status", set_status_cli_) || !waitService("queue_motion_movej", movej_cli_) ||
-        !waitService("queue_motion_stop", stop_cli_) || !waitService("set_current_mode", set_mode_cli_))
+        !waitService("queue_motion_stop", stop_cli_) || !waitService("set_current_mode", set_mode_cli_) ||
+        !waitService("get_arm_status", arm_status_cli_))
     {
       RCLCPP_ERROR(this->get_logger(), "tl_driver 队列服务未就绪，请先启动 tl_driver 节点");
       rclcpp::shutdown();
@@ -226,11 +229,6 @@ private:
       return;
     current_joint_rad_ = msg->position;
     got_joint_state_ = true;
-  }
-
-  void armStatusCb(const ArmStatus::SharedPtr msg)
-  {
-    arm_run_state_ = msg->run_state;
   }
 
   void tcpPoseCb(const CartesianPose::SharedPtr msg)
@@ -350,42 +348,55 @@ private:
     return resp != nullptr && resp->success;
   }
 
-  /// 轮询 /arm_status，等待运动开始（出现 RUNNING）
+  /// 同步查询一次运行状态，失败/未就绪返回 UNKNOWN（不打印，供轮询使用）
+  std::string queryArmStatus()
+  {
+    if (!arm_status_cli_ || !arm_status_cli_->service_is_ready())
+      return "UNKNOWN";
+    auto future = arm_status_cli_->async_send_request(std::make_shared<GetArmStatus::Request>());
+    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future, kStatusQueryTimeout) !=
+        rclcpp::FutureReturnCode::SUCCESS)
+      return "UNKNOWN";
+    auto resp = future.get();
+    return (resp && resp->success) ? resp->run_state : "UNKNOWN";
+  }
+
+  /// 轮询 get_arm_status，等待运动开始（出现 RUNNING）
   void waitMotionStart()
   {
     RCLCPP_INFO(this->get_logger(), "等待运动开始 (RUNNING)...");
     auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(wait_timeout_);
+    std::string run_state = "UNKNOWN";
     while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline)
     {
-      rclcpp::spin_some(this->get_node_base_interface());
-      if (arm_run_state_ == "RUNNING")
+      run_state = queryArmStatus();
+      if (run_state == "RUNNING")
       {
         RCLCPP_INFO(this->get_logger(), "  运动已开始 (run_state=RUNNING)");
         return;
       }
       rclcpp::sleep_for(std::chrono::milliseconds(50));
     }
-    RCLCPP_WARN(this->get_logger(), "  等待运动开始超时（%.0fs），当前 run_state=%s", wait_timeout_,
-                arm_run_state_.c_str());
+    RCLCPP_WARN(this->get_logger(), "  等待运动开始超时（%.0fs），当前 run_state=%s", wait_timeout_, run_state.c_str());
   }
 
-  /// 轮询 /arm_status，等待运动停止（回到 STOP）
+  /// 轮询 get_arm_status，等待运动停止（回到 STOP）
   void waitMotionStop()
   {
     RCLCPP_INFO(this->get_logger(), "等待运动停止 (STOP)...");
     auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(wait_timeout_);
+    std::string run_state = "UNKNOWN";
     while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline)
     {
-      rclcpp::spin_some(this->get_node_base_interface());
-      if (arm_run_state_ == "STOP")
+      run_state = queryArmStatus();
+      if (run_state == "STOP")
       {
         RCLCPP_INFO(this->get_logger(), "  运动已停止 (run_state=STOP)");
         return;
       }
       rclcpp::sleep_for(std::chrono::milliseconds(50));
     }
-    RCLCPP_WARN(this->get_logger(), "  等待运动停止超时（%.0fs），当前 run_state=%s", wait_timeout_,
-                arm_run_state_.c_str());
+    RCLCPP_WARN(this->get_logger(), "  等待运动停止超时（%.0fs），当前 run_state=%s", wait_timeout_, run_state.c_str());
   }
 
   /// 泛型服务调用：同步等待并打印成功/失败
@@ -472,9 +483,9 @@ private:
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr stop_cli_;
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr power_on_cli_;
   rclcpp::Client<SetCurrentMode>::SharedPtr set_mode_cli_;
+  rclcpp::Client<GetArmStatus>::SharedPtr arm_status_cli_;
 
   rclcpp::Subscription<JointState>::SharedPtr joint_state_sub_;
-  rclcpp::Subscription<ArmStatus>::SharedPtr arm_status_sub_;
   rclcpp::Subscription<CartesianPose>::SharedPtr tcp_pose_sub_;
 
   double d1_{10.0};
@@ -493,7 +504,6 @@ private:
   bool got_tcp_pose_{false};
   std::vector<double> current_joint_rad_;
   std::vector<double> current_tcp_m_;
-  std::string arm_run_state_{"unknown"};
 };
 
 } // namespace tl_example

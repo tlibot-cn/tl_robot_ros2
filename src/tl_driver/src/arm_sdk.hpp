@@ -16,4 +16,23 @@
 #include "tl_track.h"
 #include "tl_types.h"
 
+namespace tl_driver
+{
+/// @brief RunState → 对外状态字符串；服务与 action feedback 共用，避免两处映射漂移。
+inline const char *run_state_text(tl::RunState state)
+{
+  switch (state)
+  {
+    case tl::RunState::STOP:
+      return "STOP";
+    case tl::RunState::PAUSE:
+      return "PAUSE";
+    case tl::RunState::RUNNING:
+      return "RUNNING";
+    default:
+      return "UNKNOWN";
+  }
+}
+} // namespace tl_driver
+
 #endif // TL_DRIVER__ARM_SDK_HPP_

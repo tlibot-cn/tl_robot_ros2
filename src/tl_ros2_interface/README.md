@@ -19,17 +19,19 @@ TL 系列机械臂 ROS2 接口说明
 * 2 [tl_ros2_interface使用说明](#tl_ros2_interface使用说明)
 * 3 [tl_ros2_interface文件总览](#tl_ros2_interface文件总览)
 * 4 [tl_ros2_interface消息（msg）说明](#tl_ros2_interface消息msg说明)
-* 4.1 [机械臂运行状态ArmStatus_msg](#机械臂运行状态ArmStatus_msg)
-* 4.2 [直角坐标系位姿CartesianPose_msg](#直角坐标系位姿CartesianPose_msg)
-* 4.3 [ModbusMaster参数ModbusMasterParam_msg](#ModbusMaster参数ModbusMasterParam_msg)
-* 4.4 [ModbusRTU参数ModbusRTUParam_msg](#ModbusRTU参数ModbusRTUParam_msg)
-* 4.5 [ModbusTCP参数ModbusTCPParam_msg](#ModbusTCP参数ModbusTCPParam_msg)
-* 4.6 [运动指令MoveCommand_msg](#运动指令MoveCommand_msg)
-* 4.7 [机器人DH参数RobotDHParam_msg](#机器人DH参数RobotDHParam_msg)
-* 4.8 [机械臂关节参数RobotJointParam_msg](#机械臂关节参数RobotJointParam_msg)
-* 4.9 [工具参数ToolParam_msg](#工具参数toolparam_msg)
-* 4.10 [关节动力学JointDynamics_msg](#关节动力学jointdynamics_msg)
-* 4.11 [关节热状态JointThermal_msg](#关节热状态jointthermal_msg)
+* 4.1 [直角坐标系位姿CartesianPose_msg](#直角坐标系位姿CartesianPose_msg)
+* 4.2 [ModbusMaster参数ModbusMasterParam_msg](#ModbusMaster参数ModbusMasterParam_msg)
+* 4.3 [ModbusRTU参数ModbusRTUParam_msg](#ModbusRTU参数ModbusRTUParam_msg)
+* 4.4 [ModbusTCP参数ModbusTCPParam_msg](#ModbusTCP参数ModbusTCPParam_msg)
+* 4.5 [运动指令MoveCommand_msg](#运动指令MoveCommand_msg)
+* 4.6 [机器人DH参数RobotDHParam_msg](#机器人DH参数RobotDHParam_msg)
+* 4.7 [机械臂关节参数RobotJointParam_msg](#机械臂关节参数RobotJointParam_msg)
+* 4.8 [工具参数ToolParam_msg](#工具参数toolparam_msg)
+* 4.9 [关节监测JointMonitor_msg](#关节监测jointmonitor_msg)
+* 4.10 [关节力矩JointTorque_msg](#关节力矩jointtorque_msg)
+* 4.11 [关节速度JointSpeed_msg](#关节速度jointspeed_msg)
+* 4.12 [线速度LineSpeed_msg](#线速度linespeed_msg)
+* 4.13 [错误与告警ErrorInfo_msg](#错误与告警errorinfo_msg)
 * 5 [tl_ros2_interface服务（srv）说明](#tl_ros2_interface服务srv说明)
 * 5.1 [坐标转换CoordTransform_srv](#坐标转换CoordTransform_srv)
 * 5.2 [坐标系编号GetCoordNum_srv](#坐标系编号GetCoordNum_srv)
@@ -56,6 +58,10 @@ TL 系列机械臂 ROS2 接口说明
 * 5.23 [设置用户坐标系SetUserCoord_srv](#设置用户坐标系SetUserCoord_srv)
 * 5.24 [拖拽轨迹保存TrackSave_srv](#拖拽轨迹保存TrackSave_srv)
 * 5.25 [查询当前运行模式GetCurrentMode_srv](#查询当前运行模式GetCurrentMode_srv)
+* 5.26 [正运动学Fk_srv](#正运动学fk_srv)
+* 5.27 [逆运动学Ik_srv](#逆运动学ik_srv)
+* 5.28 [查询运行速度GetSpeed_srv](#查询运行速度getspeed_srv)
+* 5.29 [查询机械臂运行状态GetArmStatus_srv](#查询机械臂运行状态getarmstatus_srv)
 
 ## tl_ros2_interface功能包说明
 tl_ros2_interface 功能包为 TL 系列机械臂在 ROS2 框架下提供消息（msg）和服务（srv）接口定义，供上层驱动或应用调用。该包本身没有可执行程序，主要作用为定义协议数据结构和服务接口。
@@ -72,7 +78,6 @@ tl_ros2_interface/
 ├── CMakeLists.txt        # 编译规则
 ├── package.xml           # 依赖声明
 ├── msg/                  # 消息定义
-│   ├── ArmStatus.msg
 │   ├── CartesianPose.msg
 │   ├── ModbusMasterParam.msg
 │   ├── ModbusRTUParam.msg
@@ -81,13 +86,18 @@ tl_ros2_interface/
 │   ├── RobotDHParam.msg
 │   ├── RobotJointParam.msg
 │   ├── ToolParam.msg
-│   ├── JointDynamics.msg
-│   └── JointThermal.msg
+│   ├── JointMonitor.msg
+│   ├── JointSpeed.msg
+│   ├── JointTorque.msg
+│   ├── LineSpeed.msg
+│   └── ErrorInfo.msg
 ├── action/               # Action 定义
 │   ├── Move.action
 │   └── PlayTrack.action
 ├── srv/                  # 服务定义
 │   ├── CoordTransform.srv
+│   ├── Fk.srv
+│   ├── GetArmStatus.srv
 │   ├── GetCoordNum.srv
 │   ├── GetCurrentCoord.srv
 │   ├── GetCurrentMode.srv
@@ -95,6 +105,8 @@ tl_ros2_interface/
 │   ├── GetDigitalInputOutput.srv
 │   ├── GetPosReachable.srv
 │   ├── GetRobotJointParam.srv
+│   ├── GetSpeed.srv
+│   ├── Ik.srv
 │   ├── Jogging.srv
 │   ├── ModbusRead.srv
 │   ├── ModbusWrite.srv
@@ -115,11 +127,11 @@ tl_ros2_interface/
 ```
 
 ## tl_ros2_interface消息（msg）说明
-以下列出 msg 文件定义及字段说明。**11 个 msg 与 2 个 action，每个文件头部注释里都标了用途，读之前先看那一行：**
+以下列出 msg 文件定义及字段说明。**13 个 msg 与 2 个 action，每个文件头部注释里都标了用途，读之前先看那一行：**
 
 | 用途 | 数量 | 定义 |
 | :-- | :--: | :-- |
-| 话题载荷（在 publisher / subscriber 上出现） | 4 | `ArmStatus`、`CartesianPose`、`JointDynamics`、`JointThermal` |
+| 话题载荷（在 publisher / subscriber 上出现） | 6 | `CartesianPose`、`JointMonitor`、`JointSpeed`、`JointTorque`、`LineSpeed`、`ErrorInfo` |
 | Action goal 载荷 / srv 嵌套参数 | 1 | `MoveCommand` |
 | 仅作 srv 嵌套参数（不发布话题） | 6 | `ModbusMasterParam`、`ModbusRTUParam`、`ModbusTCPParam`、`RobotDHParam`、`RobotJointParam`、`ToolParam` |
 | Action | 2 | `Move`（`move_joint`/`move_linear`）、`PlayTrack`（`play_track`） |
@@ -127,19 +139,6 @@ tl_ros2_interface/
 其中 `CartesianPose` 既发布/订阅话题，也作为 srv 嵌套参数（`SetUserCoord.pos`）；`MoveCommand` 作为 Move action goal 载荷，同时作为 srv 嵌套参数（`QueueMotionMoveJ.cmd`）。
 
 > **「仅在 srv 中出现的结构为什么放在 `msg/`」**：ROS2 的 `.srv` 只能声明内建类型或消息类型字段，无法内联结构体，也没有「仅供服务使用的结构」这一类——任何被 srv 复用的结构都必须定义成 `.msg`，生成出的类型名也就必然是 `<包>/msg/<名字>`。所以「`msg/` 目录里有不发布话题的类型」是 ROS2 类型系统的必然结果，不代表这些类型接口可以发布。判断一个类型是否发布，看驱动里有没有对应的 `create_publisher` / `create_subscription`。
-
-### 机械臂运行状态ArmStatus_msg
-```
-builtin_interfaces/Time stamp
-string run_state
-float64 speed
-bool speed_valid
-```
-__msg成员__
-- stamp: 采样时间戳
-- run_state: 运行状态描述字符串
-- speed: 全局运行速度百分比 %（1 Hz 查询缓存）
-- speed_valid: 最近一次速度查询是否成功
 
 ### 直角坐标系位姿CartesianPose_msg
 ```
@@ -303,29 +302,55 @@ __msg成员__
 - payload_mass_center_y: 负载质心 Y（m）
 - payload_mass_center_z: 负载质心 Z（m）
 
-### 关节动力学JointDynamics_msg
+### 关节监测JointMonitor_msg
+```
+std_msgs/Header header
+float64[7] motor_current
+float64[7] temperature
+float64[7] joint_voltage
+```
+- `/tl_driver/joint_monitor` 载荷，默认 2 Hz（`joint_monitor_rate` 可配，0–2，0=关闭）
+- 同一回调内依次查询电流、温度、电压，整帧覆盖，不跨帧缓存；`header.stamp` 为查询完成后的采样时刻
+- 单位：电流 A、温度 °C、电压 V
+- 定长数组，缺失元素为 `quiet_NaN`
+
+### 关节力矩JointTorque_msg
+```
+std_msgs/Header header
+float64[7] motor_torque
+```
+- `/tl_driver/joint_torque` 载荷，默认 100 Hz（`feedback_rate` 可配，0=关闭；与速度话题共用同一定时器）
+- 单位：额定扭矩千分之一（‰，±1000 对应 ±100%；不是 N·m，也不是 %）
+- 定长数组，缺失元素为 `quiet_NaN`
+
+### 关节速度JointSpeed_msg
+```
+std_msgs/Header header
+float64[7] joint_speed
+```
+- `/tl_driver/joint_speed` 载荷，默认 100 Hz（`feedback_rate` 可配，0=关闭）
+- 单位：rad/s；定长数组，缺失元素为 `quiet_NaN`
+- 与 `/tl_driver/line_speed` 由同一次查询产生，共用 `feedback_rate` 和 `header.stamp`
+
+### 线速度LineSpeed_msg
 ```
 std_msgs/Header header
 float64 line_speed
-float64[] joint_speed
-float64[] joint_speed_sync
-float64[] motor_current
-float64[] motor_current_sync
-int32[] motor_torque
-int32[] motor_torque_sync
 ```
-- `/tl_driver/joint_dynamics` 载荷，默认 10 Hz
-- 单位：`line_speed` m/s、速度 rad/s、电流 A、力矩为额定扭矩千分之一（‰，±1000 对应 ±100%；不是 N·m，也不是 %）
+- `/tl_driver/line_speed` 载荷，默认 100 Hz（`feedback_rate` 可配，0=关闭）
+- 单位：m/s；查询失败为 `quiet_NaN`
+- 与 `/tl_driver/joint_speed` 由同一次查询产生；与 `/tl_driver/joint_torque` 共用同一定时器
 
-### 关节热状态JointThermal_msg
+### 错误与告警ErrorInfo_msg
 ```
 std_msgs/Header header
-float64[] temperature
-float64[] joint_voltage
-float64[] positioner_voltage
+int32 message_type
+int32 message_code
+string message
 ```
-- `/tl_driver/joint_thermal` 载荷，默认 0.5 Hz（可关闭）
-- 单位：°C / V
+- `/tl_driver/error_info` 载荷，事件驱动（无频率参数）：控制器 6001 主端口每推送一条错误/告警即发布一帧，不节流、不去重
+- `message_type` / `message_code` 为 SDK 回调原值，取值含义见控制器错误码表；`message` 为回调文本
+- QoS 为 `KeepLast(100)` + reliable，不使用 `transient_local`（新订阅者不应收到陈旧故障）
 
 ## tl_ros2_interface服务（srv）说明
 下面列出 srv 文件的请求/响应字段及简要说明。
@@ -648,6 +673,61 @@ int32 mode
 ```
 - 查询当前运行模式
 - 返回: success/message/mode（当前模式：0-示教 1-远程 2-运行）
+
+### 正运动学Fk_srv
+```
+int32 frame
+float64[] joints
+---
+bool success
+string message
+tl_ros2_interface/CartesianPose pose
+```
+- 正运动学：关节角 → 指定坐标系下的 TCP 位姿
+- 服务名：`/tl_driver/fk`
+- frame: 输出位姿坐标系，1=基坐标 2=工具 3=用户（0=关节不支持）
+- joints: 关节角 rad，6 或 7 元素（7 元素时第 7 位为外部轴）
+- pose: position m、rpy rad；`arm_angle` 为 SDK 第 7 位外部轴角（度→rad）
+
+### 逆运动学Ik_srv
+```
+int32 frame
+tl_ros2_interface/CartesianPose pose
+int32 form
+float64[] reference_pos
+---
+bool success
+string message
+float64[7] joints
+```
+- 逆运动学：指定坐标系下的 TCP 位姿 → 关节角
+- 服务名：`/tl_driver/ik`
+- frame: 输入位姿坐标系，1=基坐标 2=工具 3=用户（0=关节不支持）
+- pose: position m、rpy rad；`arm_angle` 始终作为第 7 位外部轴（rad→度）
+- form: 形态；reference_pos: 逆解参考关节角 rad（可选）
+- joints: 定长 7，单位 rad；失败时为 NaN
+
+### 查询运行速度GetSpeed_srv
+```
+---
+bool success
+string message
+float64 speed
+```
+- 服务名：`/tl_driver/get_speed`
+- speed: 全局运行速度百分比 %
+
+### 查询机械臂运行状态GetArmStatus_srv
+```
+---
+bool success
+string message
+string run_state
+```
+- 服务名：`/tl_driver/get_arm_status`
+- success/message: 查询是否成功及描述
+- run_state: `STOP` / `PAUSE` / `RUNNING` / `UNKNOWN`
+- 事件驱动，每次调用直接查询控制器；不再周期发布 `/arm_status` 话题
 
 ## tl_ros2_interface动作（action）说明
 

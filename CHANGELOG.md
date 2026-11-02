@@ -12,6 +12,26 @@
 
 ## [Unreleased]
 
+### 2026-11-02
+
+- **破坏性变更**：新增错误/告警话题 `/tl_driver/error_info`（`ErrorInfo`）；6001 主端口错误回调每收到一条推送即发布一帧，日志仍按 1 s 节流避免刷屏
+- **破坏性变更**：`/tl_driver/joint_speed`、`/tl_driver/line_speed` 与 `/tl_driver/joint_torque` 改为在同一个定时器内先后发布（各自独立查询与时间戳）；参数 `joint_speed_rate`、`joint_torque_rate` 合并为 `feedback_rate`（默认 100 Hz，范围 0–100）
+
+### 2026-10-30
+
+- **破坏性变更**：`/arm_status` 话题改为按需服务 `/tl_driver/get_arm_status`（`GetArmStatus.srv`，响应含 `success` / `message` / `run_state`）；删除 `ArmStatus.msg` 与 10 Hz 运行状态查询定时器，回调组 7 → 6，服务数 38 → 39
+- tl_driver：`tl_example` 示例、接口测试清单、接口说明书与包 README 同步改为调用 `get_arm_status`
+
+### 2026-10-29
+
+- **破坏性变更**：`ArmStatus` 删除 `speed` / `speed_valid` 字段，恢复 `/tl_driver/get_speed` 服务（`GetSpeed.srv`）；运行速度不再随 10 Hz 话题发布，也不再由定时器轮询
+- **破坏性变更**：`JointDynamics.msg` 与 `JointThermal.msg` 合并为 `JointMonitor.msg`，话题 `/tl_driver/joint_dynamics`、`/tl_driver/joint_thermal` 合并为 `/tl_driver/joint_monitor`；删除 `motor_current_sync`、`motor_torque_sync`、`positioner_voltage` 字段
+- **破坏性变更**：诊断话题按查询拆分——力矩拆到 `/tl_driver/joint_torque`（`JointTorque.msg`），线速度拆到 `/tl_driver/line_speed`（`LineSpeed.msg`），关节速度保留在 `/tl_driver/joint_speed`（`JointSpeed.msg`，删除 `joint_speed_sync`）；`/tl_driver/joint_monitor` 只保留 `motor_current`、`temperature`、`joint_voltage`
+- tl_driver：`joint_dynamics_rate` 更名为 `joint_monitor_rate`，默认值改为 2 Hz；`/tl_driver/joint_monitor` 在同一回调内依次查询电流、温度、电压并整帧发布，不跨帧缓存；删除 `joint_thermal_rate` 参数与独立热查询定时器
+- tl_driver：新增 `joint_speed_rate`、`joint_torque_rate`（默认 10 Hz，0=关闭）；`/tl_driver/line_speed` 与 `/tl_driver/joint_speed` 由同一次 6001 查询产生，共用 `joint_speed_rate` 和 `header.stamp`；监测定时器独立成组，速度/力矩共用 `diagnostic_group_` 串行执行，慢查询不阻塞快查询
+- tl_ros2_interface：新增 `Fk.srv` / `Ik.srv` 与 `/tl_driver/fk`、`/tl_driver/ik` 服务（REP 103 输入输出，驱动边界换算 mm / 度）
+- 文档：接口说明书、接口包 README、单位对照表、测试清单与 `ex_info_query` 示例同步；服务数 35 → 38，发布数 5 → 7
+
 ### 2026-10-26
 
 - tl_driver：11 个自声明参数改以 `read_only` descriptor 声明，运行期 `ros2 param set` 由 rclcpp 直接拒绝（删除原 on-set 回调与 handle）；rclcpp 内建参数（`use_sim_time` 等）保持标准可变语义（81177b2）

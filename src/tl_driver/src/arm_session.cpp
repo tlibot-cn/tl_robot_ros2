@@ -6,6 +6,7 @@
 #include <cassert>
 #include <chrono>
 #include <thread>
+#include <utility>
 
 #include "arm_client.hpp"
 #include "arm_sdk.hpp"
@@ -281,6 +282,11 @@ bool ArmSession::connect(const std::string& ip, const std::string& port, const s
               port_aux.c_str());
 
   return true;
+}
+
+void ArmSession::set_error_handler(arm_client::ArmClient::ErrorHandler handler)
+{
+  client_.set_error_handler(std::move(handler));
 }
 
 bool ArmSession::disconnect()

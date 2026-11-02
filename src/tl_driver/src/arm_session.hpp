@@ -42,6 +42,11 @@ public:
   /// @return 两个端口均连接成功为 true
   bool connect(const std::string& ip, const std::string& port, const std::string& port_aux);
 
+  /// @brief 设置控制器错误/告警处理函数（转发到 ArmClient）。
+  /// @param[in] handler 处理函数；`nullptr` 注销
+  /// @note 在 SDK 回调线程上调用 handler，实现必须非阻塞、不得回调本类。
+  void set_error_handler(arm_client::ArmClient::ErrorHandler handler);
+
   /// @brief 断开两个端口并清零 fd。
   /// @return 未连接或断开完成为 true
   bool disconnect();

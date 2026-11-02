@@ -11,6 +11,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <string>
 
@@ -54,9 +55,19 @@ public:
   ArmClient(const ArmClient&) = delete;
   ArmClient& operator=(const ArmClient&) = delete;
 
+  /// @brief 控制器错误/告警的处理函数。
+  /// @note 在 SDK 回调线程上、持有实例注册锁时调用：必须非阻塞，且不得回调 ArmClient 的
+  ///       任何方法（会在 `registry_mutex_` 上自锁）。
+  using ErrorHandler = std::function<void(int message_type, const std::string& message, int message_code)>;
+
   /// @brief 在指定端口注册错误/告警异步推送回调。
   /// @param[in] fd 已建立的 SDK 主端口连接（6001）
   void register_error_callback(int fd);
+
+  /// @brief 设置错误/告警处理函数（替换式，传空函数即注销）。
+  /// @param[in] handler 处理函数；`nullptr` 表示只写日志、不再转发
+  /// @note 通常在连接前设置。注销后仍在执行中的回调会先完成当前处理。
+  void set_error_handler(ErrorHandler handler);
 
   /// @brief 在辅助端口注册机器人状态异步推送。
   /// @param[in] fd_aux 7000 辅助端口连接
@@ -114,6 +125,9 @@ private:
   rclcpp::Clock clock_{RCL_STEADY_TIME};
   std::atomic<int64_t> last_error_log_ns_{0};
   std::atomic<int64_t> last_state_log_ns_{0};
+
+  /// 受 `registry_mutex_` 保护（与 `active_` 共用锁）：SDK 回调线程读取，控制线程设置/注销。
+  ErrorHandler error_handler_;
 
   // 通道 1..9；索引 0 不用。
   mutable std::mutex frame_mutex_;

@@ -46,20 +46,6 @@ bool read_run_state(const DriverNode& node, tl::RunState& state)
   return tl::get_robot_running_state(node.session().fd(), state) == tl::Result::SUCCESS;
 }
 
-const char *run_state_text(tl::RunState state)
-{
-  switch (state)
-  {
-    case tl::RunState::STOP:
-      return "STOP";
-    case tl::RunState::PAUSE:
-      return "PAUSE";
-    case tl::RunState::RUNNING:
-      return "RUNNING";
-    default:
-      return "UNKNOWN";
-  }
-}
 
 tl_ros2_interface::msg::CartesianPose make_current_pose(const DriverNode& node, const std::vector<double>& mcs)
 {

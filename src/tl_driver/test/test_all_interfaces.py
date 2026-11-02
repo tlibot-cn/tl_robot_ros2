@@ -9,7 +9,11 @@ test_all_interfaces.py
   §2  连接管理      power_on / power_off（连接与断开由驱动节点启动/退出自动完成）
   §4  信息查询      get_controller_id / get_library_version / get_robot_joint_param /
                     get_current_coord / get_coord_num / get_dh_param / get_pos_reachable
-                    + 话题 /joint_states、/tcp_pose、/arm_status、/tl_driver/joint_dynamics、/tl_driver/joint_thermal
+                    + 话题 /joint_states、/tcp_pose、
+                    /tl_driver/joint_monitor、/tl_driver/joint_torque、
+                    /tl_driver/joint_speed、/tl_driver/line_speed、
+                    /tl_driver/error_info（事件驱动，自检期间通常无数据）
+  §4  信息查询      get_speed / get_arm_status / fk / ik
   §5  基础设置      set_speed / coord_transform
   §8  坐标系与工具  set_tool_param / set_user_coord / set_coord_num / set_current_coord
   §9  示教操作      stop_jogging / set_drag_mode / get_drag_status / track_save
@@ -90,8 +94,12 @@ from std_msgs.msg import Float64MultiArray
 from sensor_msgs.msg import JointState
 
 from tl_ros2_interface.msg import (
-    ArmStatus,
     CartesianPose,
+    ErrorInfo,
+    JointMonitor,
+    JointSpeed,
+    JointTorque,
+    LineSpeed,
     ToolParam,
     ModbusMasterParam,
     ModbusTCPParam,
@@ -99,6 +107,8 @@ from tl_ros2_interface.msg import (
 )
 from tl_ros2_interface.srv import (
     CoordTransform,
+    Fk,
+    GetArmStatus,
     GetCoordNum,
     GetCurrentCoord,
     GetCurrentMode,
@@ -106,6 +116,8 @@ from tl_ros2_interface.srv import (
     GetDigitalInputOutput,
     GetPosReachable,
     GetRobotJointParam,
+    GetSpeed,
+    Ik,
     Jogging,
     ModbusRead,
     ModbusWrite,
@@ -134,9 +146,13 @@ class DriverQuickTest(Node):
         self.logger = self.get_logger()
 
         # 话题最近数据
-        self.arm_run_state = "unknown"
         self.joint_state = None
         self.tcp_pose = None
+        self.joint_monitor = None
+        self.joint_torque = None
+        self.joint_speed = None
+        self.line_speed = None
+        self.error_info = None
 
         self._create_topic_subs()
 
@@ -149,12 +165,34 @@ class DriverQuickTest(Node):
             reliability=ReliabilityPolicy.RELIABLE,
             history=HistoryPolicy.KEEP_LAST,
         )
-        self.create_subscription(ArmStatus, "/arm_status", self._on_arm_status, reliable)
         self.create_subscription(JointState, "/joint_states", self._on_joint_state, reliable)
         self.create_subscription(CartesianPose, "/tcp_pose", self._on_tcp_pose, reliable)
+        self.create_subscription(
+            JointMonitor, "/tl_driver/joint_monitor", self._on_joint_monitor, reliable
+        )
+        self.create_subscription(
+            JointTorque, "/tl_driver/joint_torque", self._on_joint_torque, reliable
+        )
+        self.create_subscription(
+            JointSpeed, "/tl_driver/joint_speed", self._on_joint_speed, reliable
+        )
+        self.create_subscription(LineSpeed, "/tl_driver/line_speed", self._on_line_speed, reliable)
+        self.create_subscription(ErrorInfo, "/tl_driver/error_info", self._on_error_info, reliable)
 
-    def _on_arm_status(self, msg):
-        self.arm_run_state = msg.run_state
+    def _on_joint_monitor(self, msg):
+        self.joint_monitor = msg
+
+    def _on_joint_torque(self, msg):
+        self.joint_torque = msg
+
+    def _on_joint_speed(self, msg):
+        self.joint_speed = msg
+
+    def _on_line_speed(self, msg):
+        self.line_speed = msg
+
+    def _on_error_info(self, msg):
+        self.error_info = msg
 
     def _on_joint_state(self, msg):
         self.joint_state = msg
@@ -231,9 +269,11 @@ class DriverQuickTest(Node):
     # ------------------------------------------------------------
     def test_topics(self):
         self.logger.info("\n========== §4 信息查询（话题）==========")
-        self.logger.info("  --- /arm_status（运行状态）---")
-        self.spin_for(2.0)
-        self.logger.info(f"      run_state = {self.arm_run_state}")
+        self.logger.info("  --- get_arm_status（运行状态，服务）---")
+        cli = self.wait_service("/tl_driver/get_arm_status", GetArmStatus)
+        resp = self.call_srv(cli, GetArmStatus.Request(), "get_arm_status")
+        if resp and resp.success:
+            self.logger.info(f"      run_state = {resp.run_state}")
 
         self.logger.info("  --- /joint_states（关节角度, rad）---")
         self.spin_for(2.0)
@@ -253,6 +293,45 @@ class DriverQuickTest(Node):
             self.logger.info(f"      arm_angle = {self.tcp_pose.arm_angle:.3f}")
         else:
             self.logger.warn("      未收到 /tcp_pose")
+
+        self.logger.info("  --- /tl_driver/joint_monitor（电流/温度/电压）---")
+        self.spin_for(2.0)
+        if self.joint_monitor is not None:
+            m = self.joint_monitor
+            self.print_arr("      motor_current(A) ", m.motor_current)
+            self.print_arr("      temperature(℃) ", m.temperature)
+            self.print_arr("      joint_voltage(V) ", m.joint_voltage)
+        else:
+            self.logger.warn("      未收到 /tl_driver/joint_monitor")
+
+        self.logger.info("  --- /tl_driver/joint_torque（关节力矩）---")
+        self.spin_for(2.0)
+        if self.joint_torque is not None:
+            self.print_arr("      motor_torque(‰额定) ", self.joint_torque.motor_torque)
+        else:
+            self.logger.warn("      未收到 /tl_driver/joint_torque")
+
+        self.logger.info("  --- /tl_driver/joint_speed + /tl_driver/line_speed ---")
+        self.spin_for(2.0)
+        if self.joint_speed is not None:
+            self.print_arr("      joint_speed(rad/s) ", self.joint_speed.joint_speed)
+        else:
+            self.logger.warn("      未收到 /tl_driver/joint_speed")
+        if self.line_speed is not None:
+            self.logger.info(f"      line_speed = {self.line_speed.line_speed:.3f} m/s")
+        else:
+            self.logger.warn("      未收到 /tl_driver/line_speed")
+
+        # 错误/告警是事件驱动话题：自检期间没有故障时收不到消息属于正常现象。
+        self.logger.info("  --- /tl_driver/error_info（错误/告警，事件驱动）---")
+        self.spin_for(1.0)
+        if self.error_info is not None:
+            self.logger.info(
+                f"      type={self.error_info.message_type} "
+                f"code={self.error_info.message_code} msg={self.error_info.message}"
+            )
+        else:
+            self.logger.info("      自检期间无错误/告警推送（正常）")
 
     # ------------------------------------------------------------
     # 各分组测试
@@ -288,6 +367,34 @@ class DriverQuickTest(Node):
         req.pos = [0.0] * 14
         req.move_type = "MOVJ"
         self.call_srv(cli, req, "get_pos_reachable")
+
+        cli = self.wait_service("/tl_driver/get_speed", GetSpeed)
+        resp = self.call_srv(cli, GetSpeed.Request(), "get_speed")
+        if resp and resp.success:
+            self.logger.info(f"      speed = {resp.speed:.1f}%")
+
+        # fk/ik：用当前关节角与末端位姿做一次正逆解往返
+        if self.joint_state is not None:
+            cli = self.wait_service("/tl_driver/fk", Fk)
+            req = Fk.Request()
+            req.frame = 1
+            req.joints = list(self.joint_state.position)
+            resp = self.call_srv(cli, req, "fk(frame=1)")
+            if resp and resp.success:
+                p = resp.pose.position
+                self.logger.info(f"      pos = [{p.x:.3f}, {p.y:.3f}, {p.z:.3f}] m")
+
+        if self.tcp_pose is not None:
+            cli = self.wait_service("/tl_driver/ik", Ik)
+            req = Ik.Request()
+            req.frame = 1
+            req.pose = self.tcp_pose
+            req.form = 0
+            if self.joint_state is not None:
+                req.reference_pos = list(self.joint_state.position)
+            resp = self.call_srv(cli, req, "ik(frame=1)")
+            if resp and resp.success:
+                self.print_arr("      joints(rad) ", resp.joints)
 
     def test_basic_set(self):
         self.logger.info("\n========== §5 基础设置 ==========")

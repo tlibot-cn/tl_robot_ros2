@@ -13,11 +13,11 @@ class DriverNode;
 /// @param[in] node 驱动节点
 void register_session_services(DriverNode& node);
 
-/// @brief 注册运动与伺服类服务（速度、点动、ServoJ 开关、队列运动、轨迹）。
+/// @brief 注册运动与伺服类服务（速度读写、点动、ServoJ 开关、队列运动、轨迹）。
 /// @param[in] node 驱动节点
 void register_motion_services(DriverNode& node);
 
-/// @brief 注册坐标与位姿变换类服务。
+/// @brief 注册坐标与位姿变换类服务（坐标变换、当前坐标系、正逆运动学）。
 /// @param[in] node 驱动节点
 void register_transform_services(DriverNode& node);
 
@@ -29,7 +29,7 @@ void register_config_services(DriverNode& node);
 /// @param[in] node 驱动节点
 void register_io_services(DriverNode& node);
 
-/// @brief 注册状态查询类服务（关节参数与温度/电压/电流、力矩、版本、拖拽、模式）。
+/// @brief 注册状态查询类服务（控制器 ID/库版本、拖拽状态、当前模式、运行状态）。
 /// @param[in] node 驱动节点
 void register_state_services(DriverNode& node);
 

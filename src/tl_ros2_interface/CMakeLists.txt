@@ -8,14 +8,12 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(action_msgs REQUIRED)
-find_package(builtin_interfaces REQUIRED)  
 find_package(std_msgs REQUIRED)      
 find_package(geometry_msgs REQUIRED)      
 
 # 添加消息和动作定义
 rosidl_generate_interfaces(${PROJECT_NAME}
   # msg
-  "msg/ArmStatus.msg"                       
   "msg/MoveCommand.msg"                    
   "msg/CartesianPose.msg"
   "msg/ToolParam.msg"
@@ -24,8 +22,11 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ModbusMasterParam.msg"
   "msg/RobotDHParam.msg"
   "msg/RobotJointParam.msg"
-  "msg/JointDynamics.msg"
-  "msg/JointThermal.msg"
+  "msg/JointMonitor.msg"
+  "msg/JointSpeed.msg"
+  "msg/JointTorque.msg"
+  "msg/LineSpeed.msg"
+  "msg/ErrorInfo.msg"
 
   #action
   "action/Move.action"
@@ -33,6 +34,10 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 
   #srv
   "srv/SetSpeed.srv"
+  "srv/GetSpeed.srv"
+  "srv/GetArmStatus.srv"
+  "srv/Fk.srv"
+  "srv/Ik.srv"
   "srv/Jogging.srv"
   "srv/SetDragMode.srv"
   "srv/TrackSave.srv"
@@ -60,7 +65,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 
   DEPENDENCIES 
     action_msgs
-    builtin_interfaces        
     std_msgs             
     geometry_msgs
 )

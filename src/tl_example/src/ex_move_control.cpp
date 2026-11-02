@@ -62,7 +62,7 @@ using SetSpeed = tl_ros2_interface::srv::SetSpeed;
  *   MoveJ（关节坐标）→ 等待完成 → MoveL（直角坐标）→ 等待完成 →
  *   power_off → disconnect
  *
- * 运动完成以 action result 为准（成功/失败原因），不再依赖 /arm_status。
+ * 运动完成以 action result 为准（成功/失败原因），不再依赖运行状态话题。
  */
 class MoveControlDemo : public rclcpp::Node
 {

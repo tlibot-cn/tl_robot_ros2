@@ -45,11 +45,10 @@ ros2 service call /tl_driver/get_controller_id std_srvs/srv/Trigger "{}"
 ros2 service call /tl_driver/set_speed tl_ros2_interface/srv/SetSpeed "{speed: 30.0}"
 ```
 
-### 运行速度 — `/arm_status`
-话题，`speed` / `speed_valid` 字段（1 Hz 查询缓存）
+### 运行速度 — `/tl_driver/get_speed`
+服务，返回全局运行速度百分比
 ```bash
-ros2 topic echo /arm_status --field speed
-ros2 topic echo /arm_status --field speed_valid
+ros2 service call /tl_driver/get_speed tl_ros2_interface/srv/GetSpeed "{}"
 ```
 
 ### `/tl_driver/set_current_mode` — `tl_ros2_interface/srv/SetCurrentMode`
@@ -115,13 +114,11 @@ ros2 topic pub -1 /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray "{dat
 |---|------|------|------|
 | 1 | `/joint_states` | `sensor_msgs/msg/JointState` | 关节状态（关节角等） |
 | 2 | `/tcp_pose` | `tl_ros2_interface/msg/CartesianPose` | TCP 位姿（位置+RPY+臂角） |
-| 3 | `/arm_status` | `tl_ros2_interface/msg/ArmStatus` | 机械臂运行状态字符串 |
 
 **测试指令：**
 ```bash
 ros2 topic echo /joint_states
 ros2 topic echo /tcp_pose
-ros2 topic echo /arm_status
 ```
 
 ---
@@ -181,20 +178,53 @@ ros2 service call /tl_driver/coord_transform tl_ros2_interface/srv/CoordTransfor
 }"
 ```
 
+### `/tl_driver/fk` — 正运动学（关节角 → TCP 位姿）
+请求：`frame`（1=基坐标 2=工具 3=用户）、`joints`（rad，6 或 7 元素）
+```bash
+ros2 service call /tl_driver/fk tl_ros2_interface/srv/Fk "{
+  frame: 1,
+  joints: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+}"
+```
+
+### `/tl_driver/ik` — 逆运动学（TCP 位姿 → 关节角）
+请求：`frame`（1=基坐标 2=工具 3=用户）、`pose`（m + rad）、`form`、`reference_pos`（rad，可选）
+```bash
+ros2 service call /tl_driver/ik tl_ros2_interface/srv/Ik "{
+  frame: 1,
+  pose: {
+    header: {frame_id: 'base_link'},
+    position: {x: 0.28, y: 0.0, z: 0.47},
+    rpy: {x: 3.14, y: 0.0, z: 0.0},
+    arm_angle: 0.0
+  },
+  form: 0,
+  reference_pos: []
+}"
+```
+
 ## 六、状态查询
 
 | # | 接口名 | 类型 | 请求参数 | 说明 |
 |---|--------|------|----------|------|
-| 1 | `/arm_status` | `ArmStatus` | — | `run_state` / `speed` / `speed_valid` |
-| 2 | `/tl_driver/joint_dynamics` | `JointDynamics` | — | 线速度、关节速度、电流、力矩（‰ 额定扭矩） |
-| 3 | `/tl_driver/joint_thermal` | `JointThermal` | — | 温度、本体/外部轴电压 |
-| 4 | `/tl_driver/get_pos_reachable` | `GetPosReachable` | `pos/move_type` | 点位是否可达 |
+| 1 | `/tl_driver/get_arm_status` | `GetArmStatus` | — | `run_state` |
+| 2 | `/tl_driver/joint_monitor` | `JointMonitor` | — | 电流、温度、电压 |
+| 3 | `/tl_driver/joint_torque` | `JointTorque` | — | 力矩（‰ 额定扭矩） |
+| 4 | `/tl_driver/joint_speed` | `JointSpeed` | — | 关节速度 rad/s |
+| 5 | `/tl_driver/line_speed` | `LineSpeed` | — | 末端线速度 m/s |
+| 6 | `/tl_driver/get_speed` | `GetSpeed` | — | 全局运行速度 % |
+| 7 | `/tl_driver/get_pos_reachable` | `GetPosReachable` | `pos/move_type` | 点位是否可达 |
+| 8 | `/tl_driver/error_info` | `ErrorInfo` | — | 控制器错误/告警（事件驱动，无故障时不发消息） |
 
 **测试指令：**
 ```bash
-ros2 topic echo /arm_status --once
-ros2 topic echo /tl_driver/joint_dynamics --once
-ros2 topic echo /tl_driver/joint_thermal --once
+ros2 service call /tl_driver/get_arm_status tl_ros2_interface/srv/GetArmStatus "{}"
+ros2 topic echo /tl_driver/joint_monitor --once
+ros2 topic echo /tl_driver/joint_torque --once
+ros2 topic echo /tl_driver/joint_speed --once
+ros2 topic echo /tl_driver/line_speed --once
+ros2 topic echo /tl_driver/error_info   # 事件驱动：需触发控制器错误/告警后才会收到
+ros2 service call /tl_driver/get_speed tl_ros2_interface/srv/GetSpeed "{}"
 ros2 service call /tl_driver/get_pos_reachable tl_ros2_interface/srv/GetPosReachable "{pos: [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0], move_type: 'MOVJ'}"
 ```
 
@@ -325,7 +355,7 @@ ros2 interface show tl_ros2_interface/srv/SetSpeed
 ## 测试顺序建议（安全优先）
 
 1. **连接类**：`get_library_version` → `get_controller_id` → `get_current_mode` → `get_current_coord`
-2. **状态类**：`/arm_status`、`/tl_driver/joint_dynamics`、`/tl_driver/joint_thermal` 话题（只读，安全）
+2. **状态类**：`get_arm_status` 服务、`/tl_driver/joint_monitor`、`/tl_driver/joint_torque`、`/tl_driver/joint_speed`、`/tl_driver/line_speed` 话题与 `get_speed` 服务（只读，安全）
 3. **配置类**：`set_speed` / `set_current_mode` / `set_current_coord` / `set_drag_mode`
 4. **运动类**（⚠️ 先确认周围安全、上电后）：`power_on` → `move_joint`/`move_linear` action → `power_off`
 5. **IO/Modbus/轨迹**：按需单独测试

@@ -26,13 +26,10 @@ constexpr int kMinStreamIntervalMs = 10;
 constexpr int kMaxStreamIntervalMs = 60000;
 constexpr int kMinExecutorThreads = 1;
 constexpr int kMaxExecutorThreads = 64;
-constexpr double kMaxAuxRate = 100.0;
-constexpr double kMaxThermalRate = 1.0;
-// 运行状态用于 /arm_status；10 Hz 足够覆盖 STOP/PAUSE/RUNNING 切换。
-constexpr double kRunningStatusRate = 10.0;
-// 速度与运行状态共用同一个定时器：每 N 次状态查询查一次速度（10 Hz / 10 = 1 Hz），
-// 1 Hz 足够反映 SetSpeed 后的变化，避免增加 6001 查询负载。
-constexpr unsigned kStatusTicksPerSpeedQuery = 10u;
+// /joint_monitor 单帧含电流/温度/电压三次查询，温度单次约 150–350 ms，可持续上限按 2 Hz 限制。
+constexpr double kMaxMonitorRate = 2.0;
+// 速度/力矩为单次快查询，仍允许 0–100 Hz。
+constexpr double kMaxFeedbackRate = 100.0;
 constexpr double kMaxActionTimeoutSec = 3600.0;
 
 bool is_valid_rate(double rate, double max_rate)
@@ -77,8 +74,8 @@ void DriverNode::declare_parameters()
   const unsigned int bounded_threads = std::max(4u, std::min(hardware_threads == 0 ? 4u : hardware_threads, 8u));
   this->declare_parameter<int>("executor_threads", static_cast<int>(bounded_threads), read_only);
   this->declare_parameter<int>("state_stream_interval_ms", 10, read_only);
-  this->declare_parameter<double>("joint_dynamics_rate", 10.0, read_only);
-  this->declare_parameter<double>("joint_thermal_rate", 1.0, read_only);
+  this->declare_parameter<double>("joint_monitor_rate", 2.0, read_only);
+  this->declare_parameter<double>("feedback_rate", 100.0, read_only);
   this->declare_parameter<double>("motion_action_timeout", 60.0, read_only);
   this->declare_parameter<double>("track_action_timeout", 600.0, read_only);
 
@@ -89,8 +86,8 @@ void DriverNode::declare_parameters()
   arm_joints_ = this->get_parameter("arm_joints").as_string_array();
   executor_threads_ = this->get_parameter("executor_threads").as_int();
   state_stream_interval_ms_ = this->get_parameter("state_stream_interval_ms").as_int();
-  joint_dynamics_rate_ = this->get_parameter("joint_dynamics_rate").as_double();
-  joint_thermal_rate_ = this->get_parameter("joint_thermal_rate").as_double();
+  joint_monitor_rate_ = this->get_parameter("joint_monitor_rate").as_double();
+  feedback_rate_ = this->get_parameter("feedback_rate").as_double();
   motion_action_timeout_ = this->get_parameter("motion_action_timeout").as_double();
   track_action_timeout_ = this->get_parameter("track_action_timeout").as_double();
   ndof_ = static_cast<int>(arm_joints_.size());
@@ -103,13 +100,13 @@ void DriverNode::declare_parameters()
   {
     throw std::invalid_argument("state_stream_interval_ms must be in [10, 60000]");
   }
-  if (!is_valid_rate(joint_dynamics_rate_, kMaxAuxRate))
+  if (!is_valid_rate(joint_monitor_rate_, kMaxMonitorRate))
   {
-    throw std::invalid_argument("joint_dynamics_rate must be in [0, 100] Hz");
+    throw std::invalid_argument("joint_monitor_rate must be in [0, 2] Hz");
   }
-  if (!is_valid_rate(joint_thermal_rate_, kMaxThermalRate))
+  if (!is_valid_rate(feedback_rate_, kMaxFeedbackRate))
   {
-    throw std::invalid_argument("joint_thermal_rate must be in [0, 1] Hz");
+    throw std::invalid_argument("feedback_rate must be in [0, 100] Hz");
   }
   if (!std::isfinite(motion_action_timeout_) || motion_action_timeout_ <= 0.0 ||
       motion_action_timeout_ > kMaxActionTimeoutSec || !std::isfinite(track_action_timeout_) ||
@@ -136,10 +133,10 @@ void DriverNode::create_callback_groups()
   topic_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   topic_options_.callback_group = topic_group_;
 
-  // 诊断话题各自成组：热状态单次查询可达 150–350 ms，不能阻塞其他状态查询。
-  dynamics_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  thermal_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  status_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  // 监测组包含电流/温度/电压三次查询，其中温度/电压单次可达 150–350 ms；单独成组，
+  // 避免慢查询阻塞速度/力矩的发布。速度/力矩共用反馈组，串行访问 6001。
+  monitor_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  feedback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   // action 的 execute 在独立工作线程中运行；goal/cancel 回调仍单独成组，避免占用服务组。
   action_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -202,31 +199,23 @@ void DriverNode::create_aux_timers()
     return this->create_wall_timer(std::chrono::duration<double>(1.0 / rate), std::move(callback), group);
   };
 
-  dynamics_timer_ = make_timer(
-      joint_dynamics_rate_,
+  monitor_timer_ = make_timer(
+      joint_monitor_rate_,
       [this]()
       {
-        publishers_->publish_dynamics();
+        publishers_->publish_monitor();
       },
-      dynamics_group_);
-  thermal_timer_ = make_timer(
-      joint_thermal_rate_,
+      monitor_group_);
+  // 速度/力矩是给上层算法用的反馈数据：快查询，共用同一个定时器，按顺序各发布一次；
+  // 与慢速监测组分离，避免被温度/电压查询拖慢。
+  feedback_timer_ = make_timer(
+      feedback_rate_,
       [this]()
       {
-        publishers_->publish_thermal();
+        publishers_->publish_speed();
+        publishers_->publish_joint_torque();
       },
-      thermal_group_);
-  status_query_timer_ = make_timer(
-      kRunningStatusRate,
-      [this, tick = 0u]() mutable
-      {
-        // 首次 tick 就带速度查询，之后每 kStatusTicksPerSpeedQuery 次一次（1 Hz）；
-        // tick 在 [0, N) 内回绕，长期运行不会溢出。
-        const bool query_speed = (tick == 0u);
-        tick = (tick + 1u) % kStatusTicksPerSpeedQuery;
-        publishers_->publish_arm_status(query_speed);
-      },
-      status_group_);
+      feedback_group_);
 }
 
 DriverNode::~DriverNode()

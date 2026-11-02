@@ -4,6 +4,7 @@
 #include "arm_client.hpp"
 
 #include <chrono>
+#include <exception>
 #include <stdexcept>
 #include <utility>
 
@@ -162,6 +163,14 @@ bool ArmClient::wait_state_update(uint64_t& seen, std::chrono::milliseconds time
   return updated;
 }
 
+void ArmClient::set_error_handler(ErrorHandler handler)
+{
+  // 与 error_callback 共用 registry_mutex_：设置/注销不会与回调线程的读取竞争，
+  // 也保证返回后不会再有回调使用旧 handler。
+  std::lock_guard<std::mutex> lock(registry_mutex_);
+  error_handler_ = std::move(handler);
+}
+
 void ArmClient::error_callback(int message_type, const char *message, int message_code)
 {
   std::lock_guard<std::mutex> lock(registry_mutex_);
@@ -182,12 +191,28 @@ void ArmClient::state_callback(const char *state)
 
 void ArmClient::on_error(int message_type, const char *message, int message_code)
 {
-  if (!should_log(last_error_log_ns_, std::chrono::seconds(1)))
+  // 日志按 1 s 节流，但转发不节流：每条错误/告警都必须发布到话题，节流只用于抑制刷屏。
+  if (should_log(last_error_log_ns_, std::chrono::seconds(1)))
   {
-    return;
+    RCLCPP_WARN(logger_, "[SDK]: messageType=%d, message=%s, messageCode=%d", message_type, message ? message : "",
+                message_code);
   }
-  RCLCPP_WARN(logger_, "[SDK]: messageType=%d, message=%s, messageCode=%d", message_type, message ? message : "",
-              message_code);
+  if (error_handler_)
+  {
+    // 异常绝不能穿出 SDK 回调边界（调用方是 C 接口，未捕获异常会终止进程）。
+    try
+    {
+      error_handler_(message_type, message != nullptr ? message : "", message_code);
+    }
+    catch (const std::exception& e)
+    {
+      RCLCPP_ERROR(logger_, "[SDK]: error handler threw exception: %s", e.what());
+    }
+    catch (...)
+    {
+      RCLCPP_ERROR(logger_, "[SDK]: error handler threw unknown exception");
+    }
+  }
 }
 
 void ArmClient::on_state(const char *state)

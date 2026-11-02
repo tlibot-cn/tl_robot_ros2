@@ -1,0 +1,5 @@
+# 获取机械臂运行状态（STOP / PAUSE / RUNNING / UNKNOWN），不再通过话题周期发布
+---
+bool success
+string message
+string run_state   # "STOP" / "PAUSE" / "RUNNING" / "UNKNOWN"；查询失败时 success=false 且 run_state="UNKNOWN"
