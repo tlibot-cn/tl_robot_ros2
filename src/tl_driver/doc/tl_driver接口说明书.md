@@ -34,6 +34,7 @@
 |V1.25 | 2026-11-02 | 新增 `/tl_driver/error_info`（`ErrorInfo`，控制器错误/告警异步推送，事件驱动不节流）；`/tl_driver/joint_speed`、`/tl_driver/line_speed`、`/tl_driver/joint_torque` 改为在同一个定时器内先后发布；参数 `joint_speed_rate`、`joint_torque_rate` 合并为 `feedback_rate`（默认 100 Hz） |
 |V1.26 | 2026-11-03 | 新增 9.7 [设置示教模式类型](#97-设置示教模式类型)、9.8 [查询示教模式类型](#98-查询示教模式类型) 服务（`SetTeachType.srv` / `GetTeachType.srv`）；开启力引导拖拽需 `set_drag_mode(1)` + `set_teach_type(1)` 两步且顺序不可颠倒；服务数 39 → 41 |
 |V1.27 | 2026-11-03 | 新增 15.5–15.10：周期同步速度模式（CSV）与周期同步扭矩模式（CST）的开关服务与下发话题（服务数 41 → 45，订阅 1 → 3）；两个话题采用 `Float64MultiArray`，速度 rad/s、扭矩 ‰ 额定扭矩；力矩补偿尚未实现 |
+|V1.28 | 2026-11-03 | `fk`/`ik` 新增 `source`（0=控制器 1=本地模型）；`reference_pos` 改为必填；`CartesianPose.arm_angle` 明确为冗余臂角 ψ；启动时校验控制器机型轴数与 `arm_joints`，不一致即退出；删除 `set_axis_zero_pos` 服务（服务数 45 → 44） |
 
 </div>
 
@@ -43,6 +44,7 @@
 
 * [1 通用约定](#1-通用约定)
   * [1.5 接口条目与 QoS 约定](#15-接口条目与-qos-约定)
+  * [1.6 启动校验与本地运动学](#16-启动校验与本地运动学)
 * [2 连接管理接口](#2-连接管理接口)
   * [2.3 机械臂上电](#23-机械臂上电)
   * [2.4 机械臂下电](#24-机械臂下电)
@@ -91,9 +93,8 @@
   * [9.6 拖拽轨迹回放](#96-拖拽轨迹回放)
   * [9.7 设置示教模式类型](#97-设置示教模式类型)
   * [9.8 查询示教模式类型](#98-查询示教模式类型)
-* [10 错误处理与零位标定接口](#10-错误处理与零位标定接口)
+* [10 错误处理接口](#10-错误处理接口)
   * [10.1 清除错误](#101-清除错误)
-  * [10.2 设置关节零点](#102-设置关节零点)
 * [12 模式与IO控制接口](#12-模式与io控制接口)
   * [12.1 设置当前运行模式](#121-设置当前运行模式)
   * [12.2 查询当前运行模式](#122-查询当前运行模式)
@@ -177,6 +178,12 @@
 | `/tl_driver/error_info` | `KeepLast(100)`，reliable（事件逐条发布，不用 `transient_local`） |
 
 > 服务失败统一返回 `success=false` + `message`，不抛异常；话题无帧时停止发布，不重复发送过期值。
+
+### 1.6 启动校验与本地运动学
+
+- **机型轴数校验**：驱动启动时查询控制器机型，与 `arm_joints` 长度比对；两者不一致直接退出（`EXIT_FAILURE`）。机型查询失败或机型不是串联系列 6/7 轴时仅告警，不阻断启动。
+- **本地运动学模型**：`fk`/`ik` 的 `source=1` 使用本地模型，启动时由控制器回读的 DH、关节限位与当前工具手构建**一次**；运行期修改 DH、零点、限位或工具后不重建，需要重启驱动。构建失败不影响驱动启动，仅使 `source=1` 请求返回失败原因。
+- 本地模型只支持基坐标系（`frame=1`）与 6/7 轴；`ik` 的 `reference_pos` 必填。
 
 ---
 ## 2 连接管理接口
@@ -639,21 +646,24 @@ ros2 topic echo /tl_driver/joint_speed --once
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
 | frame | int32 | — | 输出位姿坐标系：1=基坐标 2=工具 3=用户；0=关节，不支持 |
-| joints | float64[] | rad | 关节角，6 或 7 元素（7 元素时第 7 位为外部轴） |
+| joints | float64[] | rad | 关节角，6 或 7 元素（不少于本体轴数；6 轴第 7 位为外部轴，本地模型忽略） |
+| source | int32 | — | 求解来源：0=控制器（默认）1=本地模型（仅 `frame=1`） |
 
 **响应参数**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
 | success | bool | — | 解算是否成功 |
 | message | string | — | 成功/失败描述 |
-| pose | CartesianPose | m + rad | TCP 位姿；`arm_angle` 为 SDK 第 7 位外部轴角（驱动由度换算为 rad），`header.frame_id` 为 `base_link` / `tool0` / `user_coord` |
+| pose | CartesianPose | m + rad | TCP 位姿；`arm_angle` 为冗余臂角 ψ（`source=1` 的 7 轴由本地解算给出；6 轴为 0；7 轴 ψ 无定义时为 NaN），`header.frame_id` 为 `base_link` / `tool0` / `user_coord` |
 
 > 输入 `joints` 由驱动换算为度后交 SDK；输出位置由 mm 换算为 m，姿态保持 rad。逆解失败（奇异点/不可达）等错误通过 `success=false` 与 `message` 返回。
+> `source=1` 的本地模型在驱动启动时由控制器回读的 DH、关节限位与当前工具手构建一次，运行期不重建；模型不可用或 `frame≠1` 时直接返回失败，不回退控制器。
 #### 命令示例
 ```
 ros2 service call /tl_driver/fk tl_ros2_interface/srv/Fk "{
   frame: 1,
-  joints: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  joints: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+  source: 0
 }"
 ```
 
@@ -668,18 +678,20 @@ ros2 service call /tl_driver/fk tl_ros2_interface/srv/Fk "{
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
 | frame | int32 | — | 输入位姿坐标系：1=基坐标 2=工具 3=用户；0=关节，不支持 |
-| pose | CartesianPose | m + rad | 目标位姿；`arm_angle` 始终作为第 7 位外部轴（驱动 rad→度） |
-| form | int32 | — | 形态（0=默认/自动） |
-| reference_pos | float64[] | rad | 逆解参考关节角（可选，用于选择离参考点最近的形态） |
+| pose | CartesianPose | m + rad | 目标位姿；`arm_angle` 为冗余臂角 ψ：`source=1` 的 7 轴作为硬约束（不指定传 NaN），`source=0` 透传到 SDK 第 7 位，6 轴忽略 |
+| form | int32 | — | 形态（0=默认/自动；1~8 指定分支，控制器与本地模型语义一致） |
+| reference_pos | float64[] | rad | 逆解参考关节角（**必填**，长度与关节数一致，6 或 7；用于选择离参考点最近的形态） |
+| source | int32 | — | 求解来源：0=控制器（默认）1=本地模型（仅 `frame=1`） |
 
 **响应参数**
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
 | success | bool | — | 解算是否成功 |
 | message | string | — | 成功/失败描述 |
-| joints | float64[7] | rad | 解算关节角，定长 7；失败时为 NaN |
+| joints | float64[7] | rad | 解算关节角，定长 7；失败时为 NaN；6 轴第 7 位为 0 |
 
 > 输入位置由 m 换算为 mm，姿态保持 rad；输出关节角由度换算为 rad。TOOL 坐标系位姿锚定调用时刻的当前 TCP，仅适用于机械臂静止或对锚定时刻不敏感的场景。
+> `source=1` 仅支持基坐标系与 6/7 轴；`arm_angle` 对 7 轴是 ψ 硬约束（不指定时传 NaN），对 6 轴忽略。本地模型不可用时返回失败，不回退控制器。
 #### 命令示例
 ```
 ros2 service call /tl_driver/ik tl_ros2_interface/srv/Ik "{
@@ -691,7 +703,8 @@ ros2 service call /tl_driver/ik tl_ros2_interface/srv/Ik "{
     arm_angle: 0.0
   },
   form: 0,
-  reference_pos: []
+  reference_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+  source: 0
 }"
 ```
 
@@ -1281,7 +1294,7 @@ ros2 service call /tl_driver/set_teach_type tl_ros2_interface/srv/SetTeachType "
 ```
 ros2 service call /tl_driver/get_teach_type tl_ros2_interface/srv/GetTeachType "{}"
 ```
-## 10 错误处理与零位标定接口
+## 10 错误处理接口
 ### 10.1 清除错误
 | 功能描述 | 复位控制器的当前报警状态（清除红色错误）。在机械臂发生碰撞、超限位等错误后，排除物理故障后调用 |
 | :---: | :---- |
@@ -1300,29 +1313,6 @@ ros2 service call /tl_driver/get_teach_type tl_ros2_interface/srv/GetTeachType "
 #### 命令示例
 ```
 ros2 service call /tl_driver/clear_error std_srvs/srv/Trigger "{}"
-```
-### 10.2 设置关节零点
-| 功能描述 | 将当前关节位置记录为零位。axis=1表示所有轴，axis=2～7表示单轴 |
-| :---: | :---- |
-| 通信机制 | ROS2服务 |
-| 服务名 | `/tl_driver/set_axis_zero_pos` |
-| 服务类型 | `tl_ros2_interface/srv/SetAxisZeroPos` |
-
-**输入参数**
-| 参数名 | 类型 | 范围 | 说明 |
-|--------|------|------|------|
-| axis | int32 | 1～7 | 轴号：1=全轴，2～7=单轴 |
-
-**输出/返回值**
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| success | bool | `true` = 设置成功，`false` = 设置失败 |
-| message | string | 失败时包含错误描述 |
-
-> **警告**：仅在机械臂物理对齐零刻度线后调用，否则将导致坐标系错乱，引发撞机风险！设置关节零点前需先执行 `power_off`（下电），完成设置后再 `power_on`（上电）。
-#### 命令示例
-```
-ros2 service call /tl_driver/set_axis_zero_pos tl_ros2_interface/srv/SetAxisZeroPos "{axis: 1}"
 ```
 ## 12 模式与IO控制接口
 ### 12.1 设置当前运行模式
@@ -1837,7 +1827,7 @@ ros2 topic pub -r 100 /tl_driver/set_servo_cst_torque std_msgs/msg/Float64MultiA
 | `/tl_driver/move_linear` | `Move` | 事件驱动 | 位置 m、姿态 rad、速度 m/s | 稳定 |
 | `/tl_driver/play_track` | `PlayTrack` | 事件驱动 | 速度 % | 稳定 |
 
-**服务（45 个）**
+**服务（44 个）**
 
 | 接口 | 类型 | 领域 | 单位/说明 | 状态 |
 | :---- | :---- | :---- | :---- | :---- |
@@ -1854,7 +1844,6 @@ ros2 topic pub -r 100 /tl_driver/set_servo_cst_torque std_msgs/msg/Float64MultiA
 | `/tl_driver/get_robot_joint_param` | `GetRobotJointParam` | config | rad、m、rad/s、rad/s² | 稳定 |
 | `/tl_driver/set_tool_param` | `SetToolParam` | config | m、rad、kg | 稳定 |
 | `/tl_driver/set_user_coord` | `SetUserCoord` | config | m、rad | 稳定 |
-| `/tl_driver/set_axis_zero_pos` | `SetAxisZeroPos` | config | rad | 稳定 |
 | `/tl_driver/set_coord_num` | `SetCoordNum` | config | 编号 | 稳定 |
 | `/tl_driver/get_coord_num` | `GetCoordNum` | config | 编号 | 稳定 |
 | `/tl_driver/get_pos_reachable` | `GetPosReachable` | config | 14 维协议包，原样透传 | 稳定 |
@@ -1882,8 +1871,8 @@ ros2 topic pub -r 100 /tl_driver/set_servo_cst_torque std_msgs/msg/Float64MultiA
 | `/tl_driver/get_drag_status` | `Trigger` | state | 拖拽状态 | 稳定 |
 | `/tl_driver/clear_error` | `Trigger` | state | 清错 | 稳定 |
 | `/tl_driver/coord_transform` | `CoordTransform` | transform | m、rad | 稳定 |
-| `/tl_driver/fk` | `Fk` | transform | joints rad；pose m + rad | 稳定 |
-| `/tl_driver/ik` | `Ik` | transform | pose m + rad；joints rad | 稳定 |
+| `/tl_driver/fk` | `Fk` | transform | joints rad；pose m + rad；`source` 0=控制器 1=本地 | 稳定 |
+| `/tl_driver/ik` | `Ik` | transform | pose m + rad；joints rad；`reference_pos` 必填；`source` 0=控制器 1=本地 | 稳定 |
 | `/tl_driver/set_current_coord` | `SetCurrentCoord` | transform | 坐标系类型 | 稳定 |
 | `/tl_driver/get_current_coord` | `GetCurrentCoord` | transform | 坐标系类型 | 稳定 |
 
