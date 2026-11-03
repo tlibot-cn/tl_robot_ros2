@@ -32,6 +32,7 @@
 |V1.23 | 2026-10-29 | 诊断话题按查询拆分：力矩拆到 `/tl_driver/joint_torque`（`JointTorque`），线速度拆到 `/tl_driver/line_speed`（`LineSpeed`），关节速度保留在 `/tl_driver/joint_speed`（`JointSpeed`，删除 `joint_speed_sync`）；新增 `joint_speed_rate`、`joint_torque_rate`；`/tl_driver/joint_monitor` 只保留电流/温度/电压，默认 2 Hz，电流、温度、电压在同一回调内查询且不缓存；删除 `joint_thermal_rate` 与独立热查询定时器 |
 |V1.24 | 2026-10-30 | `/arm_status` 话题改为按需服务 `get_arm_status`（`GetArmStatus.srv`），删除 10 Hz 状态查询定时器与 `ArmStatus.msg`；回调组 7 → 6 |
 |V1.25 | 2026-11-02 | 新增 `/tl_driver/error_info`（`ErrorInfo`，控制器错误/告警异步推送，事件驱动不节流）；`/tl_driver/joint_speed`、`/tl_driver/line_speed`、`/tl_driver/joint_torque` 改为在同一个定时器内先后发布；参数 `joint_speed_rate`、`joint_torque_rate` 合并为 `feedback_rate`（默认 100 Hz） |
+|V1.26 | 2026-11-03 | 新增 9.7 [设置示教模式类型](#97-设置示教模式类型)、9.8 [查询示教模式类型](#98-查询示教模式类型) 服务（`SetTeachType.srv` / `GetTeachType.srv`）；开启力引导拖拽需 `set_drag_mode(1)` + `set_teach_type(1)` 两步且顺序不可颠倒；服务数 39 → 41 |
 
 </div>
 
@@ -87,6 +88,8 @@
   * [9.4 查看拖拽状态](#94-查看拖拽状态)
   * [9.5 拖拽轨迹保存](#95-拖拽轨迹保存)
   * [9.6 拖拽轨迹回放](#96-拖拽轨迹回放)
+  * [9.7 设置示教模式类型](#97-设置示教模式类型)
+  * [9.8 查询示教模式类型](#98-查询示教模式类型)
 * [10 错误处理与零位标定接口](#10-错误处理与零位标定接口)
   * [10.1 清除错误](#101-清除错误)
   * [10.2 设置关节零点](#102-设置关节零点)
@@ -1228,6 +1231,49 @@ ros2 service call /tl_driver/track_save tl_ros2_interface/srv/TrackSave "{traj_n
 ```
 ros2 action send_goal /tl_driver/play_track tl_ros2_interface/action/PlayTrack "{vel: 20, timeout_sec: 600.0}" --feedback
 ```
+### 9.7 设置示教模式类型
+| 功能描述 | 设置机械臂示教模式类型（点动 / 拖拽） |
+| :---: | :---- |
+| 通信机制 | ROS2服务 |
+| 服务名 | `/tl_driver/set_teach_type` |
+| 服务类型 | `tl_ros2_interface/srv/SetTeachType` |
+
+**输入参数**
+| 参数名 | 类型 | 范围 | 说明 |
+|--------|------|------|------|
+| type | int32 | 0～1 | 示教类型：0=点动，1=拖拽；其他值直接返回 `Invalid teach type`，不下发控制器 |
+
+**输出/返回值**
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| success | bool | `true` = 设置成功，`false` = 设置失败 |
+| message | string | 失败时包含错误描述 |
+
+> **开启力引导拖拽需两步，顺序不可颠倒**：先 `set_drag_mode(mode=1)` 进入力矩拖拽，再 `set_teach_type(type=1)` 切到拖拽示教；只调 `set_teach_type` 不会产生可拖拽的力矩。用 `get_teach_type` 返回 `type=1` 才算真正生效。
+#### 命令示例
+```
+ros2 service call /tl_driver/set_teach_type tl_ros2_interface/srv/SetTeachType "{type: 1}"
+```
+### 9.8 查询示教模式类型
+| 功能描述 | 查询机械臂当前的示教模式类型 |
+| :---: | :---- |
+| 通信机制 | ROS2服务 |
+| 服务名 | `/tl_driver/get_teach_type` |
+| 服务类型 | `tl_ros2_interface/srv/GetTeachType` |
+
+**输入参数**
+无请求参数。
+
+**输出/返回值**
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| type | int32 | 0=点动，1=拖拽；查询失败时保持 `-1`（哨兵值，避免误判为点动） |
+| success | bool | `true` = 查询成功，`false` = 查询失败 |
+| message | string | 失败时包含错误描述 |
+#### 命令示例
+```
+ros2 service call /tl_driver/get_teach_type tl_ros2_interface/srv/GetTeachType "{}"
+```
 ## 10 错误处理与零位标定接口
 ### 10.1 清除错误
 | 功能描述 | 复位控制器的当前报警状态（清除红色错误）。在机械臂发生碰撞、超限位等错误后，排除物理故障后调用 |
@@ -1656,7 +1702,7 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 | `/tl_driver/move_linear` | `Move` | 事件驱动 | 位置 m、姿态 rad、速度 m/s | 稳定 |
 | `/tl_driver/play_track` | `PlayTrack` | 事件驱动 | 速度 % | 稳定 |
 
-**服务（39 个）**
+**服务（41 个）**
 
 | 接口 | 类型 | 领域 | 单位/说明 | 状态 |
 | :---- | :---- | :---- | :---- | :---- |
@@ -1667,6 +1713,8 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 | `/tl_driver/set_controller_ip` | `SetControllerIP` | session | IP | 稳定 |
 | `/tl_driver/set_default_cartesian_param` | `Trigger` | config | 默认笛卡尔参数 | 稳定 |
 | `/tl_driver/set_drag_mode` | `SetDragMode` | config | 拖拽模式 | 稳定 |
+| `/tl_driver/set_teach_type` | `SetTeachType` | config | 示教类型（0 点动 / 1 拖拽） | 稳定 |
+| `/tl_driver/get_teach_type` | `GetTeachType` | config | 示教类型（失败返回 -1） | 稳定 |
 | `/tl_driver/get_dh_param` | `GetDHParam` | config | rad、m | 稳定 |
 | `/tl_driver/get_robot_joint_param` | `GetRobotJointParam` | config | rad、m、rad/s、rad/s² | 稳定 |
 | `/tl_driver/set_tool_param` | `SetToolParam` | config | m、rad、kg | 稳定 |

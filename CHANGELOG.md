@@ -12,6 +12,12 @@
 
 ## [Unreleased]
 
+### 2026-11-03
+
+- tl_ros2_interface：新增 `SetTeachType.srv` / `GetTeachType.srv`（`int32 type`，0=点动 1=拖拽），驱动侧暴露为 `/tl_driver/set_teach_type` 与 `/tl_driver/get_teach_type`
+- tl_driver：`set_teach_type` 仅接受 0/1，其他值返回 `Invalid teach type` 且不下发控制器；`get_teach_type` 查询失败时 `type` 保持 `-1` 哨兵值，避免误判为点动；两个服务注册在 `config` 域（与 `set_drag_mode` 同域），服务数 39 → 41
+- 文档：接口说明书新增 9.7/9.8 章节与接口矩阵条目，接口包 README 新增 5.30/5.31 章节；补注「开启力引导拖拽需先 `set_drag_mode(1)` 再 `set_teach_type(1)`，顺序不可颠倒」
+
 ### 2026-11-02
 
 - **破坏性变更**：新增错误/告警话题 `/tl_driver/error_info`（`ErrorInfo`）；6001 主端口错误回调每收到一条推送即发布一帧，日志仍按 1 s 节流避免刷屏
