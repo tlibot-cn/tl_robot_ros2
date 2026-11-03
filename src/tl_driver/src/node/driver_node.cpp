@@ -36,6 +36,20 @@ bool is_valid_rate(double rate, double max_rate)
 {
   return std::isfinite(rate) && rate >= 0.0 && rate <= max_rate;
 }
+
+/// @brief 控制器机型 → 本体轴数；只覆盖串联系列 6/7 轴，其余（SCARA/并联等）返回 0 跳过校验。
+int robot_type_axes(tl::RobotType type) noexcept
+{
+  switch (type)
+  {
+    case tl::RobotType::SIX_AXIS_SERIAL:
+      return 6;
+    case tl::RobotType::SEVEN_AXIS_SERIAL:
+      return 7;
+    default:
+      return 0;
+  }
+}
 } // namespace
 
 DriverNode::DriverNode() : rclcpp::Node("tl_driver"), session_(this->get_logger())
@@ -255,6 +269,29 @@ void DriverNode::init()
     {
       throw std::runtime_error(std::string("[Init]: failed to set teach mode, result=") +
                                arm_client::result_to_string(ret));
+    }
+
+    // 机型轴数校验：arm_joints 与实际机型不一致会让关节名/话题/服务映射整体错位，直接失败退出。
+    tl::RobotType robot_type = tl::RobotType::NONE;
+    const tl::Result type_ret = tl::get_robot_type(fd, robot_type);
+    if (type_ret != tl::Result::SUCCESS)
+    {
+      RCLCPP_WARN(this->get_logger(), "[Init]: get_robot_type failed (%s), skip DOF check",
+                  arm_client::result_to_string(type_ret));
+    }
+    else
+    {
+      const int robot_axes = robot_type_axes(robot_type);
+      if (robot_axes == 0)
+      {
+        RCLCPP_WARN(this->get_logger(), "[Init]: unsupported robot type %d, skip DOF check",
+                    static_cast<int>(robot_type));
+      }
+      else if (robot_axes != ndof_)
+      {
+        throw std::runtime_error("[Init]: controller reports " + std::to_string(robot_axes) +
+                                 " axes but arm_joints has " + std::to_string(ndof_));
+      }
     }
 
     // 清除控制器错误和报警
