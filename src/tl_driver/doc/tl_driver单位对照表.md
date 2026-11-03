@@ -37,7 +37,7 @@
 | 服务 | 字段 | ROS 单位 |
 | :--- | :--- | :--- |
 | `coord_transform` | `origin_pos` / `reference_pos` / `target_pos` | 关节 rad；笛卡尔 m + rad |
-| `fk` / `ik` | `joints` / `pose` / `pose.arm_angle` | 关节 rad；位置 m + 姿态 rad；外部轴 rad |
+| `fk` / `ik` | `joints` / `pose` / `pose.arm_angle` | 关节 rad；位置 m + 姿态 rad；`arm_angle` 为臂角 ψ rad（6 轴为 0） |
 | `get_robot_joint_param` | 软限位 rad；`*_rot_speed` rad/s；`max_acc` / `max_dec` rad/s² | 驱动内换算 rpm / 度 |
 | `set_tool_param` | `x/y/z`、质心 m；`a/b/c` rad；质量 kg | 驱动内换算 mm / 度 |
 | `set_user_coord` | `position` m；`rpy` rad | 驱动内换算 mm |

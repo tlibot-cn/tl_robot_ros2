@@ -21,6 +21,12 @@
 - tl_driver：新增 `selected_service_group_` 专作注册期的组传参槽位，`select_service_group()` 只改它，`service_group_` / `motion_service_group_` 两个持有者保持常驻；`create_service()` 未选组时仍抛 `logic_error`
 - tl_driver：新增周期同步速度（CSV）与周期同步扭矩（CST）透传——开关服务 `/tl_driver/open_servo_csv`、`/tl_driver/close_servo_csv`、`/tl_driver/open_servo_cst`、`/tl_driver/close_servo_cst`（均为 `Trigger`），下发话题 `/tl_driver/set_servo_csv_velocity`（rad/s，6/7 元素）与 `/tl_driver/set_servo_cst_torque`（‰ 额定扭矩，6/7 元素，范围 [-1000, 1000]，越界整帧丢弃）；服务数 41 → 45，订阅 1 → 3
 - tl_driver：CSV/CST/ServoJ 共用 7000 端口的 servoJ 会话且 SDK 不做互斥检测，接口与文档均注明「同一时刻只能开启一种模式」；力矩补偿尚未实现，CST 只做原始力矩透传
+- **破坏性变更**：`Fk.srv` / `Ik.srv` 新增请求字段 `source`（0=控制器，默认；1=本地模型），`reference_pos` 改为必填（空数组直接返回失败）
+- **破坏性变更**：`CartesianPose.arm_angle` 明确为冗余臂角 ψ（rad）；`/tl_driver/fk` 的本地路径由 `arm_angle_of` 输出，`/tl_driver/ik` 对 7 轴作为 ψ 硬约束、6 轴忽略
+- tl_driver：新增本地运动学后端（`kinematics_local.{hpp,cpp}`），启动时由控制器回读 DH、关节限位与当前工具手构建一次；`source=1` 仅支持 `frame=1` 与 6/7 轴，模型不可用时返回失败且不回退控制器
+- tl_driver：启动时校验控制器机型轴数与 `arm_joints`，不一致即抛异常退出；`get_robot_type` 查询失败或机型不是串联系列 6/7 轴时仅告警
+- **破坏性变更**：删除 `/tl_driver/set_axis_zero_pos` 服务与 `SetAxisZeroPos.srv`（服务数 45 → 44）
+- 文档：接口说明书、接口包 README、单位对照表、测试清单、`ex_info_query` 示例与自检脚本同步
 
 ### 2026-11-02
 

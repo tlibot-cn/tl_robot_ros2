@@ -46,24 +46,23 @@ TL 系列机械臂 ROS2 接口说明
 * 5.11 [关节跟踪OpenServoJ_srv](#关节跟踪OpenServoJ_srv)
 * 5.12 [MoveJ队列运动QueueMotionMoveJ_srv](#MoveJ队列运动QueueMotionMoveJ_srv)
 * 5.13 [MoveJ队列运动模式QueueMotionSetStatus_srv](#MoveJ队列运动模式QueueMotionSetStatus_srv)
-* 5.14 [设置关节零点SetAxisZeroPos_srv](#设置关节零点SetAxisZeroPos_srv)
-* 5.15 [控制器有线网口IP设置SetControllerIP_srv](#控制器有线网口IP设置SetControllerIP_srv)
-* 5.16 [设置坐标系编号SetCoordNum_srv](#设置坐标系编号SetCoordNum_srv)
-* 5.17 [设置当前坐标系SetCurrentCoord_srv](#设置当前坐标系SetCurrentCoord_srv)
-* 5.18 [设置当前运行模式SetCurrentMode_srv](#设置当前运行模式SetCurrentMode_srv)
-* 5.19 [设置数字输出SetDigitalOutput_srv](#设置数字输出SetDigitalOutput_srv)
-* 5.20 [设置拖拽模式SetDragMode_srv](#设置拖拽模式SetDragMode_srv)
-* 5.21 [设置运行速度SetSpeed_srv](#设置运行速度SetSpeed_srv)
-* 5.22 [设置工具手参数SetToolParam_srv](#设置工具手参数SetToolParam_srv)
-* 5.23 [设置用户坐标系SetUserCoord_srv](#设置用户坐标系SetUserCoord_srv)
-* 5.24 [拖拽轨迹保存TrackSave_srv](#拖拽轨迹保存TrackSave_srv)
-* 5.25 [查询当前运行模式GetCurrentMode_srv](#查询当前运行模式GetCurrentMode_srv)
-* 5.26 [正运动学Fk_srv](#正运动学fk_srv)
-* 5.27 [逆运动学Ik_srv](#逆运动学ik_srv)
-* 5.28 [查询运行速度GetSpeed_srv](#查询运行速度getspeed_srv)
-* 5.29 [查询机械臂运行状态GetArmStatus_srv](#查询机械臂运行状态getarmstatus_srv)
-* 5.30 [设置示教模式类型SetTeachType_srv](#设置示教模式类型setteachtype_srv)
-* 5.31 [查询示教模式类型GetTeachType_srv](#查询示教模式类型getteachtype_srv)
+* 5.14 [控制器有线网口IP设置SetControllerIP_srv](#控制器有线网口IP设置SetControllerIP_srv)
+* 5.15 [设置坐标系编号SetCoordNum_srv](#设置坐标系编号SetCoordNum_srv)
+* 5.16 [设置当前坐标系SetCurrentCoord_srv](#设置当前坐标系SetCurrentCoord_srv)
+* 5.17 [设置当前运行模式SetCurrentMode_srv](#设置当前运行模式SetCurrentMode_srv)
+* 5.18 [设置数字输出SetDigitalOutput_srv](#设置数字输出SetDigitalOutput_srv)
+* 5.19 [设置拖拽模式SetDragMode_srv](#设置拖拽模式SetDragMode_srv)
+* 5.20 [设置运行速度SetSpeed_srv](#设置运行速度SetSpeed_srv)
+* 5.21 [设置工具手参数SetToolParam_srv](#设置工具手参数SetToolParam_srv)
+* 5.22 [设置用户坐标系SetUserCoord_srv](#设置用户坐标系SetUserCoord_srv)
+* 5.23 [拖拽轨迹保存TrackSave_srv](#拖拽轨迹保存TrackSave_srv)
+* 5.24 [查询当前运行模式GetCurrentMode_srv](#查询当前运行模式GetCurrentMode_srv)
+* 5.25 [正运动学Fk_srv](#正运动学fk_srv)
+* 5.26 [逆运动学Ik_srv](#逆运动学ik_srv)
+* 5.27 [查询运行速度GetSpeed_srv](#查询运行速度getspeed_srv)
+* 5.28 [查询机械臂运行状态GetArmStatus_srv](#查询机械臂运行状态getarmstatus_srv)
+* 5.29 [设置示教模式类型SetTeachType_srv](#设置示教模式类型setteachtype_srv)
+* 5.30 [查询示教模式类型GetTeachType_srv](#查询示教模式类型getteachtype_srv)
 
 ## tl_ros2_interface功能包说明
 tl_ros2_interface 功能包为 TL 系列机械臂在 ROS2 框架下提供消息（msg）和服务（srv）接口定义，供上层驱动或应用调用。该包本身没有可执行程序，主要作用为定义协议数据结构和服务接口。
@@ -116,7 +115,6 @@ tl_ros2_interface/
 │   ├── OpenServoJ.srv
 │   ├── QueueMotionMoveJ.srv
 │   ├── QueueMotionSetStatus.srv
-│   ├── SetAxisZeroPos.srv
 │   ├── SetControllerIP.srv
 │   ├── SetCoordNum.srv
 │   ├── SetCurrentCoord.srv
@@ -532,17 +530,6 @@ string message
 - status: true 开启队列运动，false 关闭队列运动
 - 返回: success/message
 
-### 设置关节零点SetAxisZeroPos_srv
-```
-int32 axis
----
-bool success
-string message
-```
-- 设置轴零位
-- axis: 轴编号
-- 返回: success/message
-
 ### 控制器有线网口IP设置SetControllerIP_srv
 ```
 string name
@@ -704,6 +691,7 @@ int32 mode
 ```
 int32 frame
 float64[] joints
+int32 source
 ---
 bool success
 string message
@@ -712,8 +700,9 @@ tl_ros2_interface/CartesianPose pose
 - 正运动学：关节角 → 指定坐标系下的 TCP 位姿
 - 服务名：`/tl_driver/fk`
 - frame: 输出位姿坐标系，1=基坐标 2=工具 3=用户（0=关节不支持）
-- joints: 关节角 rad，6 或 7 元素（7 元素时第 7 位为外部轴）
-- pose: position m、rpy rad；`arm_angle` 为 SDK 第 7 位外部轴角（度→rad）
+- joints: 关节角 rad，6 或 7 元素（不少于本体轴数；6 轴第 7 位为外部轴，本地模型忽略）
+- source: 求解来源，0=控制器（默认）1=本地模型（仅 frame=1）
+- pose: position m、rpy rad；`arm_angle` 为冗余臂角 ψ rad（6 轴为 0，7 轴无定义时为 NaN）
 
 ### 逆运动学Ik_srv
 ```
@@ -721,6 +710,7 @@ int32 frame
 tl_ros2_interface/CartesianPose pose
 int32 form
 float64[] reference_pos
+int32 source
 ---
 bool success
 string message
@@ -729,9 +719,10 @@ float64[7] joints
 - 逆运动学：指定坐标系下的 TCP 位姿 → 关节角
 - 服务名：`/tl_driver/ik`
 - frame: 输入位姿坐标系，1=基坐标 2=工具 3=用户（0=关节不支持）
-- pose: position m、rpy rad；`arm_angle` 始终作为第 7 位外部轴（rad→度）
-- form: 形态；reference_pos: 逆解参考关节角 rad（可选）
-- joints: 定长 7，单位 rad；失败时为 NaN
+- pose: position m、rpy rad；`arm_angle` 为冗余臂角 ψ（source=1 的 7 轴作为硬约束，不指定传 NaN；source=0 透传 SDK 第 7 位；6 轴忽略）
+- form: 形态；reference_pos: 逆解参考关节角 rad（**必填**，长度 6 或 7）
+- source: 求解来源，0=控制器（默认）1=本地模型（仅 frame=1）
+- joints: 定长 7，单位 rad；失败时为 NaN；6 轴第 7 位为 0
 
 ### 查询运行速度GetSpeed_srv
 ```

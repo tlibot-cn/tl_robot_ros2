@@ -102,7 +102,7 @@ tl_driver:
     arm_port: "6001"                # 设置TCP连接时的端口  
     arm_port_aux: "7000"            # 设置机械臂连接时的辅助端口
     arm_type: "TCB710"              # 机械臂型号（仅作日志标识，不参与行为）
-    arm_joints: ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7"] # 关节名称（1～7 个，启动时校验）
+    arm_joints: ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7"] # 关节名称（1～7 个；启动时与控制器机型轴数比对，不一致即退出）
     executor_threads: 8             # 执行器线程数，范围 1～64；默认 max(4, min(hardware_concurrency, 8))
     state_stream_interval_ms: 10    # 连续状态流间隔，范围 10～60000 ms
     joint_monitor_rate: 2.0         # /tl_driver/joint_monitor（电流/温度/电压）频率，0～2，0=关闭
@@ -112,6 +112,7 @@ tl_driver:
 ```
 
 > `arm_port` / `arm_port_aux` 以字符串传给 SDK，不要写成整数。
+> `fk`/`ik` 的 `source=1` 使用本地运动学模型：启动时由控制器回读的 DH、关节限位与当前工具手构建一次，运行期改 DH/工具后不重建；模型不可用时请求直接失败，不回退控制器。
 > `tl_driver` 自身声明的参数只在启动时读取：以 read-only descriptor 声明，运行期 `ros2 param set` 会被 rclcpp 拒绝；启动参数覆盖（launch/YAML）不受影响。rclcpp 内建参数（如 `use_sim_time`）保持标准可变语义。
 > `/joint_states`、`/tcp_pose` 由 7000 帧通知直接发布，频率取决于 `state_stream_interval_ms` 与控制器的实际推送率；运行状态改由 `/tl_driver/get_arm_status` 服务按需查询，不再周期发布。状态流在上下电完成后启动，启动失败则驱动启动失败；运行期若控制器停止推帧，对应话题停更，需要重启驱动恢复（无同步查询回退、无看门狗重试）。
 ## tl_driver功能包架构说明
@@ -182,6 +183,7 @@ tl_driver:
 │   ├── arm_sdk.hpp            # SDK 头文件唯一入口（libtl_host.so 的 API 头）
 │   ├── arm_client.{hpp,cpp}   # SDK 薄封装：返回值文本化、错误回调、7000 口状态帧通道
 │   ├── arm_session.{hpp,cpp}  # 会话：双端口连接、上下电
+│   ├── kinematics_local.{hpp,cpp} # 本地运动学：启动建一次的正逆解模型（source=1）
 │   ├── node                     # 节点层
 │   │   ├── driver_node.{hpp,cpp}  # DriverNode：参数、回调组、实体创建与服务/话题注册
 │   │   ├── registrars.hpp       # 注册函数声明（服务域 + 话题）
