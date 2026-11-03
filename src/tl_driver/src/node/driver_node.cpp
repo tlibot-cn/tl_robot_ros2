@@ -144,7 +144,8 @@ void DriverNode::create_callback_groups()
 
 void DriverNode::select_service_group(const rclcpp::CallbackGroup::SharedPtr& group)
 {
-  service_group_ = group;
+  // 只切换「注册目标」，不改动 service_group_ / motion_service_group_ 这两个持有者。
+  selected_service_group_ = group;
 }
 
 void DriverNode::register_entities()
@@ -158,7 +159,9 @@ void DriverNode::register_entities()
   register_state_services(*this);
   select_service_group(motion_service_group_);
   register_motion_services(*this);
-  service_group_.reset(); // 注册结束，后续 create_service 未显式选组会抛异常
+  // 注册结束，清空「当前目标」槽位，后续 create_service 未显式选组会抛异常。
+  // 注意：这里只能清 selected_service_group_，两个真正的组持有者必须保留。
+  selected_service_group_.reset();
 
   // 话题pub
   StatePublishConfig publish_config;

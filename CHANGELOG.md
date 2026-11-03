@@ -17,6 +17,8 @@
 - tl_ros2_interface：新增 `SetTeachType.srv` / `GetTeachType.srv`（`int32 type`，0=点动 1=拖拽），驱动侧暴露为 `/tl_driver/set_teach_type` 与 `/tl_driver/get_teach_type`
 - tl_driver：`set_teach_type` 仅接受 0/1，其他值返回 `Invalid teach type` 且不下发控制器；`get_teach_type` 查询失败时 `type` 保持 `-1` 哨兵值，避免误判为点动；两个服务注册在 `config` 域（与 `set_drag_mode` 同域），服务数 39 → 41
 - 文档：接口说明书新增 9.7/9.8 章节与接口矩阵条目，接口包 README 新增 5.30/5.31 章节；补注「开启力引导拖拽需先 `set_drag_mode(1)` 再 `set_teach_type(1)`，顺序不可颠倒」
+- **修复（回归自 `7ff2ea8` 回调组分拆）**：`register_entities()` 末尾的 `service_group_.reset()` 释放的是「短服务回调组」的唯一强引用（rclcpp 的 `Node` 只持 `WeakPtr`，实体也只弱引用），组被销毁后该组下 31 个服务（session/transform/config/io/state 全域，含新增的 teach_type）注册成功、`ros2 service list` 可见，但**回调永不执行**、调用方只能超时；`motion_service_group_` 因有独立成员持有而未受影响，现象表现为「运动类服务正常、其余服务全挂」
+- tl_driver：新增 `selected_service_group_` 专作注册期的组传参槽位，`select_service_group()` 只改它，`service_group_` / `motion_service_group_` 两个持有者保持常驻；`create_service()` 未选组时仍抛 `logic_error`
 
 ### 2026-11-02
 
