@@ -45,7 +45,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/TrackSave.srv"
   "srv/SetToolParam.srv"
   "srv/SetUserCoord.srv"
-  "srv/SetAxisZeroPos.srv"
   "srv/SetCurrentCoord.srv"
   "srv/GetCurrentCoord.srv"
   "srv/SetCoordNum.srv"
