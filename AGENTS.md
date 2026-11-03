@@ -32,9 +32,9 @@ flowchart LR
 核心事实：
 
 - **双端口**：`arm_port` 6001 用于请求/响应式 SDK 调用；`arm_port_aux` 7000 用于 servoJ 全系列 + 机器人状态异步推送。两个 fd 都必须连通，状态回调只在 aux 注册，错误/告警回调只在主端口 6001 注册（7000 不注册）。
-- **`tl_driver` 组成**：`DriverNode` 只做参数、回调组、实体创建；服务按域拆在 `src/node/services_*.cpp`，由 `src/node/registrars.hpp` 的 `register_*` 函数注册；话题在 `topics.cpp`，action 在 `actions_motion.cpp`。当前规模：**41 个服务、1 个订阅、7 个发布、3 个 action**。`arm_client::ArmClient` 进程内只允许一个实例（SDK 回调无 userdata）；状态帧/错误日志走 rclcpp 并 1 s 节流。
+- **`tl_driver` 组成**：`DriverNode` 只做参数、回调组、实体创建；服务按域拆在 `src/node/services_*.cpp`，由 `src/node/registrars.hpp` 的 `register_*` 函数注册；话题在 `topics.cpp`，action 在 `actions_motion.cpp`。当前规模：**45 个服务、3 个订阅、7 个发布、3 个 action**。`arm_client::ArmClient` 进程内只允许一个实例（SDK 回调无 userdata）；状态帧/错误日志走 rclcpp 并 1 s 节流。
 - **发布**：`/joint_states`（rad）、`/tcp_pose`（m/rad）跟随 7000 帧率；运行状态改由 `/tl_driver/get_arm_status` 服务按需查询（`STOP`/`PAUSE`/`RUNNING`），运行速度由 `/tl_driver/get_speed` 服务查询，两者均不周期发布。诊断话题按查询拆分：`/tl_driver/joint_monitor`（电流/温度/电压同帧查询，默认 2 Hz，`joint_monitor_rate`）、`/tl_driver/joint_torque`、`/tl_driver/joint_speed` 与 `/tl_driver/line_speed`（后三者由同一个定时器先后发布，共用 `feedback_rate`，默认 100 Hz）。控制器错误/告警由 6001 主端口异步回调逐条发布到 `/tl_driver/error_info`（事件驱动，不节流；仅日志 1 s 节流）。数字 IO 不发布话题，读写统一走 `get_digital_input_output` / `set_digital_output` 服务。`/joint_states`、`/tcp_pose` 由 7000 端口 ACS/MCS 连续帧**通知独立发布线程**发布，不经过执行器；流在上下电完成后启动，启动失败即退出，运行期停推需重启驱动（无 `state_source=poll` 回退、无看门狗）。诊断话题为定长数组 + NaN 无效语义。`StatePublishers` 复用成员缓冲与消息，**勿在发布回调内新建 vector/message**；ServoJ 日志不得逐帧 INFO。
-- **订阅**：`/tl_driver/set_servoj_pos`（rad，6 或 7 元素，6 元素末尾补 0；转发 SDK 时为固定 7 元素）。一次性运动统一走 `move_joint` / `move_linear` action；完成/失败以 action result 为准，运行状态用 `get_arm_status` 服务观察。
+- **订阅**：`/tl_driver/set_servoj_pos`（rad，6 或 7 元素，6 元素末尾补 0；转发 SDK 时为固定 7 元素）、`/tl_driver/set_servo_csv_velocity`（rad/s，同上补 0；SDK 侧度/秒）与 `/tl_driver/set_servo_cst_torque`（‰ 额定扭矩，范围 [-1000, 1000]，越界整帧丢弃）。一次性运动统一走 `move_joint` / `move_linear` action；完成/失败以 action result 为准，运行状态用 `get_arm_status` 服务观察。
 - **线程模型**：`MultiThreadedExecutor` 线程数由 `executor_threads` 参数决定（默认 `max(4, min(hardware_concurrency, 8))`，范围 1–64），固定 6 个 `MutuallyExclusive` 回调组：`service_group_`（session/config/io/state/transform 短服务，含 `get_arm_status`）、`motion_service_group_`（jogging/track/queue/servo）、`topic_group_`、`monitor_group_`、`feedback_group_`、`action_group_`。`monitor_group_` 跑 2 Hz `/tl_driver/joint_monitor`（电流/温度/电压，慢查询独立组），`feedback_group_` 用单一定时器串行发布 `/tl_driver/joint_speed` + `/tl_driver/line_speed` + `/tl_driver/joint_torque`；`/joint_states`、`/tcp_pose` 的发布在独立 `std::thread`（7000 帧通知），不在执行器内。
 - **失败即退**：`DriverNode::init()` 连接失败或切入示教模式失败时抛异常，由 `tl_driver_main.cpp` 捕获后返回 `EXIT_FAILURE`（析构会断开已建立的端口），不带病运行。
 - **硬件插件**：`TLHardwareInterface` 生命周期 `on_init → on_configure → on_activate → …`；`on_activate` 用当前关节位置初始化命令，避免跳到零位；`write()` 发 `/tl_driver/set_servoj_pos`。
@@ -48,6 +48,8 @@ ROS 侧统一 REP 103（m / rad / rad/s），控制器/SDK 侧 mm / 度 / %，�
 | `/joint_states.position` | rad |
 | `/tcp_pose.position` / `.rpy` | m / rad |
 | `/tl_driver/set_servoj_pos` | rad（6 或 7 元素；6→7 末尾补 0，SDK 侧固定 7 元素） |
+| `/tl_driver/set_servo_csv_velocity` | rad/s（6 或 7 元素；SDK 侧度/秒） |
+| `/tl_driver/set_servo_cst_torque` | ‰ 额定扭矩（6 或 7 元素；与 SDK 单位 0.1% 一致，不换算） |
 | `MoveCommand.target_pos_value` | `coord=0` 关节 rad；`1/2/3` 为 m + 姿态 rad |
 | `MoveCommand.velocity` | MOVJ 为 %；MOVL 为 m/s |
 | `ToolParam` / `SetUserCoord` | m + rad；`payload_mass` kg |

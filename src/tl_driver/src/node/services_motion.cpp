@@ -193,6 +193,92 @@ void handle_close_servoj_service(DriverNode& node, const std::shared_ptr<std_srv
   response->message = response->success ? "ServoJ close successfully" : "Failed to close ServoJ";
 }
 
+/**
+ * @brief 开启周期同步速度模式（CSV）。
+ * @note CSV 与 CST / ServoJ 共用 7000 端口的 servoJ 会话，SDK 不做互斥检测，
+ *       调用方必砇保证同一时刻只开启其中一种模式。
+ */
+void handle_open_servo_csv_service(DriverNode& node, const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                   std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  (void)request;
+  if (!node.session().is_connected())
+  {
+    response->success = false;
+    response->message = "Arm is not connected";
+    return;
+  }
+  if (node.motion_action_active())
+  {
+    response->success = false;
+    response->message = "A motion action is active";
+    return;
+  }
+
+  tl::Result ret = tl::open_servo_csv_mode(node.session().fd_aux());
+  response->success = (ret == tl::Result::SUCCESS);
+  response->message = response->success ? "CSV mode open successfully" : "Failed to open CSV mode";
+}
+
+void handle_close_servo_csv_service(DriverNode& node, const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  (void)request;
+  if (!node.session().is_connected())
+  {
+    response->success = false;
+    response->message = "Arm is not connected";
+    return;
+  }
+
+  tl::Result ret = tl::close_servo_csv_mode(node.session().fd_aux());
+  response->success = (ret == tl::Result::SUCCESS);
+  response->message = response->success ? "CSV mode close successfully" : "Failed to close CSV mode";
+}
+
+/**
+ * @brief 开启周期同步扭矩模式（CST）。
+ * @note CST 与 CSV / ServoJ 共用 7000 端口的 servoJ 会话，SDK 不做互斥检测。
+ *       力矩补偿尚未实现，本接口只做原始力矩透传。
+ */
+void handle_open_servo_cst_service(DriverNode& node, const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                   std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  (void)request;
+  if (!node.session().is_connected())
+  {
+    response->success = false;
+    response->message = "Arm is not connected";
+    return;
+  }
+  if (node.motion_action_active())
+  {
+    response->success = false;
+    response->message = "A motion action is active";
+    return;
+  }
+
+  tl::Result ret = tl::open_servo_cst_mode(node.session().fd_aux());
+  response->success = (ret == tl::Result::SUCCESS);
+  response->message = response->success ? "CST mode open successfully" : "Failed to open CST mode";
+}
+
+void handle_close_servo_cst_service(DriverNode& node, const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  (void)request;
+  if (!node.session().is_connected())
+  {
+    response->success = false;
+    response->message = "Arm is not connected";
+    return;
+  }
+
+  tl::Result ret = tl::close_servo_cst_mode(node.session().fd_aux());
+  response->success = (ret == tl::Result::SUCCESS);
+  response->message = response->success ? "CST mode close successfully" : "Failed to close CST mode";
+}
+
 void handle_queue_motion_set_status_service(
     DriverNode& node, const std::shared_ptr<tl_ros2_interface::srv::QueueMotionSetStatus::Request> request,
     std::shared_ptr<tl_ros2_interface::srv::QueueMotionSetStatus::Response> response)
@@ -324,6 +410,18 @@ void register_motion_services(DriverNode& node)
   node.create_service<std_srvs::srv::Trigger>(
       "/tl_driver/close_servoj",
       std::bind(&handle_close_servoj_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<std_srvs::srv::Trigger>(
+      "/tl_driver/open_servo_csv",
+      std::bind(&handle_open_servo_csv_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<std_srvs::srv::Trigger>(
+      "/tl_driver/close_servo_csv",
+      std::bind(&handle_close_servo_csv_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<std_srvs::srv::Trigger>(
+      "/tl_driver/open_servo_cst",
+      std::bind(&handle_open_servo_cst_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<std_srvs::srv::Trigger>(
+      "/tl_driver/close_servo_cst",
+      std::bind(&handle_close_servo_cst_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
   node.create_service<tl_ros2_interface::srv::QueueMotionSetStatus>(
       "/tl_driver/queue_motion_set_status",
       std::bind(&handle_queue_motion_set_status_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));

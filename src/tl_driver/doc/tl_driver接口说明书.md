@@ -33,6 +33,7 @@
 |V1.24 | 2026-10-30 | `/arm_status` 话题改为按需服务 `get_arm_status`（`GetArmStatus.srv`），删除 10 Hz 状态查询定时器与 `ArmStatus.msg`；回调组 7 → 6 |
 |V1.25 | 2026-11-02 | 新增 `/tl_driver/error_info`（`ErrorInfo`，控制器错误/告警异步推送，事件驱动不节流）；`/tl_driver/joint_speed`、`/tl_driver/line_speed`、`/tl_driver/joint_torque` 改为在同一个定时器内先后发布；参数 `joint_speed_rate`、`joint_torque_rate` 合并为 `feedback_rate`（默认 100 Hz） |
 |V1.26 | 2026-11-03 | 新增 9.7 [设置示教模式类型](#97-设置示教模式类型)、9.8 [查询示教模式类型](#98-查询示教模式类型) 服务（`SetTeachType.srv` / `GetTeachType.srv`）；开启力引导拖拽需 `set_drag_mode(1)` + `set_teach_type(1)` 两步且顺序不可颠倒；服务数 39 → 41 |
+|V1.27 | 2026-11-03 | 新增 15.5–15.10：周期同步速度模式（CSV）与周期同步扭矩模式（CST）的开关服务与下发话题（服务数 41 → 45，订阅 1 → 3）；两个话题采用 `Float64MultiArray`，速度 rad/s、扭矩 ‰ 额定扭矩；力矩补偿尚未实现 |
 
 </div>
 
@@ -110,6 +111,12 @@
   * [15.2 关闭关节跟踪模式](#152-关闭关节跟踪模式)
   * [15.3 发送跟踪关节位置](#153-发送跟踪关节位置)
   * [15.4 状态流参数](#154-状态流参数)
+  * [15.5 打开周期同步速度模式](#155-打开周期同步速度模式)
+  * [15.6 关闭周期同步速度模式](#156-关闭周期同步速度模式)
+  * [15.7 发送周期同步速度](#157-发送周期同步速度)
+  * [15.8 打开周期同步扭矩模式](#158-打开周期同步扭矩模式)
+  * [15.9 关闭周期同步扭矩模式](#159-关闭周期同步扭矩模式)
+  * [15.10 发送周期同步扭矩](#1510-发送周期同步扭矩)
 * [16 接口矩阵与移除清单](#16-接口矩阵与移除清单)
   * [16.1 接口总矩阵](#161-接口总矩阵)
   * [16.2 已移除接口](#162-已移除接口)
@@ -1677,6 +1684,132 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 >
 > 话题频率参数 `joint_monitor_rate` / `feedback_rate` 见 [4.10](#410-查询电机电流)、[4.19](#419-查询当前电机力矩)、[4.20](#420-查询当前线速度和关节速度)；运动 action 超时参数见 [7.1](#71-运动-action)。
 
+### 15.5 打开周期同步速度模式
+| 功能描述 | 进入周期同步速度模式（CSV），之后由 `/tl_driver/set_servo_csv_velocity` 按周期下发各关节目标速度 |
+| :---: | :---- |
+| 通信机制 | ROS2服务 |
+| 服务名 | `/tl_driver/open_servo_csv` |
+| 服务类型 | `std_srvs::srv::Trigger` |
+
+**输入参数**
+无请求参数（空 `Trigger`）。
+
+**输出/返回值**
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| success | bool | `true` = 进入成功，`false` = 进入失败 |
+| message | string | 失败时包含错误描述；运动 action 运行中会返回 `A motion action is active` |
+
+> **注意（模式互斥）**：CSV / CST / ServoJ 共用 7000 端口的 servoJ 会话，SDK **不做互斥检测**，同一时刻只能开启其中一种；切换前先关闭当前模式（如先 `close_servoj` 再 `open_servo_csv`）。
+> **注意（安全）**：进入该模式后机械臂由速度指令驱动，开启前需确认工作空间内无人、自身有支撑或已限速；停止时先发零速度再 `close_servo_csv`。
+#### 命令示例
+```
+ros2 service call /tl_driver/open_servo_csv std_srvs/srv/Trigger "{}"
+```
+### 15.6 关闭周期同步速度模式
+| 功能描述 | 退出周期同步速度模式，恢复常规轨迹规划 |
+| :---: | :---- |
+| 通信机制 | ROS2服务 |
+| 服务名 | `/tl_driver/close_servo_csv` |
+| 服务类型 | `std_srvs::srv::Trigger` |
+
+**输入参数**
+无请求参数（空 `Trigger`）。
+
+**输出/返回值**
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| success | bool | `true` = 关闭成功，`false` = 关闭失败 |
+| message | string | 失败时包含错误描述 |
+#### 命令示例
+```
+ros2 service call /tl_driver/close_servo_csv std_srvs/srv/Trigger "{}"
+```
+### 15.7 发送周期同步速度
+| 功能描述 | 在 CSV 模式下按周期下发各关节目标速度 |
+| :---: | :---- |
+| 通信机制 | ROS2话题 |
+| 话题名 | `/tl_driver/set_servo_csv_velocity` |
+| 消息类型 | `std_msgs::msg::Float64MultiArray` |
+
+**输入参数**
+| 参数名 | 类型 | 单位 | 说明 |
+|--------|------|------|------|
+| data | float64[] | rad/s | 各关节目标速度，6 或 7 元素；6 轴时末尾补 0（外部轴保持 0）；驱动内部换算为度/秒下发 |
+
+**输出/返回值**
+无返回值（话题发布单向通信）。
+
+> **注意**：需先 [打开周期同步速度模式](#155-打开周期同步速度模式)，否则 SDK 返回 `OPERATION_NOT_ALLOWED`。需以固定周期持续发布（建议 ≥100 Hz）；元素数非 6/7 或含 NaN/Inf 的帧直接丢弃并节流告警。成功时日志为 DEBUG，失败为每秒最多一条 WARN。
+#### 命令示例
+```
+ros2 topic pub -r 100 /tl_driver/set_servo_csv_velocity std_msgs/msg/Float64MultiArray \
+"{data: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}"
+```
+### 15.8 打开周期同步扭矩模式
+| 功能描述 | 进入周期同步扭矩模式（CST），之后由 `/tl_driver/set_servo_cst_torque` 按周期下发各关节目标扭矩 |
+| :---: | :---- |
+| 通信机制 | ROS2服务 |
+| 服务名 | `/tl_driver/open_servo_cst` |
+| 服务类型 | `std_srvs::srv::Trigger` |
+
+**输入参数**
+无请求参数（空 `Trigger`）。
+
+**输出/返回值**
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| success | bool | `true` = 进入成功，`false` = 进入失败 |
+| message | string | 失败时包含错误描述；运动 action 运行中会返回 `A motion action is active` |
+
+> **注意（模式互斥）**：与 CSV / ServoJ 同样共用 7000 端口的 servoJ 会话，SDK 不做互斥检测，切换前先关闭当前模式。
+> **注意（安全）**：CST 为纯力矩透传，机械臂**不受位置/重力补偿保护**，开启后若不下发保持力矩会发生重力坠落——必须有支撑或人工扶持。
+> **注意（能力边界）**：力矩补偿（重力/摩擦/负载）尚未实现，本模式只做原始力矩透传。
+#### 命令示例
+```
+ros2 service call /tl_driver/open_servo_cst std_srvs/srv/Trigger "{}"
+```
+### 15.9 关闭周期同步扭矩模式
+| 功能描述 | 退出周期同步扭矩模式，恢复常规轨迹规划 |
+| :---: | :---- |
+| 通信机制 | ROS2服务 |
+| 服务名 | `/tl_driver/close_servo_cst` |
+| 服务类型 | `std_srvs::srv::Trigger` |
+
+**输入参数**
+无请求参数（空 `Trigger`）。
+
+**输出/返回值**
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| success | bool | `true` = 关闭成功，`false` = 关闭失败 |
+| message | string | 失败时包含错误描述 |
+#### 命令示例
+```
+ros2 service call /tl_driver/close_servo_cst std_srvs/srv/Trigger "{}"
+```
+### 15.10 发送周期同步扭矩
+| 功能描述 | 在 CST 模式下按周期下发各关节目标扭矩 |
+| :---: | :---- |
+| 通信机制 | ROS2话题 |
+| 话题名 | `/tl_driver/set_servo_cst_torque` |
+| 消息类型 | `std_msgs::msg::Float64MultiArray` |
+
+**输入参数**
+| 参数名 | 类型 | 单位 | 说明 |
+|--------|------|------|------|
+| data | float64[] | ‰ 额定扭矩 | 各关节目标扭矩，6 或 7 元素；6 轴时末尾补 0（外部轴保持 0）；范围 [-1000, 1000]，与 SDK 单位（额定扭矩 0.1%）一致，不做换算 |
+
+**输出/返回值**
+无返回值（话题发布单向通信）。
+
+> **注意**：需先 [打开周期同步扭矩模式](#158-打开周期同步扭矩模式)。元素数非 6/7、含 NaN/Inf 或超出 [-1000, 1000] 的帧**整帧丢弃**并节流告警（不做裁剪，避免误因限幅产生不可预期的转矩）。需以固定周期持续发布；停止时发零扭矩再关闭模式。
+#### 命令示例
+```
+ros2 topic pub -r 100 /tl_driver/set_servo_cst_torque std_msgs/msg/Float64MultiArray \
+"{data: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}"
+```
+
 ## 16 接口矩阵与移除清单
 
 ### 16.1 接口总矩阵
@@ -1693,6 +1826,8 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 | `/tl_driver/line_speed` | `LineSpeed` | `feedback_rate`（默认 100 Hz，与 joint_speed 同一次查询） | m/s | 稳定 |
 | `/tl_driver/error_info` | `ErrorInfo` | 事件驱动（不节流） | int32 / string | 稳定 |
 | `/tl_driver/set_servoj_pos` | `std_msgs/msg/Float64MultiArray` | 事件驱动（≤250 Hz） | rad（6 或 7 元素） | 稳定 |
+| `/tl_driver/set_servo_csv_velocity` | `std_msgs/msg/Float64MultiArray` | 事件驱动（建议 ≥100 Hz） | rad/s（6 或 7 元素） | 稳定 |
+| `/tl_driver/set_servo_cst_torque` | `std_msgs/msg/Float64MultiArray` | 事件驱动（建议 ≥100 Hz） | ‰ 额定扭矩（6 或 7 元素，[-1000, 1000]） | 稳定 |
 
 **Action**
 
@@ -1702,7 +1837,7 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 | `/tl_driver/move_linear` | `Move` | 事件驱动 | 位置 m、姿态 rad、速度 m/s | 稳定 |
 | `/tl_driver/play_track` | `PlayTrack` | 事件驱动 | 速度 % | 稳定 |
 
-**服务（41 个）**
+**服务（45 个）**
 
 | 接口 | 类型 | 领域 | 单位/说明 | 状态 |
 | :---- | :---- | :---- | :---- | :---- |
@@ -1734,6 +1869,10 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 | `/tl_driver/track_save` | `TrackSave` | motion | — | 稳定 |
 | `/tl_driver/open_servoj` | `OpenServoJ` | motion | rad/s、rad/s²、rad/s³ | 稳定 |
 | `/tl_driver/close_servoj` | `Trigger` | motion | — | 稳定 |
+| `/tl_driver/open_servo_csv` | `Trigger` | motion | 速度透传模式开关 | 稳定 |
+| `/tl_driver/close_servo_csv` | `Trigger` | motion | 速度透传模式开关 | 稳定 |
+| `/tl_driver/open_servo_cst` | `Trigger` | motion | 扭矩透传模式开关 | 稳定 |
+| `/tl_driver/close_servo_cst` | `Trigger` | motion | 扭矩透传模式开关 | 稳定 |
 | `/tl_driver/queue_motion_set_status` | `QueueMotionSetStatus` | motion | — | 稳定 |
 | `/tl_driver/queue_motion_movej` | `QueueMotionMoveJ` | motion | 嵌套 `MoveCommand` | 稳定 |
 | `/tl_driver/queue_motion_stop` | `Trigger` | motion | — | 稳定 |
