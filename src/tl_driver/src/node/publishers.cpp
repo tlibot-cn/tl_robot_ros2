@@ -274,9 +274,9 @@ void StatePublishers::publish_monitor()
   std::vector<double> joint_voltage;
   std::vector<double> positioner_voltage; // 外部轴电压不发布，但 SDK 要求出参非空。
 
-  const bool current_ok = tl::get_current_motor_current(fd, motor_current, motor_current_sync) == tl::Result::SUCCESS;
+  const bool current_ok = tl::get_current_motor_current(fd, motor_current) == tl::Result::SUCCESS;
   const bool temperature_ok = tl::get_joint_temperature(fd, temperature) == tl::Result::SUCCESS;
-  const bool voltage_ok = tl::get_joint_voltage(fd, joint_voltage, positioner_voltage) == tl::Result::SUCCESS;
+  const bool voltage_ok = tl::get_joint_voltage(fd, joint_voltage) == tl::Result::SUCCESS;
 
   if (!current_ok || !temperature_ok || !voltage_ok)
   {

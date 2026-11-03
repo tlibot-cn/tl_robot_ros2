@@ -12,8 +12,6 @@
 
 namespace tl
 {
-// 注意：以下 5 个接口与 include/tl_interface.h 中的声明双份并存（历史遗留），
-// 签名必须逐字一致，改动需同步两处；权威实现位于 src/tl_host/force.cpp。
 
 /**
  * @brief 设置六维力传感器通讯

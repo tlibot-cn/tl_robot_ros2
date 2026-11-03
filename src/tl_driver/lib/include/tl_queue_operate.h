@@ -23,6 +23,8 @@ namespace tl
  *       关闭队列模式（status=false）退出后，控制器会执行伺服下电，
  *       后续如需继续运动需重新执行上电流程（set_servo_state(1) →
  * set_servo_poweron）
+ * @note 打开队列会执行上电操作，故而在打开队列成功后需要延时 2s
+ * 等待相关状态就绪，否则有可能会导致运动时猛冲
  */
 TL_API Result queue_motion_set_status(SOCKETFD socketFd, bool status);
 
@@ -114,11 +116,13 @@ TL_API Result queue_motion_stop_not_power_off(SOCKETFD socketFd);
 
 /**
  * @brief 队列运动模式的本地队列最后插入一条moveJ运动
- * @param moveCmd 运动指令结构体，字段说明：
- *  targetPos 目标点坐标 长度7位
- *  velocity 参数范围(1,100] 度/s
- *  acc，dec 参数范围(1,100]
- *  pl 多条轨迹之间平滑参数 参数范围[0,5]
+ * @param moveCmd 运动指令结构体（字段说明详见 MoveCmd）：
+ *  targetPosValue 目标点坐标，长度 14（前 7 位本体，后 7 位外部轴）
+ *  velocity 速度百分比，参数范围 (1,100]，单位 %
+ *  acc，dec 加速度/减速度，参数范围 (1,100]，单位 %
+ *  pl 多条轨迹之间平滑参数，参数范围 [0,5]
+ * @note 关节插补（moveJ）的 velocity 为速度百分比；直线/圆弧/样条插补
+ * （moveL / moveC / moveS）的 velocity 为末端线速度 mm/s，两者的单位不同
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
  * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
  * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
@@ -127,11 +131,11 @@ TL_API Result queue_motion_push_back_moveJ(SOCKETFD socketFd, MoveCmd moveCmd);
 
 /**
  * @brief 队列运动模式的本地队列最后插入一条moveL运动
- * @param moveCmd 运动指令结构体，字段说明：
- *  targetPos 目标点坐标 长度7位
- *  velocity 参数范围(1,1000] mm/s
- *  acc，dec 参数范围(1,100]
- *  pl 多条轨迹之间平滑参数 参数范围[0,5]
+ * @param moveCmd 运动指令结构体（字段说明详见 MoveCmd）：
+ *  targetPosValue 目标点坐标，长度 14（前 7 位本体，后 7 位外部轴）
+ *  velocity 末端线速度，参数范围 (1,1000]，单位 mm/s
+ *  acc，dec 加速度/减速度，参数范围 (1,100]，单位 %
+ *  pl 多条轨迹之间平滑参数，参数范围 [0,5]
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
  * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
  * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
@@ -140,11 +144,11 @@ TL_API Result queue_motion_push_back_moveL(SOCKETFD socketFd, MoveCmd moveCmd);
 
 /**
  * @brief 队列运动模式的本地队列最后插入一条moveC运动
- * @param moveCmd 运动指令结构体，字段说明：
- *  targetPos 目标点坐标 长度7位
- *  velocity 参数范围(1,1000] mm/s
- *  acc，dec 参数范围(1,100]
- *  pl 多条轨迹之间平滑参数 参数范围[0,5]
+ * @param moveCmd 运动指令结构体（字段说明详见 MoveCmd）：
+ *  targetPosValue 目标点坐标，长度 14（前 7 位本体，后 7 位外部轴）
+ *  velocity 末端线速度，参数范围 (1,1000]，单位 mm/s
+ *  acc，dec 加速度/减速度，参数范围 (1,100]，单位 %
+ *  pl 多条轨迹之间平滑参数，参数范围 [0,5]
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
  * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
  * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
@@ -153,11 +157,11 @@ TL_API Result queue_motion_push_back_moveC(SOCKETFD socketFd, MoveCmd moveCmd);
 
 /**
  * @brief 队列运动模式的本地队列最后插入一条moveS运动
- * @param moveCmd 运动指令结构体，字段说明：
- *  targetPos 目标点坐标 长度7位
- *  velocity 参数范围(1,1000] mm/s
- *  acc，dec 参数范围(1,100]
- *  pl 多条轨迹之间平滑参数 参数范围[0,5]
+ * @param moveCmd 运动指令结构体（字段说明详见 MoveCmd）：
+ *  targetPosValue 目标点坐标，长度 14（前 7 位本体，后 7 位外部轴）
+ *  velocity 末端线速度，参数范围 (1,1000]，单位 mm/s
+ *  acc，dec 加速度/减速度，参数范围 (1,100]，单位 %
+ *  pl 多条轨迹之间平滑参数，参数范围 [0,5]
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
  * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
  * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时

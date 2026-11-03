@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,20 @@
 //       TL_API Result old_api(...);
 // 配套在 Doxygen 注释中写 @deprecated 说明（随存根生成进入 pyi docstring）。
 #define TL_DEPRECATED(msg) [[deprecated(msg)]]
+
+// ==================== 跨平台数学常量 ====================
+// M_PI / M_PI_2 属 POSIX 扩展常量，并非 C++ 标准：MSVC 默认不定义（<math.h>
+// 仅在自定义 _USE_MATH_DEFINES 时提供），严格 C 标准模式与部分标准库实现下
+// 也不定义。SDK 在此统一兜底——本头先引入 <cmath>，平台已提供时沿用平台定义，
+// 未提供时按标准取值补齐，因此与 include 顺序无关，也不会产生重复定义诊断。
+// @note 用户代码包含 tl_api.h 后即可直接使用，无需再自定义这两个宏。
+// @attention M_PI 为 double 常量，参与单精度运算时需显式转换。
+#ifndef M_PI
+#  define M_PI 3.14159265358979323846
+#endif
+#ifndef M_PI_2
+#  define M_PI_2 1.57079632679489661923
+#endif
 
 namespace tl
 {
@@ -49,13 +64,19 @@ enum class PosType
   GEType = 6  // 系统内置的全局点位 GE001 含外部轴的机器人点位
 };
 
+// 说明：get 类接口的输出枚举（Coord / RobotMode / ServoState / RunState /
+// TeachType）统一含 NONE 无效占位值，供调用方在调用前初始化出参（接口失败时
+// 不改写出参，故 SDK 不会返回 NONE）；RobotType 不含占位值——其 NONE 已被
+// 机型枚举值 5 占用。
+//
 // 坐标系
 enum class Coord
 {
   JOINT = 0, // 关节坐标系
   BASE = 1,  // 基坐标系（直角坐标系）
   TOOL = 2,  // 工具坐标系
-  USER = 3   // 用户坐标系
+  USER = 3,  // 用户坐标系
+  NONE = -1  // 无效值
 };
 
 // 机器人模式（对应 set_current_mode / get_current_mode 的 mode 参数）
@@ -63,31 +84,35 @@ enum class RobotMode
 {
   TEACH = 0,  // 示教模式
   REMOTE = 1, // 远程模式
-  RUN = 2     // 运行模式
+  RUN = 2,    // 运行模式
+  NONE = -1   // 无效值
 };
 
 // 伺服状态（对应 set_servo_state / get_servo_state 的 state 参数）
 enum class ServoState
 {
-  STOP = 0,   // 停止状态
-  READY = 1,  // 就绪状态
-  ALARM = 2,  // 报警状态
-  RUNNING = 3 // 运行状态
+  STOP = 0,    // 停止状态
+  READY = 1,   // 就绪状态
+  ALARM = 2,   // 报警状态
+  RUNNING = 3, // 运行状态
+  NONE = -1    // 无效值
 };
 
 // 程序运行状态（对应 get_robot_running_state 的 status 参数）
 enum class RunState
 {
-  STOP = 0,   // 停止
-  PAUSE = 1,  // 暂停
-  RUNNING = 2 // 运行
+  STOP = 0,    // 停止
+  PAUSE = 1,   // 暂停
+  RUNNING = 2, // 运行
+  NONE = -1    // 无效值
 };
 
 // 示教模式类型（对应 set_teach_type / get_teach_type 的 type 参数）
 enum class TeachType
 {
-  JOG = 0, // 点动
-  DRAG = 1 // 拖拽
+  JOG = 0,  // 点动
+  DRAG = 1, // 拖拽
+  NONE = -1 // 无效值
 };
 
 // 拖拽方式（对应 set_darg_mode 的 mode 参数）
@@ -110,14 +135,6 @@ enum class CalibrationType
   POINT_15 = 15, // 十五点标定
   POINT_20 = 20, // 二十点标定
   POINT_21 = 21  // 二十一点标定
-};
-
-// 视觉手眼标定计算类型（对应 vision_hand_eye_calibration_calculation 的
-// calculateType 参数）
-enum class VisionCalculateType
-{
-  EYE_IN_HAND = 0, // 眼在手内
-  EYE_TO_HAND = 1  // 眼在手外
 };
 
 // IO 复位类型（对应 get_IO_reset_function 的 type 参数）
@@ -176,29 +193,61 @@ enum class RobotType
   GANTRY_WELD = 39,                // 龙门焊接机型
 };
 
-// 移动指令参数  单独的Movj只能使用数值   作业文件运行模式只支持使用变量
+/**
+ * 移动指令参数（robot_movej / robot_movel / robot_extra_movej /
+ * robot_extra_movel / queue_motion_push_back_* / job_insert_move* 共用）
+ *
+ * @attention 关节插补（MoveJ）与直线/圆弧/样条插补（MoveL / MoveC / MoveS）
+ * 共用本结构体，但 velocity 语义不同：关节插补为速度百分比（单位 %），
+ * 直线类插补为末端线速度（单位 mm/s），两者的取值范围也不同（见字段说明），
+ * 混用会导致速度与预期相差数量级。
+ * @note 单独下发 MoveJ（robot_movej）时只能使用数值点位
+ * （targetPosType = PosType::data）；作业文件运行模式下只支持变量点位。
+ */
 struct MoveCmd
 {
+  /** 目标位置类型：PosType::data 数值点位 / PType、GPType 等变量点位 */
   PosType targetPosType{PosType::data};
+  /** 目标位置数据（targetPosType = PosType::data 时使用）：长度 14，
+   *  前 7 位为机器人本体值，后 7 位为外部轴值；
+   *  关节坐标下单位为度，直角坐标下位移单位 mm、旋转单位弧度 */
   std::vector<double> targetPosValue =
       std::vector<double>(14); // 如果posType=PosType::data
                                // 为自定义数组,需要设置该向量值,前7位为本体值，后7位为外部轴
+  /** 目标点位名（targetPosType 为内置点位/变量点位时使用），如 "GP0001"；
+   *  使用 P 变量模式时可为空 */
   std::string targetPosName{""}; // 如果posType为内置点位,需要设置该值,如
                                  // posType=PosType::GPType;posName=“GP0001”;
-  Coord coord{Coord::JOINT};     // 坐标系（枚举）
+  /** 坐标系：Coord::JOINT（关节）/ BASE（直角）/ TOOL（工具）/ USER（用户） */
+  Coord coord{Coord::JOINT}; // 坐标系（枚举）
+  /** 速度：关节插补（MoveJ）为速度百分比，范围 (1,100]，单位 %；
+   *  直线/圆弧/样条插补（MoveL / MoveC / MoveS）为末端线速度，
+   *  范围 (1,1000]，单位 mm/s */
   double velocity{50};
+  /** 外部轴同步速度（与 parasync 配合的外部轴速度字段，缺省 0） */
   double velocitySync{0};
+  /** 加速度，范围 (1,100]，百分比 %（关节与直线插补均按档位百分比，与
+   *  velocity 的单位无关） */
   double acc{50};
+  /** 减速度，范围 (1,100]，百分比 % */
   double dec{50};
+  /** 平滑参数（相邻轨迹之间的过渡），范围 [0,5]；0 表示精确到达 */
   int pl{0};
+  /** 作业文件中该指令的提前执行时间 */
   int time{0}; // 提前执行时间
+  /** 工具手编号 */
   int toolNum{0};
+  /** 用户坐标编号（coord = Coord::USER 时生效） */
   int userNum{0};
+  /** 点位变量层级：0 = P/GP 一级变量类型；1 = P[I001]/GP[I001] 二级变量类型 */
   int posidtype{0}; // 0:P GP 一级变量类型; 1:P[I001] GP[I001] 二级变量类型
                     // 需要使用二级类型时,实例如: targetPosType = PosType::GPType;
                     // posName=“GP￥I001”; posidtype=1; 插入到作业文件中的变量即为GP[I001]
+  /** 形态 */
   int configuration{0}; // 形态
-  int spin{0};          // MOVCA指令使用 0姿态不变 1六轴不转 2六轴旋转
+  /** MOVCA 指令使用：0 姿态不变 / 1 六轴不转 / 2 六轴旋转 */
+  int spin{0}; // MOVCA指令使用 0姿态不变 1六轴不转 2六轴旋转
+  /** 外部轴是否同步 */
   bool parasync{false}; // 外部轴是否同步
 };
 
@@ -227,10 +276,10 @@ struct ToolParam
 
 struct RobotDHParam
 {
-  double alpha[6]{0};      // 1-6轴DH参数alpha，单位：deg
-  double a[6]{0};          // 1-6轴DH参数a，单位：mm
-  double theta[6]{0};      // 1-6轴DH参数theta，单位：deg
-  double d[6]{0};          // 1-6轴DH参数d，单位：mm
+  double alpha[7]{0};      // 1-7轴DH参数alpha，单位：deg（6轴机型第7项不使用）
+  double a[7]{0};          // 1-7轴DH参数a，单位：mm（6轴机型第7项不使用）
+  double theta[7]{0};      // 1-7轴DH参数theta，单位：deg（6轴机型第7项不使用）
+  double d[7]{0};          // 1-7轴DH参数d，单位：mm（6轴机型第7项不使用）
   int eulerAngle{0};       // 欧拉角模式
   double mountingAngle{0}; // 机器人安装角度，单位：deg
 };
@@ -524,8 +573,9 @@ struct DragParam
   double start_threshold_M{0};    // 启动阈值 M
   double dragInPosMaxVel{0};      // 笛卡尔空间线速度限制
   double dragInPosMaxAngleVel{0}; // 关节空间速度限制
-  double drag_change_rate[6]{0};  // 变化率阈值[X,Y,Z,A,B,C]
-  double drag_sensor_coeff[6]{0}; // 传感器灵敏系数[X,Y,Z,A,B,C]
+  std::vector<double> drag_change_rate = std::vector<double>(6, 0.0); // 变化率阈值[X,Y,Z,A,B,C]
+  std::vector<double> drag_sensor_coeff =
+      std::vector<double>(6, 0.0); // 传感器灵敏系数[X,Y,Z,A,B,C]
 };
 
 // VFD 运行参数（对应控制器协议 VFDRunParam）
@@ -583,19 +633,6 @@ struct PayloadParamBySensor
   double payloadMassCenterX{0}; // 负载质心X (mm)
   double payloadMassCenterY{0}; // 负载质心Y (mm)
   double payloadMassCenterZ{0}; // 负载质心Z (mm)
-};
-
-// 逆运动学参数（对应控制器协议 InverseKinParameter）
-struct InverseKinParameter
-{
-  int configuration{0}; // 1:左手系 2:右手系 0:自适应
-  int toolCoord{0};
-  int userCoord{0};
-  int standbyThree{0};
-  int standbyFour{0};
-  double vel_limit_perc{1.0};
-  double acc_limit_perc{1.0};
-  double dec_limit_perc{1.0};
 };
 
 } // namespace tl
