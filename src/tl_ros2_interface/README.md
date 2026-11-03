@@ -62,6 +62,8 @@ TL 系列机械臂 ROS2 接口说明
 * 5.27 [逆运动学Ik_srv](#逆运动学ik_srv)
 * 5.28 [查询运行速度GetSpeed_srv](#查询运行速度getspeed_srv)
 * 5.29 [查询机械臂运行状态GetArmStatus_srv](#查询机械臂运行状态getarmstatus_srv)
+* 5.30 [设置示教模式类型SetTeachType_srv](#设置示教模式类型setteachtype_srv)
+* 5.31 [查询示教模式类型GetTeachType_srv](#查询示教模式类型getteachtype_srv)
 
 ## tl_ros2_interface功能包说明
 tl_ros2_interface 功能包为 TL 系列机械臂在 ROS2 框架下提供消息（msg）和服务（srv）接口定义，供上层驱动或应用调用。该包本身没有可执行程序，主要作用为定义协议数据结构和服务接口。
@@ -106,6 +108,7 @@ tl_ros2_interface/
 │   ├── GetPosReachable.srv
 │   ├── GetRobotJointParam.srv
 │   ├── GetSpeed.srv
+│   ├── GetTeachType.srv
 │   ├── Ik.srv
 │   ├── Jogging.srv
 │   ├── ModbusRead.srv
@@ -121,6 +124,7 @@ tl_ros2_interface/
 │   ├── SetDigitalOutput.srv
 │   ├── SetDragMode.srv
 │   ├── SetSpeed.srv
+│   ├── SetTeachType.srv
 │   ├── SetToolParam.srv
 │   ├── SetUserCoord.srv
 │   ├── TrackSave.srv
@@ -613,6 +617,28 @@ string message
 ```
 - 设置拖拽（示教）模式
 - mode: 0=无 1=3D鼠标 2=力矩模式 3=位置模式
+- 返回: success/message
+
+### 设置示教模式类型SetTeachType_srv
+```
+int32 type
+---
+bool success
+string message
+```
+- 设置示教模式类型（点动 / 拖拽）
+- type: 0=点动 1=拖拽；开启力引导拖拽需先 `set_drag_mode(mode=1)` 再 `set_teach_type(type=1)`，顺序不可颠倒，其他值不下发控制器
+- 返回: success/message
+
+### 查询示教模式类型GetTeachType_srv
+```
+---
+int32 type
+bool success
+string message
+```
+- 查询当前的示教模式类型
+- type: 0=点动 1=拖拽；查询失败时保持 -1（哨兵值）
 - 返回: success/message
 
 ### 设置运行速度SetSpeed_srv

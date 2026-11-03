@@ -14,6 +14,8 @@
 | `/tl_driver/joint_speed` | `joint_speed` | rad/s | 度/s |
 | `/tl_driver/line_speed` | `line_speed` | m/s | mm/s |
 | `/tl_driver/set_servoj_pos` | `data[7]` | rad（6 轴末位补 0） | 度 |
+| `/tl_driver/set_servo_csv_velocity` | `data[7]` | rad/s（6 轴末位补 0） | 度/s |
+| `/tl_driver/set_servo_cst_torque` | `data[7]` | ‰ 额定扭矩（6 轴末位补 0；[-1000, 1000]） | ‰（SDK 的 0.1%，不换算） |
 
 ## Action
 

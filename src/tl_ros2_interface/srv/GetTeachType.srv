@@ -1,0 +1,6 @@
+# 获取示教模式类型
+---
+# type: 0=点动 1=拖拽
+int32 type
+bool success
+string message

@@ -124,12 +124,12 @@ public:
     };
 
     // 注册期必须先经 select_service_group() 选定域组；注册结束后该指针清空。
-    if (!service_group_)
+    if (!selected_service_group_)
     {
       throw std::logic_error("service callback group not selected for " + name);
     }
     auto service = rclcpp::Node::create_service<ServiceT>(name, std::move(guarded), rmw_qos_profile_services_default,
-                                                          service_group_);
+                                                          selected_service_group_);
     services_.push_back(service);
     return service;
   }
@@ -190,13 +190,19 @@ private:
   std::unique_ptr<tl_driver::StatePublishers> publishers_;
   std::unique_ptr<tl_driver::MotionActionServers> actions_;
 
-  // 构造期当前注册目标；注册每个域前由 select_service_group() 切换。
+  // 回调组持有者：必须始终持有强引用。
+  // rclcpp 的 Node 只弱引用回调组（node_base 内部为 WeakPtr），实体也只弱引用；
+  // 这些成员的强引用一旦释放，对应组即被销毁，组内所有实体将「能列出、永不回调」。
   rclcpp::CallbackGroup::SharedPtr service_group_;
   rclcpp::CallbackGroup::SharedPtr motion_service_group_;
   rclcpp::CallbackGroup::SharedPtr topic_group_;
   rclcpp::CallbackGroup::SharedPtr monitor_group_;
   rclcpp::CallbackGroup::SharedPtr feedback_group_;
   rclcpp::CallbackGroup::SharedPtr action_group_;
+
+  // 注册期当前目标组：仅作为 select_service_group() → create_service() 的传参槽位，
+  // 不得与上面的持有者共用成员，否则重置它会把组一起销毁。
+  rclcpp::CallbackGroup::SharedPtr selected_service_group_;
   rclcpp::SubscriptionOptions topic_options_;
 
   // 节点需持有服务/订阅对象，否则对象析构即注销

@@ -19,9 +19,11 @@
 #include "tl_ros2_interface/srv/get_dh_param.hpp"
 #include "tl_ros2_interface/srv/get_pos_reachable.hpp"
 #include "tl_ros2_interface/srv/get_robot_joint_param.hpp"
+#include "tl_ros2_interface/srv/get_teach_type.hpp"
 #include "tl_ros2_interface/srv/set_axis_zero_pos.hpp"
 #include "tl_ros2_interface/srv/set_coord_num.hpp"
 #include "tl_ros2_interface/srv/set_drag_mode.hpp"
+#include "tl_ros2_interface/srv/set_teach_type.hpp"
 #include "tl_ros2_interface/srv/set_tool_param.hpp"
 #include "tl_ros2_interface/srv/set_user_coord.hpp"
 
@@ -111,6 +113,54 @@ void handle_set_drag_mode_service(DriverNode& node,
   tl::Result ret = tl::set_darg_mode(node.session().fd(), static_cast<tl::DragMode>(request->mode));
   response->success = (ret == tl::Result::SUCCESS);
   response->message = response->success ? "Set drag mode successfully" : "Failed to set drag mode";
+}
+
+void handle_set_teach_type_service(DriverNode& node,
+                                   const std::shared_ptr<tl_ros2_interface::srv::SetTeachType::Request> request,
+                                   std::shared_ptr<tl_ros2_interface::srv::SetTeachType::Response> response)
+{
+  if (!node.session().is_connected())
+  {
+    response->success = false;
+    response->message = "Arm is not connected";
+    return;
+  }
+
+  // 仅接受 0=点动 / 1=拖拽，其他值不下发，避免控制器收到未知类型
+  if (request->type != static_cast<int32_t>(tl::TeachType::JOG) &&
+      request->type != static_cast<int32_t>(tl::TeachType::DRAG))
+  {
+    response->success = false;
+    response->message = "Invalid teach type";
+    return;
+  }
+
+  tl::Result ret = tl::set_teach_type(node.session().fd(), static_cast<tl::TeachType>(request->type));
+  response->success = (ret == tl::Result::SUCCESS);
+  response->message = response->success ? "Set teach type successfully" : "Failed to set teach type";
+}
+
+void handle_get_teach_type_service(DriverNode& node,
+                                   const std::shared_ptr<tl_ros2_interface::srv::GetTeachType::Request> request,
+                                   std::shared_ptr<tl_ros2_interface::srv::GetTeachType::Response> response)
+{
+  (void)request;
+  response->type = -1; // 哨兵值：查询失败时保持 -1，避免误判为点动
+  if (!node.session().is_connected())
+  {
+    response->success = false;
+    response->message = "Arm is not connected";
+    return;
+  }
+
+  tl::TeachType type = tl::TeachType::JOG;
+  tl::Result ret = tl::get_teach_type(node.session().fd(), type);
+  if (ret == tl::Result::SUCCESS)
+  {
+    response->type = static_cast<int32_t>(type);
+  }
+  response->success = (ret == tl::Result::SUCCESS);
+  response->message = response->success ? "Get teach type successfully" : "Failed to get teach type";
 }
 
 void handle_set_tool_param_service(DriverNode& node,
@@ -329,6 +379,12 @@ void register_config_services(DriverNode& node)
   node.create_service<tl_ros2_interface::srv::SetDragMode>(
       "/tl_driver/set_drag_mode",
       std::bind(&handle_set_drag_mode_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::SetTeachType>(
+      "/tl_driver/set_teach_type",
+      std::bind(&handle_set_teach_type_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::GetTeachType>(
+      "/tl_driver/get_teach_type",
+      std::bind(&handle_get_teach_type_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
   node.create_service<tl_ros2_interface::srv::GetDHParam>(
       "/tl_driver/get_dh_param",
       std::bind(&handle_get_dh_param_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));

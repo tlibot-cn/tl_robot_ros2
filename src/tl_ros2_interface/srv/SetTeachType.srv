@@ -1,0 +1,6 @@
+# 设置示教模式类型
+# type: 0=点动 1=拖拽；开启力引导拖拽需先 set_drag_mode(mode=1 力矩拖拽) 再 set_teach_type(1)
+int32 type
+---
+bool success
+string message

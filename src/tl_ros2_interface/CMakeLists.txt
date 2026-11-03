@@ -40,6 +40,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/Ik.srv"
   "srv/Jogging.srv"
   "srv/SetDragMode.srv"
+  "srv/SetTeachType.srv"
+  "srv/GetTeachType.srv"
   "srv/TrackSave.srv"
   "srv/SetToolParam.srv"
   "srv/SetUserCoord.srv"

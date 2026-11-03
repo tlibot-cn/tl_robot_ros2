@@ -12,6 +12,16 @@
 
 ## [Unreleased]
 
+### 2026-11-03
+
+- tl_ros2_interface：新增 `SetTeachType.srv` / `GetTeachType.srv`（`int32 type`，0=点动 1=拖拽），驱动侧暴露为 `/tl_driver/set_teach_type` 与 `/tl_driver/get_teach_type`
+- tl_driver：`set_teach_type` 仅接受 0/1，其他值返回 `Invalid teach type` 且不下发控制器；`get_teach_type` 查询失败时 `type` 保持 `-1` 哨兵值，避免误判为点动；两个服务注册在 `config` 域（与 `set_drag_mode` 同域），服务数 39 → 41
+- 文档：接口说明书新增 9.7/9.8 章节与接口矩阵条目，接口包 README 新增 5.30/5.31 章节；补注「开启力引导拖拽需先 `set_drag_mode(1)` 再 `set_teach_type(1)`，顺序不可颠倒」
+- **修复（回归自 `7ff2ea8` 回调组分拆）**：`register_entities()` 末尾的 `service_group_.reset()` 释放的是「短服务回调组」的唯一强引用（rclcpp 的 `Node` 只持 `WeakPtr`，实体也只弱引用），组被销毁后该组下 31 个服务（session/transform/config/io/state 全域，含新增的 teach_type）注册成功、`ros2 service list` 可见，但**回调永不执行**、调用方只能超时；`motion_service_group_` 因有独立成员持有而未受影响，现象表现为「运动类服务正常、其余服务全挂」
+- tl_driver：新增 `selected_service_group_` 专作注册期的组传参槽位，`select_service_group()` 只改它，`service_group_` / `motion_service_group_` 两个持有者保持常驻；`create_service()` 未选组时仍抛 `logic_error`
+- tl_driver：新增周期同步速度（CSV）与周期同步扭矩（CST）透传——开关服务 `/tl_driver/open_servo_csv`、`/tl_driver/close_servo_csv`、`/tl_driver/open_servo_cst`、`/tl_driver/close_servo_cst`（均为 `Trigger`），下发话题 `/tl_driver/set_servo_csv_velocity`（rad/s，6/7 元素）与 `/tl_driver/set_servo_cst_torque`（‰ 额定扭矩，6/7 元素，范围 [-1000, 1000]，越界整帧丢弃）；服务数 41 → 45，订阅 1 → 3
+- tl_driver：CSV/CST/ServoJ 共用 7000 端口的 servoJ 会话且 SDK 不做互斥检测，接口与文档均注明「同一时刻只能开启一种模式」；力矩补偿尚未实现，CST 只做原始力矩透传
+
 ### 2026-11-02
 
 - **破坏性变更**：新增错误/告警话题 `/tl_driver/error_info`（`ErrorInfo`）；6001 主端口错误回调每收到一条推送即发布一帧，日志仍按 1 s 节流避免刷屏
