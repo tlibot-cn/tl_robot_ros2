@@ -20,7 +20,6 @@
 #include "tl_ros2_interface/srv/get_pos_reachable.hpp"
 #include "tl_ros2_interface/srv/get_robot_joint_param.hpp"
 #include "tl_ros2_interface/srv/get_teach_type.hpp"
-#include "tl_ros2_interface/srv/set_axis_zero_pos.hpp"
 #include "tl_ros2_interface/srv/set_coord_num.hpp"
 #include "tl_ros2_interface/srv/set_drag_mode.hpp"
 #include "tl_ros2_interface/srv/set_teach_type.hpp"
@@ -220,22 +219,6 @@ void handle_set_user_coord_service(DriverNode& node,
   response->message = response->success ? "Set user coordinate successfully" : "Failed to set user coordinate";
 }
 
-void handle_set_axis_zero_pos_service(DriverNode& node,
-                                      const std::shared_ptr<tl_ros2_interface::srv::SetAxisZeroPos::Request> request,
-                                      std::shared_ptr<tl_ros2_interface::srv::SetAxisZeroPos::Response> response)
-{
-  if (!node.session().is_connected())
-  {
-    response->success = false;
-    response->message = "Arm is not connected";
-    return;
-  }
-
-  tl::Result ret = tl::set_axis_zero_position(node.session().fd(), request->axis);
-  response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "Set axis zero position successfully" : "Failed to set axis zero position";
-}
-
 void handle_set_coord_num_service(DriverNode& node,
                                   const std::shared_ptr<tl_ros2_interface::srv::SetCoordNum::Request> request,
                                   std::shared_ptr<tl_ros2_interface::srv::SetCoordNum::Response> response)
@@ -397,9 +380,6 @@ void register_config_services(DriverNode& node)
   node.create_service<tl_ros2_interface::srv::SetUserCoord>(
       "/tl_driver/set_user_coord",
       std::bind(&handle_set_user_coord_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
-  node.create_service<tl_ros2_interface::srv::SetAxisZeroPos>(
-      "/tl_driver/set_axis_zero_pos",
-      std::bind(&handle_set_axis_zero_pos_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
   node.create_service<tl_ros2_interface::srv::SetCoordNum>(
       "/tl_driver/set_coord_num",
       std::bind(&handle_set_coord_num_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));

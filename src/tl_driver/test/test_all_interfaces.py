@@ -17,7 +17,7 @@ test_all_interfaces.py
   §5  基础设置      set_speed / coord_transform
   §8  坐标系与工具  set_tool_param / set_user_coord / set_coord_num / set_current_coord
   §9  示教操作      stop_jogging / set_drag_mode / get_drag_status / track_save
-  §10 错误/零位    clear_error
+  §10 错误        clear_error
   §12 模式与IO     set_current_mode / get_current_mode / set_digital_output / get_digital_input_output
   §13 Modbus       modbus_write / modbus_read
   §14 队列运动      queue_motion_set_status / queue_motion_stop
@@ -25,7 +25,7 @@ test_all_interfaces.py
 
 危险接口（会触发运动、改动标定/IP、删除文件等）默认跳过，仅打印提示：
   move_joint / move_linear action / start_jogging / queue_motion_movej / open_servoj /
-  track_save / set_axis_zero_pos / set_controller_ip / set_default_cartesian_param
+  track_save / set_controller_ip / set_default_cartesian_param
 
 @usage
   方式一（推荐，需已 source install/setup.bash）:
@@ -124,7 +124,6 @@ from tl_ros2_interface.srv import (
     OpenServoJ,
     QueueMotionMoveJ,
     QueueMotionSetStatus,
-    SetAxisZeroPos,
     SetControllerIP,
     SetCoordNum,
     SetCurrentCoord,
@@ -579,7 +578,6 @@ class DriverQuickTest(Node):
         self.logger.info("\n========== 极高风险接口汇总（均跳过）==========")
         for label, reason in [
             ("move_joint/move_linear action", "会触发运动"),
-            ("set_axis_zero_pos", "改动零点标定"),
             ("set_controller_ip", "修改控制器网络"),
             ("set_default_cartesian_param", "重置笛卡尔参数"),
         ]:
