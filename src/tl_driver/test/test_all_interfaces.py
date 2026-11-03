@@ -377,28 +377,38 @@ class DriverQuickTest(Node):
         if resp and resp.success:
             self.logger.info(f"      speed = {resp.speed:.1f}%")
 
-        # fk/ik：用当前关节角与末端位姿做一次正逆解往返
+        # fk/ik：用当前关节角与末端位姿做一次正逆解往返（source=0 控制器，source=1 本地模型）
         if self.joint_state is not None:
             cli = self.wait_service("/tl_driver/fk", Fk)
             req = Fk.Request()
             req.frame = 1
+            req.source = 0
             req.joints = list(self.joint_state.position)
-            resp = self.call_srv(cli, req, "fk(frame=1)")
+            resp = self.call_srv(cli, req, "fk(frame=1, source=0)")
             if resp and resp.success:
                 p = resp.pose.position
                 self.logger.info(f"      pos = [{p.x:.3f}, {p.y:.3f}, {p.z:.3f}] m")
 
-        if self.tcp_pose is not None:
+            req.source = 1
+            self.call_srv(cli, req, "fk(frame=1, source=1 本地模型)")
+
+        if self.tcp_pose is not None and self.joint_state is not None:
             cli = self.wait_service("/tl_driver/ik", Ik)
             req = Ik.Request()
             req.frame = 1
             req.pose = self.tcp_pose
             req.form = 0
-            if self.joint_state is not None:
-                req.reference_pos = list(self.joint_state.position)
-            resp = self.call_srv(cli, req, "ik(frame=1)")
+            # reference_pos 必填，用于选择离参考点最近的形态
+            req.reference_pos = list(self.joint_state.position)
+            req.source = 0
+            resp = self.call_srv(cli, req, "ik(frame=1, source=0)")
             if resp and resp.success:
                 self.print_arr("      joints(rad) ", resp.joints)
+
+            req.source = 1
+            resp = self.call_srv(cli, req, "ik(frame=1, source=1 本地模型)")
+            if resp and resp.success:
+                self.print_arr("      local joints(rad) ", resp.joints)
 
     def test_basic_set(self):
         self.logger.info("\n========== §5 基础设置 ==========")

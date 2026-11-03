@@ -264,6 +264,18 @@ void DriverNode::init()
       RCLCPP_WARN(this->get_logger(), "[Init]: clear_error result=%s", arm_client::result_to_string(ret));
     }
 
+    // 本地运动学模型只在此构建一次：DH、关节限位与当前工具手取控制器回读值。
+    // 构建失败只告警，驱动照常启动；source=1（本地模型）的 fk/ik 请求会返回具体原因。
+    local_kinematics_.build(fd, ndof_);
+    if (local_kinematics_.available())
+    {
+      RCLCPP_INFO(this->get_logger(), "[Init]: local kinematics ready (%d axes)", local_kinematics_.dof());
+    }
+    else
+    {
+      RCLCPP_WARN(this->get_logger(), "[Init]: local kinematics unavailable: %s", local_kinematics_.error().c_str());
+    }
+
     // 清错后下电，释放控制器占用状态
     session_.power_off();
 

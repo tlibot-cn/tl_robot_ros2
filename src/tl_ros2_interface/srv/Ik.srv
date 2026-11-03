@@ -1,10 +1,15 @@
 # 逆运动学（TCP 位姿 → 关节角）
 # 单位遵循 REP 103：pose 的 position 为 m、rpy 为 rad；joints 为 rad。
 int32 frame                            # 输入位姿坐标系：1=基坐标 2=工具 3=用户（0=关节，不支持）
-tl_ros2_interface/CartesianPose pose   # 目标位姿（position m + rpy rad；arm_angle 始终为第 7 位外部轴目标，rad；0 表示命令外部轴到 0）
-int32 form                             # 形态（0=默认/自动）
-float64[] reference_pos                # 逆解参考关节角（rad，可选，用于选择离参考点最近的形态）
+tl_ros2_interface/CartesianPose pose   # 目标位姿（position m + rpy rad；arm_angle 为冗余臂角 ψ rad）
+int32 form                             # 形态（0=默认/自动；1~8 指定分支）
+float64[] reference_pos                # 逆解参考关节角（rad，必填；6 或 7 元素，不少于本体轴数）
+int32 source                           # 求解来源：0=控制器（未设置时取 0）1=本地模型（仅 frame=1）
+
 ---
 bool success
 string message
-float64[7] joints                      # 解算关节角（rad，定长 7；失败时为 NaN）
+float64[7] joints                      # 解算关节角（rad，定长 7；失败时为 NaN；6 轴第 7 位为 0）
+
+# arm_angle：source=1 的 7 轴作为 ψ 硬约束（未指定时须显式传 NaN），source=0 原样作为 SDK 第 7 位；
+# 6 轴无冗余自由度，忽略该字段。
