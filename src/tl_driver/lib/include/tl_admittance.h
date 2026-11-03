@@ -102,7 +102,7 @@ public:
 
   /** @brief 复位内部运动状态（速度和累计位姿），保留参数和期望力。
    *  @return 0=SUCCESS 成功 */
-  Result reset();
+  Result reset() noexcept;
 
   /** @brief 读取当前累计相对位姿 [X,Y,Z,RX,RY,RZ] (m, rad)，写满 6 个元素（无需预分配）。
    *  @return 0=SUCCESS 成功；-5=EXCEPTION 未 configure */
@@ -118,7 +118,7 @@ public:
   Result get_params(AdmittanceParams& params) const;
 
   /** @brief 读取控制周期 dt（秒）。未 configure 时返回 0。 */
-  double get_control_period() const
+  double get_control_period() const noexcept
   {
     return configured_ ? control_period_ : 0.0;
   }
@@ -147,7 +147,7 @@ public:
                          std::vector<double> *out_delta = nullptr);
 
 private:
-  void reset_motion_state();
+  void reset_motion_state() noexcept;
 
   std::array<double, 6> mass_{};
   std::array<double, 6> damping_{};

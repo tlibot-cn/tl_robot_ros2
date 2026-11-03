@@ -9,6 +9,8 @@
 #define TL_SDK_TL_API_H
 
 #include "tl_interface.h"
+#include "tl_utility.h"
+#include "tl_kinematics.h"
 #include "tl_queue_operate.h"
 #include "tl_servo_ext.h"
 #include "tl_force.h"
