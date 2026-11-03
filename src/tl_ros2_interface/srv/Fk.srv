@@ -1,8 +1,10 @@
 # 正运动学（关节角 → TCP 位姿）
 # 单位遵循 REP 103：joints 为 rad；pose 的 position 为 m、rpy 为 rad。
 int32 frame                     # 输出位姿坐标系：1=基坐标 2=工具 3=用户（0=关节，不支持）
-float64[] joints                # 关节角，6 或 7 元素（rad；7 元素时第 7 位为外部轴，6 轴补 0）
+float64[] joints                # 关节角，6 或 7 元素（不少于本体轴数，rad；6 轴第 7 位为外部轴，本地模型忽略）
+int32 source                    # 求解来源：0=控制器（未设置时取 0）1=本地模型（仅 frame=1）
+
 ---
 bool success
 string message
-tl_ros2_interface/CartesianPose pose   # TCP 位姿（position m + rpy rad；arm_angle 为 SDK 第 7 位外部轴角，度→rad）
+tl_ros2_interface/CartesianPose pose   # TCP 位姿（position m + rpy rad；arm_angle 为冗余臂角 ψ rad，6 轴为 0，本地路径 7 轴 ψ 无定义时为 NaN）

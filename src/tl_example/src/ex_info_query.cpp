@@ -634,7 +634,8 @@ void tl_example::InfoQueryDemo::testInfoQuery()
   if (last_joint_state_)
   {
     auto req = std::make_shared<tl_ros2_interface::srv::Fk::Request>();
-    req->frame = 1; // 1=基坐标 2=工具 3=用户
+    req->frame = 1;  // 1=基坐标 2=工具 3=用户
+    req->source = 0; // 0=控制器 1=本地模型
     req->joints = last_joint_state_->position;
     auto resp = callService<tl_ros2_interface::srv::Fk>(fk_cli_, req, "fk(frame=1)");
     if (resp && resp->success)
@@ -652,16 +653,15 @@ void tl_example::InfoQueryDemo::testInfoQuery()
 
   // [4.22] 逆运动学（服务 /tl_driver/ik，TCP 位姿 → 关节角）
   RCLCPP_INFO(this->get_logger(), "  --- [4.22] 逆运动学 ik ---");
-  if (last_tcp_pose_)
+  if (last_tcp_pose_ && last_joint_state_)
   {
     auto req = std::make_shared<tl_ros2_interface::srv::Ik::Request>();
-    req->frame = 1; // 1=基坐标 2=工具 3=用户
+    req->frame = 1;  // 1=基坐标 2=工具 3=用户
+    req->source = 0; // 0=控制器 1=本地模型
     req->pose = *last_tcp_pose_;
     req->form = 0;
-    if (last_joint_state_)
-    {
-      req->reference_pos = last_joint_state_->position;
-    }
+    // reference_pos 必填，用于选择离参考点最近的形态。
+    req->reference_pos = last_joint_state_->position;
     auto resp = callService<tl_ros2_interface::srv::Ik>(ik_cli_, req, "ik(frame=1)");
     if (resp && resp->success)
     {
@@ -670,7 +670,7 @@ void tl_example::InfoQueryDemo::testInfoQuery()
   }
   else
   {
-    RCLCPP_WARN(this->get_logger(), "      无 /tcp_pose，跳过 ik");
+    RCLCPP_WARN(this->get_logger(), "      无 /tcp_pose 或 /joint_states，跳过 ik");
   }
 }
 

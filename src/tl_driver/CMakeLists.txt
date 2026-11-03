@@ -60,6 +60,7 @@ add_executable(tl_driver
   src/arm_session.cpp
   src/convert/msg_convert.cpp
   src/convert/state_frame.cpp
+  src/kinematics_local.cpp
   src/node/actions_motion.cpp
   src/node/driver_node.cpp
   src/node/publishers.cpp

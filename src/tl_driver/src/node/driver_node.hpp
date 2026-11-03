@@ -16,6 +16,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "arm_session.hpp"
+#include "kinematics_local.hpp"
 #include "node/publishers.hpp"
 
 namespace tl_driver
@@ -53,6 +54,13 @@ public:
   int ndof() const noexcept
   {
     return ndof_;
+  }
+
+  /// @brief 启动时构建的本地运动学模型（只读）。
+  /// @return 本地模型引用；`available()` 为 false 时解算一律失败
+  const LocalKinematics& local_kinematics() const noexcept
+  {
+    return local_kinematics_;
   }
 
   /// @brief 连续状态流间隔（ms），用于帧龄判定。
@@ -186,6 +194,8 @@ private:
   double track_action_timeout_{600.0};
 
   ArmSession session_;
+  // 启动时由控制器参数构建一次，之后只读；不随运行期改 DH/工具而更新。
+  LocalKinematics local_kinematics_;
 
   std::unique_ptr<tl_driver::StatePublishers> publishers_;
   std::unique_ptr<tl_driver::MotionActionServers> actions_;
