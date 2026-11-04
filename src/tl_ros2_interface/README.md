@@ -152,7 +152,7 @@ float64 arm_angle
 __msg成员__
 - header: 标准消息头
 - position: x,y,z 位置，单位 **m**（`/tcp_pose` 与 `SetUserCoord.pos` 一致）
-- rpy: 姿态欧拉角（弧度，XYZ 内旋）
+- rpy: 姿态欧拉角（弧度，XYZ 外旋）
 - arm_angle: 冗余臂角（弧度；6 轴为 0，`SetUserCoord` 未使用）
 
 ### ModbusMaster参数ModbusMasterParam_msg

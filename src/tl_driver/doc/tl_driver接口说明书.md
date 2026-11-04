@@ -154,7 +154,7 @@
 | :--- | :--- | :--- |
 | 关节角 | rad | `/joint_states`、运动指令、坐标转换、DH 参数 |
 | 笛卡尔位置 | m | `/tcp_pose`、运动指令、工具/用户坐标系 |
-| 姿态 / 欧拉角 | rad | XYZ 内旋 |
+| 姿态 / 欧拉角 | rad | XYZ 外旋（scipy `xyz`） |
 | 线速度 | m/s | MOVL 指令、`/tl_driver/line_speed.line_speed` |
 | 关节速度 | rad/s | `/tl_driver/joint_speed.joint_speed`、`RobotJointParam.*_rot_speed` |
 | 角加速度 / 加加速度 | rad/s² / rad/s³ | ServoJ 约束、`RobotJointParam.max_acc` / `max_dec` |

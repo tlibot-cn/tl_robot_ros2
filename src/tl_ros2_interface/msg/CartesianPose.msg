@@ -3,5 +3,5 @@
 # 单位遵循 REP 103：位置 m、姿态 rad。
 std_msgs/Header header            # 时间戳与参考坐标系（/tcp_pose 为 base_link）
 geometry_msgs/Point position      # 位置，单位：m
-geometry_msgs/Vector3 rpy         # 姿态欧拉角，XYZ 内旋，单位：rad
+geometry_msgs/Vector3 rpy         # 姿态欧拉角，XYZ 外旋，单位：rad
 float64 arm_angle                 # 冗余臂角 ψ，单位：rad（6 轴为 0；7 轴无定义时可能为 NaN；逆解约束语义见 Ik.srv；SetUserCoord 未使用）

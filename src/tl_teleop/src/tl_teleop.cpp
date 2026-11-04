@@ -489,7 +489,7 @@ std::array<double, 4> TL_Teleop::quat_inverse(const std::array<double, 4>& q)
   return {q[0], -q[1], -q[2], -q[3]};
 }
 
-// 四元数 → RPY 欧拉角（XYZ 内旋格式），返回值单位：rad
+// 四元数 → RPY 欧拉角（XYZ 外旋，R = Rz·Ry·Rx），返回值单位：rad
 std::array<double, 3> TL_Teleop::quat2rpy(const std::array<double, 4>& q)
 {
   double w = q[0], x = q[1], y = q[2], z = q[3];

@@ -41,7 +41,7 @@ flowchart LR
 
 ### 单位与长度契约（改动必查两端）
 
-ROS 侧统一 REP 103（m / rad / rad/s），控制器/SDK 侧 mm / 度 / %，换算集中在 `src/tl_driver/src/convert/units.hpp` 与边界代码。欧拉角为 **XYZ 内旋**（scipy `'XYZ'`）。
+ROS 侧统一 REP 103（m / rad / rad/s），控制器/SDK 侧 mm / 度 / %，换算集中在 `src/tl_driver/src/convert/units.hpp` 与边界代码。欧拉角为 **XYZ 外旋**（scipy `'xyz'`，$R = R_z R_y R_x$）。
 
 | 通道 | 单位 |
 |---|---|
