@@ -374,6 +374,11 @@ def parse_args(arm_types):
     parser.add_argument("--chunk", type=int, default=200_000, help="批量 FK 分块大小")
     parser.add_argument("--seed", type=int, default=42, help="随机种子")
     parser.add_argument("--output-dir", default=None, help="输出目录，默认同目录 results/")
+    parser.add_argument(
+        "--save-data",
+        action="store_true",
+        help="同时保存体素数据 .npz（供 scripts/sphere_ik_bench.py 自动选球使用）",
+    )
     return parser.parse_args()
 
 
@@ -468,6 +473,23 @@ def main():
         )
         f.write(stats_str + "\n")
     print(f"📊 统计已保存: {stats_path}")
+
+    if args.save_data:
+        valid = result["counts"] >= min_samples
+        data_path = results_dir / f"{args.arm_type}_dexterous_workspace.npz"
+        np.savez(
+            str(data_path),
+            centers=stats["centers"],
+            dexterity=stats["dexterity"],
+            counts=result["counts"][valid],
+            theta_max=result["theta_max"][valid],
+            step=np.float64(args.step),
+            tau=np.float64(tau),
+            min_samples=np.int64(min_samples),
+            samples=np.int64(result["samples"]),
+            arm_type=np.str_(args.arm_type),
+        )
+        print(f"💾 体素数据已保存: {data_path}")
     return 0
 
 

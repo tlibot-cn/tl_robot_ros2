@@ -10,5 +10,7 @@ __pycache__/
 compile_commands.json
 .clangd
 scripts/workspace_measure/results
+scripts/sphere_ik_bench_results
+scripts/arc_plan_results
 
 hetest*

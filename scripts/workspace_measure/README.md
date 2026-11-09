@@ -12,6 +12,7 @@ workspace_measure/
     ├── <arm>_workspace.png / _stats.txt           # FK 结果
     ├── <arm>_workspace_ik.png / _stats.txt        # IK 结果
     └── <arm>_dexterous_workspace.png / _stats.txt # 灵巧空间（蒙特卡洛）
+        <arm>_dexterous_workspace.npz              # 灵巧空间体素（--save-data）
 ```
 
 ---
@@ -126,6 +127,20 @@ python3 dexterous_workspace.py --arm-type tcb705
 | `--n-probe` | `100` | 姿态覆盖探针数，用于估计覆盖半径 |
 | `--min-samples` | `0` | 体素最少样本数；0 = 由 τ 自动推导 `⌈100/τ³⌉` |
 | `--seed` | `42` | 随机种子，结果可复现 |
+| `--save-data` | 关 | 额外写出 `.npz` 体素数据，供 `scripts/sphere_ik_bench.py` 自动选球 |
+
+### 导出体素数据（供 sphere_ik_bench 自动选球）
+
+```bash
+cd workspace_measure
+python3 dexterous_workspace.py --arm-type tcb705f --save-data
+```
+
+除 PNG/统计外，额外写出 `results/tcb705f_dexterous_workspace.npz`（体素中心、灵巧度、
+体素边长、τ 与采样参数），供 `scripts/sphere_ik_bench.py`（完整球）自动选球：在可达体积
+内部搜索「整个球面采样点都落在内部体素、且灵巧度最高」的球心，再用控制器 IK 粗校验
+候选（成功率、相邻解跳变、关节软限位）。该脚本必要时先 MoveJ 到球面起点。`results/` 在
+`.gitignore` 中，换机器或换臂型需重新生成，并加 `--workspace-data` 指向对应文件。
 
 ### 分辨率与偏差（必读）
 
