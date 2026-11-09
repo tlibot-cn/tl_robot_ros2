@@ -1,6 +1,0 @@
-# 工具手标定
-int32 tool_num
-int32 point_num
----
-bool success
-string message

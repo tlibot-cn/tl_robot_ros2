@@ -1,8 +1,8 @@
 # 写Modbus
-int32 master_id
-int32 addr
-int32[] data
-tl_ros2_interface/ModbusMasterParam master_param
+int32 master_id                              # 主站编号
+int32 addr                                   # 寄存器起始地址
+int32[] data                                 # 要写入的寄存器值
+tl_ros2_interface/ModbusMasterParam master_param   # 主站参数
 ---
 bool success
 string message

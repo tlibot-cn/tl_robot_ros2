@@ -1,5 +1,5 @@
 # 设置当前坐标系
-int32 coord
+int32 coord   # 坐标系：0=关节 1=基坐标 2=工具 3=用户
 ---
 bool success
 string message

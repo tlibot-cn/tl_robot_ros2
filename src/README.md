@@ -11,6 +11,7 @@
 | V1.0 | 2026-5-22 | 拟制 |
 | V1.1 | 2026-6-30 | 新增 F710 手柄遥操作功能包 |
 | V1.2 | 2026-9-2 | 同步 3.0.0 发版：接口 12 个 msg、包版本统一 3.0.0 |
+| V1.3 | 2026-11-9 | 同步 3.1.0 发版：接口 13 个 msg / 31 个 srv / 2 个 action、包版本统一 3.1.0 |
 
 </div>
 
@@ -47,7 +48,7 @@ src/
 ├── tl_driver/               # 硬件驱动（C++ 节点）
 │   ├── config/              # 14 套通信参数配置
 │   ├── launch/              # 驱动节点 launch
-│   ├── lib/                 # TL 专有库（libtl_host.so + API 头文件）
+│   ├── lib/                 # TL SDK 库（libtl_host.so + API 头文件）
 │   └── src/                 # 驱动节点源码
 ├── tl_example/              # 使用示例
 ├── tl_gazebo/               # Gazebo 仿真
@@ -65,8 +66,8 @@ src/
 │   ├── ...
 │   └── tl_tcb710v_config/
 ├── tl_ros2_interface/       # ROS2 消息与服务接口
-│   ├── msg/                 # 12 个 msg 定义文件
-│   └── srv/                 # 45 个 srv 定义文件
+│   ├── msg/                 # 11 个 msg 定义文件
+│   └── srv/                 # 26 个 srv 定义文件
 ├── tl_teleop/               # VR 遥操作（C++ 节点，PXREA SDK）
 │   ├── config/
 │   ├── launch/
@@ -115,7 +116,7 @@ src/
 - **轨迹录制与回放**：支持录制机械臂运动轨迹并回放。
 - **队列运动**：支持将运动指令加入队列依次执行。
 
-驱动基于 NexMotion SDK 的 Python 封装（SWIG），通过 TCP 连接控制器（默认 IP：`192.168.1.13`，端口：`6001`）。
+驱动基于 NexMotion SDK 的预编译 C/C++ 库（`libtl_host.so` + `lib/include/*.h`），通过 TCP 连接控制器（默认 IP：`192.168.1.13`，端口：`6001`）。
 
 详细说明请参考 [tl_driver/README.md](tl_driver/README.md)。
 
@@ -152,7 +153,7 @@ src/
 实现 `TLHardwareInterface` 硬件接口插件（`hardware_interface::SystemInterface`），桥接 ros2_control 控制器层与 `tl_driver` 驱动节点。
 
 - 读取 `/joint_states` 获取关节状态，写入 ros2_control 状态接口
-- 通过 `joint_trajectory_controller` 接收规划轨迹，将弧度指令转换为角度后发布到 `/tl_driver/set_servoj_pos`
+- 通过 `joint_trajectory_controller` 接收规划轨迹，将关节角（rad）直接发布到 `/tl_driver/set_servoj_pos`（驱动负责换算到 SDK 度制）
 - 自动管理 servoj 流生命周期（`open_servoj` / `close_servoj`）
 
 所有 14 种臂型的 MoveIt2 配置包均已集成该插件，通过 `use_real_hardware` 参数切换真实/虚拟硬件模式。
@@ -175,9 +176,9 @@ src/
 
 提供天链机械臂的应用示例代码，目前包含：
 
-- `medical_demo`：医疗/实验室自动化场景的 moveL 队列运动示例
+- `medical_demo`：医疗/实验室自动化场景的 move_linear action 多点位示例
 
-示例节点展示了如何通过 tl_driver 的服务和话题接口实现典型的机械臂控制流程。
+示例节点展示了如何通过 tl_driver 的服务、话题与 action 接口实现典型的机械臂控制流程。
 
 ### 2.10 tl_teleop_f710 — F710 手柄遥操作
 
@@ -185,7 +186,7 @@ src/
 
 - **直接 ServoJ 方案**：节点内部自行 IK 求解，以 **250Hz（4ms）** 周期稳定输出关节角到 `/tl_driver/set_servoj_pos`
 - **双模式**：真机模式通过 ServoJ 关节跟踪驱动；仿真模式通过 KDL `ChainIkSolverPos_LMA` 本地 IK + Gazebo position controller 驱动
-- **完整上电流程**：自动执行 `connect_arm → power_on → set_mode → set_speed → open_servoj`
+- **完整上电流程**：自动执行 `power_on → set_mode → set_speed → open_servoj`（连接由驱动启动时建立）
 - **安全机制**：Back+Start 紧急停止、工作空间软限位、摇杆死区滤波
 - **6/7 轴自适应**：根据 `home_joints` 长度自动确定轴数
 - **异步 IK**：有摇杆输入时 `std::async` 独立线程做 IK，不阻塞 250Hz 控制循环

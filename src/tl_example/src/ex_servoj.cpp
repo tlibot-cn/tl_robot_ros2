@@ -20,7 +20,7 @@
  *   传 6 元素会导致协议解析错乱断开 7000 连接。
  *
  * ⚠ 与 SDK 差异（无跳过项，全部接口均有 ROS2 对应）：
- *   - SDK 手动双端口连接(6001+7000) → ROS2 connect_arm 服务自动双端口连接
+ *   - SDK 手动双端口连接(6001+7000) → 驱动启动时自动完成双端口连接
  *   - SDK set_servo_state(1) → ROS2 无独立服务，power_on 服务内部含此步
  *   - 若关节不动或运行缓慢，请先用 /tl_driver/set_speed 增大运行速度
  *
@@ -47,7 +47,6 @@
 
 #include <sensor_msgs/msg/joint_state.hpp>
 
-#include "tl_ros2_interface/msg/arm_status.hpp"
 #include "tl_ros2_interface/srv/open_servo_j.hpp"
 #include "tl_ros2_interface/srv/set_current_mode.hpp"
 
@@ -56,11 +55,12 @@ namespace tl_example
 
 // 类型别名 — 简化代码
 using Trigger = std_srvs::srv::Trigger;
-using ArmStatus = tl_ros2_interface::msg::ArmStatus;
 using JointState = sensor_msgs::msg::JointState;
 using Float64Array = std_msgs::msg::Float64MultiArray;
 using OpenServoJ = tl_ros2_interface::srv::OpenServoJ;
 using SetCurrentMode = tl_ros2_interface::srv::SetCurrentMode;
+
+constexpr double kDegToRad = M_PI / 180.0;
 
 // 关节数（servoj 向量固定 7 元素：前 6 轴 + 第 7 轴补 0）
 static constexpr size_t kNJoints = 7;
@@ -86,9 +86,9 @@ public:
     RCLCPP_INFO(this->get_logger(), "============================================================");
 
     // ── 参数 ──
-    this->declare_parameter("vmax", 30.0);    // ServoJ 最大速度（°/s）
-    this->declare_parameter("amax", 60.0);    // ServoJ 最大加速度（°/s²）
-    this->declare_parameter("jmax", 100.0);   // ServoJ 最大加加速度（°/s³）
+    this->declare_parameter("vmax", 30.0);    // ServoJ 最大速度（°/s，入参）
+    this->declare_parameter("amax", 60.0);    // ServoJ 最大加速度（°/s²，入参）
+    this->declare_parameter("jmax", 100.0);   // ServoJ 最大加加速度（°/s³，入参）
     this->declare_parameter("period_ms", 10); // 发送周期（毫秒）→ 100Hz
 
     vmax_ = this->get_parameter("vmax").as_double();
@@ -97,8 +97,6 @@ public:
     period_ms_ = this->get_parameter("period_ms").as_int();
 
     // ── 服务客户端 ──
-    connect_cli_ = this->create_client<Trigger>("/tl_driver/connect_arm");
-    disconnect_cli_ = this->create_client<Trigger>("/tl_driver/disconnect_arm");
     clear_error_cli_ = this->create_client<Trigger>("/tl_driver/clear_error");
     power_on_cli_ = this->create_client<Trigger>("/tl_driver/power_on");
     power_off_cli_ = this->create_client<Trigger>("/tl_driver/power_off");
@@ -106,12 +104,10 @@ public:
     open_servoj_cli_ = this->create_client<OpenServoJ>("/tl_driver/open_servoj");
     close_servoj_cli_ = this->create_client<Trigger>("/tl_driver/close_servoj");
 
-    // ── 高频下发话题（100Hz 向 7000 端口发送目标关节角度，单位 °）──
+    // ── 高频下发话题（100Hz 向 7000 端口发送目标关节角度，单位 rad）──
     servoj_pos_pub_ = this->create_publisher<Float64Array>("/tl_driver/set_servoj_pos", 10);
 
-    // ── 状态订阅（运行状态 + 关节角度，用于验证实时跟踪）──
-    arm_status_sub_ = this->create_subscription<ArmStatus>(
-        "/arm_status", 10, std::bind(&ServoJDemo::onArmStatus, this, std::placeholders::_1));
+    // ── 状态订阅（关节角度，用于验证实时跟踪）──
     joint_state_sub_ = this->create_subscription<JointState>(
         "/joint_states", 10, std::bind(&ServoJDemo::onJointState, this, std::placeholders::_1));
 
@@ -124,8 +120,6 @@ public:
 
 private:
   // ── ROS2 通信 ──
-  rclcpp::Client<Trigger>::SharedPtr connect_cli_;
-  rclcpp::Client<Trigger>::SharedPtr disconnect_cli_;
   rclcpp::Client<Trigger>::SharedPtr clear_error_cli_;
   rclcpp::Client<Trigger>::SharedPtr power_on_cli_;
   rclcpp::Client<Trigger>::SharedPtr power_off_cli_;
@@ -133,11 +127,8 @@ private:
   rclcpp::Client<OpenServoJ>::SharedPtr open_servoj_cli_;
   rclcpp::Client<Trigger>::SharedPtr close_servoj_cli_;
   rclcpp::Publisher<Float64Array>::SharedPtr servoj_pos_pub_;
-  rclcpp::Subscription<ArmStatus>::SharedPtr arm_status_sub_;
   rclcpp::Subscription<JointState>::SharedPtr joint_state_sub_;
 
-  // 最近一次接收到的机械臂运行状态（/arm_status）
-  std::string arm_run_state_ = "unknown";
   // 最近一次接收到的关节角度（话题为弧度，打印时转角度）
   JointState::SharedPtr last_joint_state_;
 
@@ -150,10 +141,6 @@ private:
   int period_ms_ = 10;
 
   // ── 话题回调 ──
-  void onArmStatus(const ArmStatus::SharedPtr msg)
-  {
-    arm_run_state_ = msg->run_state;
-  }
   void onJointState(const JointState::SharedPtr msg)
   {
     last_joint_state_ = msg;
@@ -265,7 +252,11 @@ private:
       for (size_t j = 0; j < q.size() && j < step.size(); ++j)
         q[j] += step[j];
       Float64Array msg;
-      msg.data = q; // 7 元素，前 6 轴角度 + 第 7 轴补 0
+      msg.data = q;
+      for (auto& value : msg.data)
+      {
+        value *= kDegToRad; // 轨迹常量沿用度制，发布前转 rad
+      }
       servoj_pos_pub_->publish(msg);
       rclcpp::sleep_for(std::chrono::milliseconds(period_ms_));
       // 收集 /joint_states 反馈（同时避免回调饥饿）
@@ -288,34 +279,24 @@ void tl_example::ServoJDemo::run()
 {
   // ── 1. 检查核心服务就绪 ──
   RCLCPP_INFO(this->get_logger(), "\n========== 1. 检查核心服务就绪 ==========");
-  if (!waitService("connect_arm", connect_cli_) || !waitService("clear_error", clear_error_cli_) ||
-      !waitService("power_on", power_on_cli_) || !waitService("power_off", power_off_cli_) ||
-      !waitService("set_current_mode", set_mode_cli_) || !waitService("open_servoj", open_servoj_cli_) ||
-      !waitService("close_servoj", close_servoj_cli_) || !waitService("disconnect_arm", disconnect_cli_))
+  if (!waitService("clear_error", clear_error_cli_) || !waitService("power_on", power_on_cli_) ||
+      !waitService("power_off", power_off_cli_) || !waitService("set_current_mode", set_mode_cli_) ||
+      !waitService("open_servoj", open_servoj_cli_) || !waitService("close_servoj", close_servoj_cli_))
   {
     RCLCPP_ERROR(this->get_logger(), "tl_driver 核心服务未就绪，请先启动 tl_driver 节点");
     rclcpp::shutdown();
     return;
   }
 
-  // ── 2. 连接机械臂（驱动自动双端口连接 6001+7000）──
-  RCLCPP_INFO(this->get_logger(), "\n========== 2. 连接机械臂（自动双端口 6001+7000）==========");
-  if (!callTrigger(connect_cli_, "connect_arm"))
-  {
-    RCLCPP_ERROR(this->get_logger(), "连接失败，退出测试");
-    rclcpp::shutdown();
-    return;
-  }
-
-  // ── 3. 清错 + 下电复位 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 3. 清错 + 下电复位 ==========");
+  // ── 2. 清错 + 下电复位 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 2. 清错 + 下电复位 ==========");
   callTrigger(clear_error_cli_, "clear_error");
   rclcpp::sleep_for(std::chrono::milliseconds(300));
   callTrigger(power_off_cli_, "power_off");
   rclcpp::sleep_for(std::chrono::milliseconds(300));
 
-  // ── 4. 切换示教模式 → 上电（含 set_servo_state(1)）──
-  RCLCPP_INFO(this->get_logger(), "\n========== 4. 示教模式 + 上电 ==========");
+  // ── 3. 切换示教模式 → 上电（含 set_servo_state(1)）──
+  RCLCPP_INFO(this->get_logger(), "\n========== 3. 示教模式 + 上电 ==========");
   {
     auto req = std::make_shared<SetCurrentMode::Request>();
     req->mode = 0; // 示教模式
@@ -326,14 +307,13 @@ void tl_example::ServoJDemo::run()
   if (!callTrigger(power_on_cli_, "power_on（含 set_servo_state(1)）"))
   {
     RCLCPP_ERROR(this->get_logger(), "上电失败，退出测试");
-    callTrigger(disconnect_cli_, "disconnect_arm");
     rclcpp::shutdown();
     return;
   }
   rclcpp::sleep_for(std::chrono::milliseconds(500));
 
-  // ── 5. 切换运行模式 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 5. 切换运行模式 ==========");
+  // ── 4. 切换运行模式 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 4. 切换运行模式 ==========");
   {
     auto req = std::make_shared<SetCurrentMode::Request>();
     req->mode = 2; // 运行模式（0=示教，1=远程，2=运行）
@@ -341,27 +321,26 @@ void tl_example::ServoJDemo::run()
     rclcpp::sleep_for(std::chrono::seconds(2));
   }
 
-  // ── 6. 打开 ServoJ 跟踪模式 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 6. 打开 ServoJ 跟踪模式 ==========");
+  // ── 5. 打开 ServoJ 跟踪模式 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 5. 打开 ServoJ 跟踪模式 ==========");
   {
     auto req = std::make_shared<OpenServoJ::Request>();
-    req->vmax.assign(kNJoints, vmax_);
-    req->amax.assign(kNJoints, amax_);
-    req->jmax.assign(kNJoints, jmax_);
+    req->vmax.assign(kNJoints, vmax_ * kDegToRad);
+    req->amax.assign(kNJoints, amax_ * kDegToRad);
+    req->jmax.assign(kNJoints, jmax_ * kDegToRad);
     auto resp = callService<OpenServoJ>(open_servoj_cli_, req, "open_servoj");
     if (!resp || !resp->success)
     {
       RCLCPP_ERROR(this->get_logger(), "open_servoj 失败，退出测试");
       callTrigger(power_off_cli_, "power_off");
-      callTrigger(disconnect_cli_, "disconnect_arm");
       rclcpp::shutdown();
       return;
     }
   }
   rclcpp::sleep_for(std::chrono::milliseconds(300));
 
-  // ── 7. ServoJ 关节实时跟踪（100Hz，7 元素向量）──
-  RCLCPP_INFO(this->get_logger(), "\n========== 7. ServoJ 关节实时跟踪 ==========");
+  // ── 6. ServoJ 关节实时跟踪（100Hz，7 元素向量）──
+  RCLCPP_INFO(this->get_logger(), "\n========== 6. ServoJ 关节实时跟踪 ==========");
 
   // 动作 1: J1 从 0° 平滑转到 30°
   servoJTraj({0, 0, 0, 0, 0, 0, 0}, {30.0 / 200, 0, 0, 0, 0, 0, 0}, 200, "动作1: J1 0°→ 30°");
@@ -379,24 +358,20 @@ void tl_example::ServoJDemo::run()
   servoJTraj({0, 0, 15, 0, 0, 0, 0}, {0, 0, -15.0 / 150, 0, 0, 0, 0}, 150, "动作4: J3 回 0°，全轴回零");
   rclcpp::sleep_for(std::chrono::seconds(1));
 
-  // ── 8. 关闭 ServoJ 跟踪模式 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 8. 关闭 ServoJ 跟踪模式 ==========");
+  // ── 7. 关闭 ServoJ 跟踪模式 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 7. 关闭 ServoJ 跟踪模式 ==========");
   callTrigger(close_servoj_cli_, "close_servoj");
 
   RCLCPP_INFO(this->get_logger(), "\n  [信息] ServoJ 运动全部完成");
 
-  // ── 9. 切回示教模式（自动下电）──
-  RCLCPP_INFO(this->get_logger(), "\n========== 9. 切回示教模式 ==========");
+  // ── 8. 切回示教模式（自动下电）──
+  RCLCPP_INFO(this->get_logger(), "\n========== 8. 切回示教模式 ==========");
   {
     auto req = std::make_shared<SetCurrentMode::Request>();
     req->mode = 0; // 示教模式
     callService<SetCurrentMode>(set_mode_cli_, req, "set_current_mode(0)");
     rclcpp::sleep_for(std::chrono::milliseconds(300));
   }
-
-  // ── 10. 断开连接 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 10. 断开连接 ==========");
-  callTrigger(disconnect_cli_, "disconnect_arm");
 
   RCLCPP_INFO(this->get_logger(), "\n============================================================");
   RCLCPP_INFO(this->get_logger(), "  ServoJ 关节实时跟踪测试完成，节点退出");

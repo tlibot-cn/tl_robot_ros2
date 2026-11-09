@@ -7,7 +7,7 @@
  *
  *   connect → set_current_mode(远程) →
  *   查询当前 IO → 设置 DO1=0 → 查询验证 → 设置 DO1=1 → 查询验证 →
- *   运行状态（/arm_status 话题）→ 恢复示教模式 → disconnect
+ *   运行状态（get_arm_status 服务）→ 恢复示教模式 → disconnect
  *
  * ⚠ 跳过项：SDK 中的 set_remote_function（设置远程 IO 功能）在 ROS2 驱动中
  *   无对应接口，程序中跳过并列出。
@@ -33,7 +33,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
-#include "tl_ros2_interface/msg/arm_status.hpp"
+#include "tl_ros2_interface/srv/get_arm_status.hpp"
 #include "tl_ros2_interface/srv/get_digital_input_output.hpp"
 #include "tl_ros2_interface/srv/set_current_mode.hpp"
 #include "tl_ros2_interface/srv/set_digital_output.hpp"
@@ -43,7 +43,7 @@ namespace tl_example
 
 // 类型别名 — 简化代码
 using Trigger = std_srvs::srv::Trigger;
-using ArmStatus = tl_ros2_interface::msg::ArmStatus;
+using GetArmStatus = tl_ros2_interface::srv::GetArmStatus;
 using GetDigitalInputOutput = tl_ros2_interface::srv::GetDigitalInputOutput;
 using SetCurrentMode = tl_ros2_interface::srv::SetCurrentMode;
 using SetDigitalOutput = tl_ros2_interface::srv::SetDigitalOutput;
@@ -54,7 +54,7 @@ using SetDigitalOutput = tl_ros2_interface::srv::SetDigitalOutput;
  * 流程（同步顺序执行）：
  *   connect → set_current_mode(1 远程) →
  *   查询当前 IO → set_digital_output(DO1=0/1) → 查询验证 →
- *   运行状态（/arm_status）→ set_current_mode(0 恢复) → disconnect
+ *   运行状态（get_arm_status）→ set_current_mode(0 恢复) → disconnect
  */
 class DigitalIoDemo : public rclcpp::Node
 {
@@ -71,17 +71,14 @@ public:
     io_port_ = this->get_parameter("io_port").as_int();
 
     // ── 服务客户端 ──
-    connect_cli_ = this->create_client<Trigger>("/tl_driver/connect_arm");
-    disconnect_cli_ = this->create_client<Trigger>("/tl_driver/disconnect_arm");
     set_mode_cli_ = this->create_client<SetCurrentMode>("/tl_driver/set_current_mode");
     get_dio_cli_ = this->create_client<GetDigitalInputOutput>("/tl_driver/get_digital_input_output");
     set_dio_cli_ = this->create_client<SetDigitalOutput>("/tl_driver/set_digital_output");
 
-    // ── 运行状态订阅（替代 SDK 的 get_robot_running_state）──
-    arm_status_sub_ = this->create_subscription<ArmStatus>(
-        "/arm_status", 10, std::bind(&DigitalIoDemo::onArmStatus, this, std::placeholders::_1));
+    // ── 运行状态查询客户端（替代 SDK 的 get_robot_running_state）──
+    arm_status_cli_ = this->create_client<GetArmStatus>("/tl_driver/get_arm_status");
 
-    RCLCPP_INFO(this->get_logger(), "  客户端/订阅创建完成 (测试端口 DO%d)", io_port_);
+    RCLCPP_INFO(this->get_logger(), "  客户端创建完成 (测试端口 DO%d)", io_port_);
   }
 
   // ── 主流程（main 直接调用）──
@@ -89,24 +86,13 @@ public:
 
 private:
   // ── ROS2 通信 ──
-  rclcpp::Client<Trigger>::SharedPtr connect_cli_;
-  rclcpp::Client<Trigger>::SharedPtr disconnect_cli_;
   rclcpp::Client<SetCurrentMode>::SharedPtr set_mode_cli_;
   rclcpp::Client<GetDigitalInputOutput>::SharedPtr get_dio_cli_;
   rclcpp::Client<SetDigitalOutput>::SharedPtr set_dio_cli_;
-  rclcpp::Subscription<ArmStatus>::SharedPtr arm_status_sub_;
-
-  // 最近一次接收到的机械臂运行状态（/arm_status）
-  std::string arm_run_state_ = "unknown";
+  rclcpp::Client<GetArmStatus>::SharedPtr arm_status_cli_;
 
   // ── 参数 ──
   int io_port_ = 1; // 测试的数字输出端口号
-
-  // ── 话题回调 ──
-  void onArmStatus(const ArmStatus::SharedPtr msg)
-  {
-    arm_run_state_ = msg->run_state;
-  }
 
   // ── 辅助方法 ──
 
@@ -212,34 +198,24 @@ void tl_example::DigitalIoDemo::run()
 {
   // ── 1. 检查核心服务就绪 ──
   RCLCPP_INFO(this->get_logger(), "\n========== 1. 检查核心服务就绪 ==========");
-  if (!waitService("connect_arm", connect_cli_) || !waitService("set_current_mode", set_mode_cli_) ||
-      !waitService("get_digital_input_output", get_dio_cli_) || !waitService("set_digital_output", set_dio_cli_) ||
-      !waitService("disconnect_arm", disconnect_cli_))
+  if (!waitService("set_current_mode", set_mode_cli_) || !waitService("get_digital_input_output", get_dio_cli_) ||
+      !waitService("set_digital_output", set_dio_cli_) || !waitService("get_arm_status", arm_status_cli_))
   {
     RCLCPP_ERROR(this->get_logger(), "tl_driver 核心服务未就绪，请先启动 tl_driver 节点");
     rclcpp::shutdown();
     return;
   }
 
-  // ── 2. 连接机械臂 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 2. 连接机械臂 ==========");
-  if (!callTrigger(connect_cli_, "connect_arm"))
-  {
-    RCLCPP_ERROR(this->get_logger(), "连接失败，退出测试");
-    rclcpp::shutdown();
-    return;
-  }
-
-  // ── 3. 设置远程模式 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 3. 设置机器人模式（远程） ==========");
+  // ── 2. 设置远程模式 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 2. 设置机器人模式（远程） ==========");
   {
     auto req = std::make_shared<SetCurrentMode::Request>();
     req->mode = 1; // 远程模式（0=示教，1=远程，2=运行）
     callService<SetCurrentMode>(set_mode_cli_, req, "set_current_mode(1)");
   }
 
-  // ── 4. 查询当前 IO 状态 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 4. 查询当前 IO 状态 ==========");
+  // ── 3. 查询当前 IO 状态 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 3. 查询当前 IO 状态 ==========");
   {
     auto req = std::make_shared<GetDigitalInputOutput::Request>();
     auto resp = callService<GetDigitalInputOutput>(get_dio_cli_, req, "get_digital_input_output");
@@ -250,8 +226,8 @@ void tl_example::DigitalIoDemo::run()
     }
   }
 
-  // ── 5. 设置数字输出 DO1=0 → 查询验证 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 5. 设置数字输出（DO%d=0）==========", io_port_);
+  // ── 4. 设置数字输出 DO1=0 → 查询验证 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 4. 设置数字输出（DO%d=0）==========", io_port_);
   {
     auto req = std::make_shared<SetDigitalOutput::Request>();
     req->port = io_port_;
@@ -265,8 +241,8 @@ void tl_example::DigitalIoDemo::run()
       printIoArray(resp->output, "DO");
   }
 
-  // ── 6. 设置数字输出 DO1=1 → 查询验证 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 6. 设置数字输出（DO%d=1）==========", io_port_);
+  // ── 5. 设置数字输出 DO1=1 → 查询验证 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 5. 设置数字输出（DO%d=1）==========", io_port_);
   {
     auto req = std::make_shared<SetDigitalOutput::Request>();
     req->port = io_port_;
@@ -280,30 +256,26 @@ void tl_example::DigitalIoDemo::run()
       printIoArray(resp->output, "DO");
   }
 
-  // ── 7. 运行状态（话题替代 SDK 的 get_robot_running_state）──
-  RCLCPP_INFO(this->get_logger(), "\n========== 7. 机械臂运行状态（/arm_status）==========");
+  // ── 6. 运行状态（服务替代 SDK 的 get_robot_running_state）──
+  RCLCPP_INFO(this->get_logger(), "\n========== 6. 机械臂运行状态（get_arm_status）==========");
   RCLCPP_INFO(this->get_logger(), "  说明：SDK 的 get_robot_running_state（0=停止/1=暂停/2=运行）");
-  RCLCPP_INFO(this->get_logger(), "        在 ROS2 中用 /arm_status 话题（STOP/PAUSE/RUNNING）近似");
-  auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
-  while (rclcpp::ok() && arm_run_state_ == "unknown" && std::chrono::steady_clock::now() < deadline)
+  RCLCPP_INFO(this->get_logger(), "        在 ROS2 中用 get_arm_status 服务返回 STOP/PAUSE/RUNNING");
   {
-    rclcpp::spin_some(this->get_node_base_interface());
-    rclcpp::sleep_for(std::chrono::milliseconds(50));
+    auto req = std::make_shared<GetArmStatus::Request>();
+    auto resp = callService<GetArmStatus>(arm_status_cli_, req, "get_arm_status");
+    if (resp && resp->success)
+      RCLCPP_INFO(this->get_logger(), "  run_state = %s", resp->run_state.c_str());
+    else
+      RCLCPP_WARN(this->get_logger(), "  查询运行状态失败");
   }
-  RCLCPP_INFO(this->get_logger(), "  run_state = %s",
-              arm_run_state_ == "unknown" ? "(未收到)" : arm_run_state_.c_str());
 
-  // ── 8. 恢复示教模式 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 8. 恢复示教模式 ==========");
+  // ── 7. 恢复示教模式 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 7. 恢复示教模式 ==========");
   {
     auto req = std::make_shared<SetCurrentMode::Request>();
     req->mode = 0; // 示教模式
     callService<SetCurrentMode>(set_mode_cli_, req, "set_current_mode(0)");
   }
-
-  // ── 9. 断开连接 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 9. 断开连接 ==========");
-  callTrigger(disconnect_cli_, "disconnect_arm");
 
   RCLCPP_INFO(this->get_logger(), "\n============================================================");
   RCLCPP_INFO(this->get_logger(), "  数字 IO 测试完成，节点退出");

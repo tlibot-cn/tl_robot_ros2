@@ -1,6 +1,9 @@
 # 目标是否可达
-float64[] pos
-string move_type 
+# 注意：pos 是控制器 14 位协议包，含 [1] 角度单位标志（0=度,1=弧度），长度没有独立单位标志，
+#       因此本接口保留控制器协议格式（位置 mm、角度按标志位），不适用 REP 103 的 m 换算。
+float64[] pos       # 长度 14，布局同全局点位：[0]坐标系 [1]单位制 [2]形态 [3]工具 [4]用户 [5][6]备用 [7-13]点位（位置 mm、角度按 [1]）
+string move_type    # 运动类型："MOVJ" 或 "MOVL"
 ---
-bool success
-string message
+bool success        # 查询本身是否成功（与可达性解耦）
+string message      # 成功/失败描述
+bool reachable      # success=true 时有效：true=可达，false=不可达

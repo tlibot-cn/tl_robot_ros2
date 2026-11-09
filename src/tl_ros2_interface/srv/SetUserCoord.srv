@@ -1,6 +1,7 @@
 # 设置用户坐标系
-int32 user_num
-tl_ros2_interface/CartesianPose pos
+# 单位遵循 REP 103：position m、rpy rad；驱动在边界换算到控制器 mm。
+int32 user_num                      # 用户坐标系编号（1~N）
+tl_ros2_interface/CartesianPose pos # 用户坐标（position m + rpy rad）
 ---
 bool success
 string message

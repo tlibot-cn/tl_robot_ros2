@@ -50,12 +50,7 @@ target_include_directories(tl_teleop_f710_sim_bridge PRIVATE
 
 ament_target_dependencies(tl_teleop_f710_sim_bridge
   rclcpp
-  sensor_msgs
   std_msgs
-  tl_ros2_interface
-  kdl_parser
-  orocos_kdl_vendor
-  ament_index_cpp
 )
 
 # ─── Install ───

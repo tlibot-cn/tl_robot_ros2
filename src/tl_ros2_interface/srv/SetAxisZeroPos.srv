@@ -1,5 +1,5 @@
 # 设置零位
-int32 axis
+int32 axis   # 轴号：0=全部轴，1-7=指定轴
 ---
 bool success
 string message

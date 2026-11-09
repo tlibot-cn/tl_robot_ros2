@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # C++ 代码格式化包装脚本
-# 自动跳过三方 SDK 头文件，用法与 clang-format 一致
+# 自动跳过 SDK 库头文件（lib/include/），用法与 clang-format 一致
 #
 # 用法:
 #   ./scripts/format-cpp.sh                     # 格式化 src/ 下所有 C++ 文件

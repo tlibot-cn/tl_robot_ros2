@@ -1,20 +1,31 @@
 # ============================================================
 # 天链机器人 ROS2 工作空间 — GitHub Actions 发布流程（打标签触发）
 #
-# 单 job 流程:
+# 两个 job:
+#   build   — tl_driver 编译验证（复用 build.yml，x86_64 + arm64 矩阵）。
+#             release job 以 needs 依赖它：任一架构建失败则整个发版
+#             中断，不会创建 Release。
+#   release — 单 job 内的发布流水:
 #   1. guard   — 校验发布条件（两个判据都满足才发布）:
 #                a. 标签名符合 v主.次.补[-rc/beta] 命名规则
 #                   （alpha 等其它后缀、里程碑/内部标记不发布）
 #                b. 标签位于 master/dev 分支（tag push 事件不携带
 #                   分支信息，用提交祖先关系判断）
-#   2. format  — 格式检查（与 ci.yml 相同逻辑）
-#   3. publish — 创建 GitHub Release（自动生成 notes，不附构建产物；
+#   2. notes   — 用 scripts/release-notes.sh 抽出 CHANGELOG.md 中该标签
+#                对应版本章节作为正文（找不到章节/章节为空 → 失败退出，
+#                不创建 Release）
+#   3. format  — 格式检查（与 ci.yml 相同逻辑）
+#   4. package — 打包源码归档（git archive，仅含标签提交中的已跟踪文件；
+#                排除 .omp/、scripts/、.github/、AGENTS.md 等内部开发文件）
+#   5. publish — 创建 GitHub Release（标题即标签名，正文取自 CHANGELOG
+#                章节 + 完整变更日志链接，附源码归档；
 #                rc/beta 标记为 prerelease）
 #
-# 不做 CI 构建: 依赖环境过重（MoveIt/RViz/ros2_control 全量安装），
-# 发布前请在本地 Docker 环境完成编译验证。
+# 构建范围仅限 tl_driver（含依赖 tl_ros2_interface）；其余包依赖
+# MoveIt/RViz/ros2_control 全量依赖，仍由本地 Docker 环境验证。
 #
-# 触发: 任意 tag 推送；不满足发布条件时仅提示并跳过格式检查与发布。
+# 触发: 任意 tag 推送；不满足发布条件时仅提示并跳过 Release 说明生成、
+#       格式检查与发布（构建仍会执行，代价是几分钟的运行器时间）。
 # 日常验证（push/PR）见 .github/workflows/ci.yml
 # ============================================================
 name: Release
@@ -27,8 +38,16 @@ permissions:
   contents: write   # 创建 GitHub Release 需要写权限
 
 jobs:
+  # ----------------------------------------------------------
+  # tl_driver 构建 — 复用 build.yml（linux-x86_64 / linux-arm64）
+  # ----------------------------------------------------------
+  build:
+    name: tl_driver 构建
+    uses: ./.github/workflows/build.yml
+
   release:
-    name: 发布 (guard + 格式检查 + GitHub Release)
+    name: 发布 (guard + Release 说明 + 格式检查 + 源码打包 + GitHub Release)
+    needs: build
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +56,7 @@ jobs:
           fetch-depth: 0
 
       # ------------------------------------------------------
-      # 0. 发布条件校验 — 两个判据都满足才发布:
+      # 1. 发布条件校验 — 两个判据都满足才发布:
       #    1) 标签名符合版本命名规则（主判据，表达发布意图，V/v 前缀均可）:
       #       v主.次.补            → 正式发布
       #       v主.次.补-rc[N]      → 预发布 (prerelease)
@@ -69,6 +88,29 @@ jobs:
             fi
           fi
 
+      # ------------------------------------------------------
+      # 2. 生成 Release 说明 — 正文取自 CHANGELOG.md 中该标签的版本章节
+      #    （标签 V3.0.0 → 章节 ## [3.0.0]；rc/beta 标签回退到基础版本章节）。
+      #    找不到章节或章节为空 → 报错退出，不创建 Release：发版前必须先把
+      #    [Unreleased] 的内容合并进版本号章节并推送分支，再把标签重新指向
+      #    该提交（git tag -f + git push -f；仅删并重推同一标签仍指向旧提交）。
+      #    末尾追加完整变更日志链接，替代 GitHub 自动生成的提交/PR 列表
+      #    （后者会带上 chore/ci 等内部提交，与 CHANGELOG 口径不一致）。
+      # ------------------------------------------------------
+      - name: 生成 Release 说明（取自 CHANGELOG.md）
+        if: steps.guard.outputs.release == 'true'
+        run: |
+          ./scripts/release-notes.sh "$GITHUB_REF_NAME" > /tmp/release-notes.md
+          {
+            echo
+            echo "---"
+            echo
+            echo "完整变更日志：[CHANGELOG.md](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md)"
+          } >> /tmp/release-notes.md
+
+      # ------------------------------------------------------
+      # 3. 格式检查（与 ci.yml 相同逻辑）
+      # ------------------------------------------------------
       - name: 安装格式检查工具
         if: steps.guard.outputs.release == 'true'
         # clang-format / black 经 pip 固定版本，与 ci.yml 一致，避免版本漂移
@@ -92,8 +134,39 @@ jobs:
           fi
 
       # ------------------------------------------------------
-      # 2. 发布 — 创建 GitHub Release，notes 由 GitHub 自动生成
-      #    （不附构建产物；rc/beta 标签加 --prerelease，不占用 Latest）
+      # 4. 打包 — 用 git archive 从标签提交生成源码归档:
+      #    只含标签提交中的已跟踪文件（build/install/log 等本地构建产物
+      #    与未跟踪文件天然不入包）；排除内部开发文件:
+      #      .omp/     agent 配置与规则
+      #      scripts/  构建/发版辅助脚本
+      #      .github/  CI 工作流
+      #      AGENTS.md agent 上下文文件
+      #    顶层目录加 tl_robot_ros2-<标签>/ 前缀，解压即得完整工作空间。
+      # ------------------------------------------------------
+      - name: 打包源码归档
+        if: steps.guard.outputs.release == 'true'
+        run: |
+          PKG="tl_robot_ros2-${GITHUB_REF_NAME}"
+          ARCHIVE="/tmp/${PKG}.zip"
+          git archive --format=zip \
+            --prefix="${PKG}/" \
+            --output="${ARCHIVE}" \
+            "$GITHUB_REF_NAME" -- . \
+            ':(exclude).omp' \
+            ':(exclude)scripts' \
+            ':(exclude).github' \
+            ':(exclude)AGENTS.md'
+          if unzip -Z1 "${ARCHIVE}" | grep -qE "^${PKG}/(\.omp|scripts|\.github|AGENTS\.md)(/|$)"; then
+            echo "::error::源码归档中仍包含应排除的路径 (.omp/scripts/.github/AGENTS.md)"
+            exit 1
+          fi
+          unzip -Z1 "${ARCHIVE}" | wc -l
+          echo "::notice::已生成 ${ARCHIVE}"
+
+      # ------------------------------------------------------
+      # 5. 发布 — 创建 GitHub Release，附第 4 步生成的源码归档
+      #    标题即标签名（不加仓库名等前缀）；正文为 CHANGELOG 章节正文；
+      #    rc/beta 标签加 --prerelease，不占用 Latest
       # ------------------------------------------------------
       - name: 创建 GitHub Release
         if: steps.guard.outputs.release == 'true'
@@ -102,6 +175,7 @@ jobs:
           PRERELEASE_FLAG: ${{ steps.guard.outputs.prerelease == 'true' && '--prerelease' || '' }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            --title "tl_robot_ros2 ${GITHUB_REF_NAME}" \
-            $PRERELEASE_FLAG \
-            --generate-notes
+            --title "$GITHUB_REF_NAME" \
+            --notes-file /tmp/release-notes.md \
+            "/tmp/tl_robot_ros2-${GITHUB_REF_NAME}.zip" \
+            $PRERELEASE_FLAG

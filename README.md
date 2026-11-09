@@ -50,8 +50,17 @@ pip install black isort ruff
 ### CI 格式检查
 
 仓库已接入 GitHub Actions（`.github/workflows/ci.yml`）：push 到 master/dev、
-提交 PR 时自动执行格式检查（纯文档变更不触发），格式不合格会阻断合并。
-发布流程见 `.github/workflows/release.yml`（打版本标签触发）。
+提交 PR 时自动执行格式检查（纯文档变更不触发），格式不合格会阻断合并；
+同时以矩阵方式编译 `tl_driver`（`linux-x86_64` + `linux-arm64`，复用
+`.github/workflows/build.yml`），编译失败同样阻断合并。发布流程见
+`.github/workflows/release.yml`（打版本标签触发，发版前先跑同一套双架构构建）。提交前本地先跑一遍格式化：
+
+```bash
+./scripts/format-cpp.sh
+black .
+```
+
+> `isort .`（import 排序）不纳入 CI 强制检查——仓库历史 import 顺序存在漂移，需排序时自行运行即可。
 
 ### C++ 格式
 
@@ -59,11 +68,11 @@ pip install black isort ruff
 - Allman 大括号风格，2 空格缩进，120 列宽限制
 - CI 强制格式检查，提交时请先本地格式化
 
-手动格式化（自动跳过三方 SDK 头文件）：
+手动格式化（自动跳过 SDK 库头文件 `lib/include/`）：
 ```bash
 ./scripts/format-cpp.sh                          # 格式化所有 C++ 文件
 ./scripts/format-cpp.sh src/tl_driver/src/       # 格式化指定目录
-./scripts/format-cpp.sh src/tl_driver/src/tl_driver.cpp  # 格式化指定文件
+./scripts/format-cpp.sh src/tl_driver/src/node/driver_node.cpp  # 格式化指定文件
 ```
 
 ### Python 格式
@@ -75,7 +84,9 @@ pip install black isort ruff
 ```bash
 ruff format src/
 # 或
-black src/ && isort src/
+black src/
+# 需要时再排序 import（非 CI 强制）
+isort src/
 ```
 
 ## 运行

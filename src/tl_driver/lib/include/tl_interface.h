@@ -19,10 +19,10 @@ namespace tl
 // Windows 头文件（windows.h）会 #define ERROR 为 0、DEBUG 等宏，
 // 与下方枚举值冲突导致编译错误，这里先取消宏定义。
 #ifdef ERROR
-#undef ERROR
+#  undef ERROR
 #endif
 #ifdef DEBUG
-#undef DEBUG
+#  undef DEBUG
 #endif
 
 typedef enum
@@ -43,14 +43,16 @@ TL_API void set_log_level(LogLevel level);
 // ==================== 连接/版本 ====================
 
 /**
- * @brief 获取版本信息（包含 SDK 封装层版本 + 底层控制器库版本）
- * @return 版本信息字符串，格式 "SDK v<sdk版本> (Base: <底层库版本>)"
+ * @brief 获取 SDK 库版本信息（包含 SDK 版本 + Base 版本）
+ * @return 版本信息字符串，格式 "<sdk版本>(Base:<base版本>)"
  */
 TL_API std::string get_library_version();
 
 /**
  * @brief 设置连接超时时间，连接超过限制时间后直接返回错误
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result set_connect_timeout_seconds(int timeoutSeconds);
 
@@ -73,41 +75,40 @@ TL_API SOCKETFD connect_robot_udp(const std::string& ip, const std::string& port
 
 /**
  * @brief 断开控制器
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result disconnect_robot(SOCKETFD socketFd);
 
 /**
  * @brief 获得控制器连接状态
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_connection_status(SOCKETFD socketFd);
 
 /**
  * @brief 设置是否打开断开后自动重连功能 默认关闭
  * @param reconnect true 打开
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result set_reconnect(SOCKETFD socketFd, bool reconnect);
 
 /**
  * @brief 设置接收错误或警告信息的回调函数。
- * @param function 指向回调函数的指针。该回调函数在接收到错误或警告信息时被调用。
+ * @param function
+ * 指向回调函数的指针。该回调函数在接收到错误或警告信息时被调用。
  * @note 回调函数由用户实现，用于处理接收到的错误信息。
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result set_receive_error_or_warnning_message_callback(SOCKETFD socketFd,
-                                                      void (*function)(int messageType, const char *message,
-                                                                       int messageCode));
-
-/**
- * @brief 收到控制器消息时触发设置的回调函数
- * @param function 指向回调函数的指针，签名 `void (int messageID, const char* message)`。
- *        回调收到控制器主动推送的消息 id 与消息内容。
- * @warning 回调函数内不能做耗时操作或阻塞（控制器消息线程内触发）。
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
- */
-TL_API Result recv_message(SOCKETFD socketFd, void (*function)(int messageID, const char *message));
+TL_API Result set_receive_error_or_warnning_message_callback(
+    SOCKETFD socketFd, void (*function)(int messageType, const char *message, int messageCode));
 
 /**
  * @brief 配置控制器有线网口 IP
@@ -115,10 +116,13 @@ TL_API Result recv_message(SOCKETFD socketFd, void (*function)(int messageID, co
  * @param address ip地址
  * @param gateway 网关
  * @param dns DNS
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result set_controller_ip(SOCKETFD socketFd, const std::string& name, const std::string& address,
-                                const std::string& gateway, const std::string& dns);
+TL_API Result set_controller_ip(SOCKETFD socketFd, const std::string& name,
+                                const std::string& address, const std::string& gateway,
+                                const std::string& dns);
 
 /**
  * @brief 设置控制器网络配置
@@ -126,15 +130,21 @@ TL_API Result set_controller_ip(SOCKETFD socketFd, const std::string& name, cons
  * @param ip 新的 IP 地址
  * @param gateway 网关地址，传空字符串表示不配置网关
  * @param dns DNS 服务器地址，传空字符串表示不配置 DNS
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result set_controller_network_config(SOCKETFD socketFd, const std::string& name, const std::string& ip,
-                                            const std::string& gateway, const std::string& dns);
+TL_API Result set_controller_network_config(SOCKETFD socketFd, const std::string& name,
+                                            const std::string& ip, const std::string& gateway,
+                                            const std::string& dns);
 
 /**
  * @brief 恢复网络出厂设置（IP 恢复为 192.168.1.13，网关 192.168.1.1，DNS 置空）
- * @warning 高危配置操作：会立即重置控制器网络参数并导致断连，执行后需重新配置网络才能连接
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @warning
+ * 高危配置操作：会立即重置控制器网络参数并导致断连，执行后需重新配置网络才能连接
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result restore_network_factory_settings(SOCKETFD socketFd);
 
@@ -144,22 +154,29 @@ TL_API Result restore_network_factory_settings(SOCKETFD socketFd);
  * @param address 输出：IP 地址
  * @param gateway 输出：网关地址
  * @param dns 输出：DNS 地址
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result get_controller_network_config(SOCKETFD socketFd, std::string& name, std::string& address,
-                                            std::string& gateway, std::string& dns);
+TL_API Result get_controller_network_config(SOCKETFD socketFd, std::string& name,
+                                            std::string& address, std::string& gateway,
+                                            std::string& dns);
 
 /**
  * @brief 获取控制器序列号 ID
  * @param id 输出：控制器序列号 ID 字符串
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_controller_id(SOCKETFD socketFd, std::string& id);
 
 /**
  * @brief 获取算法库版本
  * @param version 输出：算法库版本号字符串
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_nexmotion_lib_version(SOCKETFD socketFd, std::string& version);
 
@@ -169,7 +186,9 @@ TL_API Result get_nexmotion_lib_version(SOCKETFD socketFd, std::string& version)
  * @brief 伺服清错
  * @note
  * 出错前如果时伺服运行状态，清错后需要手动进行下电操作，释放控制器的占用状态才可以继续上电（清错后不能直接上电，先下电再上电）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result clear_error(SOCKETFD socketFd);
 
@@ -178,9 +197,12 @@ TL_API Result clear_error(SOCKETFD socketFd);
  * @param state 0 停止 1 就绪
  * @deprecated 请使用 ServoState 枚举重载版本
  * @note 推荐使用枚举重载（ServoState::STOP / ServoState::READY），避免魔法数字
- * @warning 设置伺服就绪应该先确保系统没有错误 clear_servo_error(SOCKETFD socketFd)
+ * @warning 设置伺服就绪应该先确保系统没有错误 clear_servo_error(SOCKETFD
+ * socketFd)
  * 该函数只有伺服状态为0（停止状态）或1（就绪状态）时调用生效，伺服状态为2（报警状态）或3（运行状态）时不能直接设置伺服状态
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_DEPRECATED("use ServoState enum overload instead")
 TL_API Result set_servo_state(SOCKETFD socketFd, int state);
@@ -189,9 +211,12 @@ TL_API Result set_servo_state(SOCKETFD socketFd, int state);
  * @brief 设置伺服状态（枚举重载）
  * @param state ServoState::STOP（停止）/ ServoState::READY（就绪）
  * @note 推荐使用本枚举重载版本，避免魔法数字
- * @warning 设置伺服就绪应该先确保系统没有错误 clear_servo_error(SOCKETFD socketFd)
+ * @warning 设置伺服就绪应该先确保系统没有错误 clear_servo_error(SOCKETFD
+ * socketFd)
  * 该函数只有伺服状态为0（停止状态）或1（就绪状态）时调用生效，伺服状态为2（报警状态）或3（运行状态）时不能直接设置伺服状态
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result set_servo_state(SOCKETFD socketFd, ServoState state);
 
@@ -199,8 +224,11 @@ TL_API Result set_servo_state(SOCKETFD socketFd, ServoState state);
  * @brief 获取伺服状态
  * @param status 接收获取结果 0：停止状态 1：就绪状态 2：报警状态 3：运行状态
  * @deprecated 请使用 ServoState 枚举重载版本
- * @note 推荐使用枚举重载（ServoState::STOP / ServoState::READY / ServoState::ALARM / ServoState::RUNNING），避免魔法数字
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @note 推荐使用枚举重载（ServoState::STOP / ServoState::READY /
+ * ServoState::ALARM / ServoState::RUNNING），避免魔法数字
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_DEPRECATED("use ServoState enum overload instead")
 TL_API Result get_servo_state(SOCKETFD socketFd, int& status);
@@ -209,14 +237,17 @@ TL_API Result get_servo_state(SOCKETFD socketFd, int& status);
  * @brief 获取伺服状态（枚举重载）
  * @param status 输出：ServoState::STOP / READY / ALARM / RUNNING
  * @note 推荐使用本枚举重载版本，避免魔法数字
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_servo_state(SOCKETFD socketFd, ServoState& status);
 
 /**
  * @brief 机器人上电
- * @attention 调用该函数之前需要先调用set_servo_state(SOCKETFD socketFd,1)将伺服设置为1（就绪状态）
- * 			,机器人上电成功后调用 get_servo_state(SOCKETFD socketFd)为3伺服运行状态
+ * @attention 调用该函数之前需要先调用set_servo_state(SOCKETFD
+ * socketFd,1)将伺服设置为1（就绪状态） ,机器人上电成功后调用
+ * get_servo_state(SOCKETFD socketFd)为3伺服运行状态
  * @return 机器人当前伺服状态servoStatus
  * 该函数只有伺服状态为1（就绪状态）时调用生效
  */
@@ -224,7 +255,8 @@ TL_API Result set_servo_poweron(SOCKETFD socketFd);
 
 /**
  * @brief 机器人下电
- * @attention 机器人下电成功后调用 get_servo_state(SOCKETFD socketFd)为1伺服就绪状态
+ * @attention 机器人下电成功后调用 get_servo_state(SOCKETFD
+ * socketFd)为1伺服就绪状态
  * @return 机器人当前伺服状态servoStatus
  * 该函数只有伺服状态为3（运行状态）时调用生效
  */
@@ -235,7 +267,9 @@ TL_API Result set_servo_poweroff(SOCKETFD socketFd);
  * 需要连接7000端口
   SOCKETFD fd7000 = connect_robot("192.168.1.13","7000");
  *
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_robot_state(SOCKETFD socketFd, RobotState param);
 
@@ -246,65 +280,95 @@ TL_API Result get_robot_state(SOCKETFD socketFd, RobotState param);
  *  - 1 暂停
  *  - 2 运行
  * @deprecated 请使用 RunState 枚举重载版本
- * @note 推荐使用枚举重载（RunState::STOP / RunState::PAUSE / RunState::RUNNING），避免魔法数字
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @note 推荐使用枚举重载（RunState::STOP / RunState::PAUSE /
+ * RunState::RUNNING），避免魔法数字
+ * @attention 队列运动全部执行完后状态为暂停（1），需调用
+ * queue_motion_set_status(false) 关闭队列模式后状态才变为停止（0）
+ * @note 控制器为事件循环异步处理，下发指令（如关闭队列模式）后立即查询本接口，
+ *       有几率读到尚未更新的旧状态，建议查询前延时 200ms 再获取
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_DEPRECATED("use RunState enum overload instead")
 TL_API Result get_robot_running_state(SOCKETFD socketFd, int& status);
 
 /**
  * @brief 获取程序运行状态（枚举重载）
- * @param status 输出：RunState::STOP（停止）/ RunState::PAUSE（暂停）/ RunState::RUNNING（运行）
+ * @param status 输出：RunState::STOP（停止）/ RunState::PAUSE（暂停）/
+ * RunState::RUNNING（运行）
+ * @attention 队列运动全部执行完后状态为暂停（PAUSE），需调用
+ * queue_motion_set_status(false) 关闭队列模式后状态才变为停止（STOP）
+ * @note 控制器为事件循环异步处理，下发指令（如关闭队列模式）后立即查询本接口，
+ *       有几率读到尚未更新的旧状态，建议查询前延时 200ms 再获取
  * @note 推荐使用本枚举重载版本，避免魔法数字
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_robot_running_state(SOCKETFD socketFd, RunState& status);
 
 /**
  * @brief 设置当前机器人DH参数
- * @param param 结构体参数（标准 DH 参数：alpha[6]/a[6]/theta[6]/d[6] + eulerAngle/mountingAngle）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @param param 结构体参数（标准 DH 参数：alpha[6]/a[6]/theta[6]/d[6] +
+ * eulerAngle/mountingAngle）
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result set_robot_dh_param(SOCKETFD socketFd, const RobotDHParam& param);
 
 /**
  * @brief 恢复机械臂默认DH参数
- * @param robotNum 机器人编号，0 为默认（单机器人模式）；多机器人模式下为机器人序号
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @param robotNum 机器人编号，0
+ * 为默认（单机器人模式）；多机器人模式下为机器人序号
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result restore_default_param_DH(SOCKETFD socketFd, int robotNum);
 
 /**
  * @brief 获取当前机器人DH参数
  * @param param 结构体参数
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_robot_dh_param(SOCKETFD socketFd, RobotDHParam& param);
 
 /**
  * @brief 查询碰撞防护等级
  * @param param 接收获取结果
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_collision_detection_param(SOCKETFD socketFd, CollisionPara& param);
 
 /**
  * @brief 获取碰撞安全参数（24.03+ 固件，CollisionSafeParam 版本）
  * @param param 输出：碰撞安全参数（结构体 CollisionSafeParam 详见 tl_types.h）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_collision(SOCKETFD socketFd, CollisionSafeParam& param);
 
 /**
  * @brief 设置碰撞安全参数（24.03+ 固件，CollisionSafeParam 版本）
  * @param param 碰撞安全参数（结构体 CollisionSafeParam 详见 tl_types.h）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result set_collision(SOCKETFD socketFd, const CollisionSafeParam& param);
 
 /**
  * @brief 获取电流环拖动示教灵敏度
- * @param sensitivity 输出参数，用于接收各关节电流环拖动示教灵敏度参数的向量，按实际轴数排列（6轴为 J1-J6，7轴为 J1-J7）
+ * @param sensitivity
+ * 输出参数，用于接收各关节电流环拖动示教灵敏度参数的向量，按实际轴数排列（6轴为
+ * J1-J6，7轴为 J1-J7）
  * @return Result 操作结果，SUCCESS表示成功，其他值表示失败
  */
 TL_API Result get_current_teach_sensitivity(SOCKETFD socketFd, std::vector<double>& sensitivity);
@@ -312,7 +376,9 @@ TL_API Result get_current_teach_sensitivity(SOCKETFD socketFd, std::vector<doubl
 /**
  * @brief 查询指定关节（轴）的软件版本号 (SDO 0x100A)
  * @param[out] version 输出参数，用于接收查询到的软件版本号字符串
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result query_joint_software_version(SOCKETFD socketFd, int axisNum, std::string& version);
 
@@ -320,7 +386,9 @@ TL_API Result query_joint_software_version(SOCKETFD socketFd, int axisNum, std::
  * @brief 获取指定关节在基坐标系中的位置
  * @param axisNum 指定查询的关节（1~N，N 为机器人轴数）
  * @param pos 输出：指定关节位置（容器长度 7）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_joint_position(SOCKETFD socketFd, int axisNum, std::vector<double>& pos);
 
@@ -331,23 +399,30 @@ TL_API Result get_joint_position(SOCKETFD socketFd, int axisNum, std::vector<dou
  * @param subindex 子索引
  * @param size 数据大小（8 / 16 / 32 位）
  * @param value 输出：读取到的数值
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result get_axis_sdo(SOCKETFD socketFd, int axisNum, unsigned int index, unsigned int subindex,
-                           unsigned int size, long long& value);
+TL_API Result get_axis_sdo(SOCKETFD socketFd, int axisNum, unsigned int index,
+                           unsigned int subindex, unsigned int size, long long& value);
 
 /**
  * @brief 获取机器人类型
  * @param type 输出：机器人类型
- *             5-NOTUSE  6-六轴串联多关节  7-四轴SCARA机器人  8-四轴堆垛机器人  9-四轴机器人  10-一轴机器人
- *             11-五轴机器人  12-六轴协作  13-二轴SCARA机器人  14-三轴SCARA机器人  15-三轴直角机器人
- *             16-三轴直角异形一机器人  17-七轴串联多关节机器人  18-四轴SCARA异型一机器人  19-四轴码垛丝杆机器人
- *             20-六轴喷涂机器人  21-四轴极坐标异形机器人  22-六轴异型二  23-delta机器人（四轴并联机器人）
- *             24-酒槽机型  25-四轴直角异型一机器人  26-五轴混动机器人  27-四轴SCARA异型2  28-六轴异型三
- *             29-宝信:三轴SCARA异型1  30-delta2D并联机器人模型  31-三轴串联异形一  32-五轴协作机器人
- *             33-四轴SCARA异型三机器人  34-六轴串联-CBBARA  35-高椅立柱旋转四轴  36-六自由度上平台Stewart并联机器人
- *             37-四轴YZCC机型  38-六轴ZCCABC机型  39-龙门焊接机型
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ *             5-NOTUSE  6-六轴串联多关节  7-四轴SCARA机器人  8-四轴堆垛机器人
+ * 9-四轴机器人 10-一轴机器人 11-五轴机器人  12-六轴协作  13-二轴SCARA机器人
+ * 14-三轴SCARA机器人 15-三轴直角机器人 16-三轴直角异形一机器人
+ * 17-七轴串联多关节机器人  18-四轴SCARA异型一机器人 19-四轴码垛丝杆机器人
+ * 20-六轴喷涂机器人  21-四轴极坐标异形机器人  22-六轴异型二
+ * 23-delta机器人（四轴并联机器人） 24-酒槽机型  25-四轴直角异型一机器人
+ * 26-五轴混动机器人 27-四轴SCARA异型2  28-六轴异型三 29-宝信:三轴SCARA异型1
+ * 30-delta2D并联机器人模型 31-三轴串联异形一  32-五轴协作机器人
+ * 33-四轴SCARA异型三机器人  34-六轴串联-CBBARA 35-高椅立柱旋转四轴
+ * 36-六自由度上平台Stewart并联机器人 37-四轴YZCC机型  38-六轴ZCCABC机型
+ * 39-龙门焊接机型
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  * @deprecated 请使用 RobotType 枚举重载版本
  * @note 推荐使用枚举重载（RobotType::SIX_AXIS_SERIAL 等），避免魔法数字
  */
@@ -371,45 +446,62 @@ TL_API Result get_robot_type(SOCKETFD socketFd, int& type);
  *  - RobotType::SEVEN_AXIS_SERIAL 七轴串联多关节
  *  - RobotType::SCARA_SPECIAL_1 SCARA 异形一
  *  - RobotType::FOUR_AXIS_PALLETIZING_LEAD 四轴码垛丝杆
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_robot_type(SOCKETFD socketFd, RobotType& type);
 
 /**
  * @brief 获取当前机器人编号（多机器人模式下用于区分机器人）
  * @param robot 输出：当前机器人编号（多机器人模式下的机器人序号）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_robot_switch(SOCKETFD socketFd, int& robot);
 
 /**
  * @brief 设置当前机器人指定关节参数
- * @param id 关节编号，取值范围 [1,6]（6轴，对应 J1~J6）；7轴为 [1,7]（对应 J1~J7）
+ * @param id 关节编号，取值范围 [1,6]（6轴，对应 J1~J6）；7轴为 [1,7]（对应
+ * J1~J7）
  * @param param 关节参数（结构体）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result set_robot_joint_param(SOCKETFD socketFd, int id, RobotJointParam& param);
 
 /**
  * @brief 获取指定关节参数
- * @param id 关节编号，取值范围 [1,6]（6轴，对应 J1~J6）；7轴为 [1,7]（对应 J1~J7）
+ * @param id 关节编号，取值范围 [1,6]（6轴，对应 J1~J6）；7轴为 [1,7]（对应
+ * J1~J7）
  * @param param 输出：关节参数（结构体）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_robot_joint_param(SOCKETFD socketFd, int id, RobotJointParam& param);
 
 /**
  * @brief 获取笛卡尔空间参数
  * @param param 输出：用于接收笛卡尔空间运动参数的结构体
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_cartesian_params(SOCKETFD socketFd, CartesianParam& param);
 
 /**
  * @brief 设置笛卡尔空间参数
- * @param param 笛卡尔空间运动参数结构体（最大线速度/线加速度/线减速度/角速度等，详见 CartesianParam）
- * @warning 危险操作：错误的参数限制可能导致轨迹规划异常或运动超限，确认参数来源后再调用
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @param param
+ * 笛卡尔空间运动参数结构体（最大线速度/线加速度/线减速度/角速度等，详见
+ * CartesianParam）
+ * @warning
+ * 危险操作：错误的参数限制可能导致轨迹规划异常或运动超限，确认参数来源后再调用
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result set_cartesian_params(SOCKETFD socketFd, const CartesianParam& param);
 
@@ -418,9 +510,55 @@ TL_API Result set_cartesian_params(SOCKETFD socketFd, const CartesianParam& para
  * 需要连接7000端口
   SOCKETFD fd7000 = connect_robot("192.168.1.13","7000");
  *
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result robot_state_callback(SOCKETFD socketFd, void (*function)(const char *));
+
+// ==================== 7000 端口同步状态查询 ====================
+
+/**
+ * @brief 同步查询当前各关节角度（ACS，7000 端口）
+ *
+ * 向 7000 端口发送一次性状态订阅请求（mode=0，控制器只回复一次），阻塞等待
+ * 回复帧并解析实时关节角。
+ *
+ * @param jointAngles [out] 实时关节角（度），元素数由控制器报文决定
+ *                   （6 轴 / 7 轴含外部轴）
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；
+ * -3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 回调注册槽已耗尽；
+ * -5=EXCEPTION 异常；-6=TIMEOUT 等待超时或回复帧中无目标字段
+ * @note 与流式订阅（robot_state_callback + get_robot_state）共用状态通道，
+ * 可在同一 7000 连接上并存；同步查询的回复帧由内部消费，不会转发给用户
+ * 注册的状态回调
+ * @warning 与流式订阅并发使用时，若控制器正在按 interval 持续推送状态帧，
+ * 同步查询返回的是等待窗口内的最近一帧实时数据
+ * @note 每条连接首次调用时占用一个内部回调注册槽（全 SDK 共 8 个，按 fd
+ * 分配，disconnect_robot 断开该连接后释放、供后续连接复用），仅在同时
+ * 占用 8 条以上连接时才会耗尽；建议固定复用少量连接
+ */
+TL_API Result get_current_joint_angle(SOCKETFD socketFd, std::vector<double>& jointAngles);
+
+/**
+ * @brief 同步查询当前笛卡尔位姿（MCS，7000 端口）
+ *
+ * 向 7000 端口发送一次性状态订阅请求（mode=0，控制器只回复一次），阻塞等待
+ * 回复帧并解析实时位姿。
+ *
+ * @param pose     [out] 实时位姿 [X,Y,Z,RX,RY,RZ]（X/Y/Z：mm，
+ *                 RX/RY/RZ：弧度，姿态角已由 SDK 归一），元素数由控制器报文决定
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；
+ * -3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 回调注册槽已耗尽；
+ * -5=EXCEPTION 异常；-6=TIMEOUT 等待超时或回复帧中无目标字段
+ * @warning 与流式订阅并发使用时，若控制器正在按 interval 持续推送状态帧，
+ * 同步查询返回的是等待窗口内的最近一帧实时数据
+ * @note 与流式订阅共用状态通道，可在同一 7000 连接上并存；同步查询的回复
+ * 帧由内部消费，不会转发给用户注册的状态回调
+ * @note 每条连接首次调用时占用一个内部回调注册槽（全 SDK 共 8 个），
+ * 详见 get_current_joint_angle
+ */
+TL_API Result get_current_cartesian_position(SOCKETFD socketFd, std::vector<double>& pose);
 
 // ==================== 运动 ====================
 
@@ -432,8 +570,11 @@ TL_API Result robot_state_callback(SOCKETFD socketFd, void (*function)(const cha
  * @param acc 加速度，参数范围：0<acc≤100
  * @param dec 减速度，参数范围：0<dec≤100
  * @param isSync 是否同步模式 true同步 false不同步
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
- * @attention 传递关节角时，超出 [-180°, 180°] 的数值会被截断到 ±180°；直角坐标（工具/用户坐标系）不受此限制
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @attention 传递关节角时，超出 [-180°, 180°] 的数值会被截断到
+ * ±180°；直角坐标（工具/用户坐标系）不受此限制
  */
 TL_API Result robot_movej(SOCKETFD socketFd, MoveCmd moveCmd);
 
@@ -445,12 +586,15 @@ TL_API Result robot_movej(SOCKETFD socketFd, MoveCmd moveCmd);
  * @param acc 加速度，参数范围：0<acc≤100
  * @param dec 减速度，参数范围：0<dec≤100
  * @param isSync 是否同步模式 true同步 false不同步
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result robot_movel(SOCKETFD socketFd, MoveCmd moveCmd);
 
 /**
- * @brief 设置当前模式的速度（旧版兼容：类型=0 速度档位, segment/micro_dot 默认 0）
+ * @brief 设置当前模式的速度（旧版兼容：类型=0 速度档位, segment/micro_dot 默认
+ * 0）
  * @param speed 速度百分比, 0<speed≤100（仅 type=0 生效）
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT 超时
  */
@@ -467,17 +611,23 @@ TL_API Result get_speed(SOCKETFD socketFd, int& speed);
  * @brief 设置机器人当前模式
  * @param mode 模式 0：示教 1：远程 2：运行
  * @deprecated 请使用 RobotMode 枚举重载版本
- * @note 推荐使用枚举重载（RobotMode::TEACH / RobotMode::REMOTE / RobotMode::RUN），避免魔法数字
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @note 推荐使用枚举重载（RobotMode::TEACH / RobotMode::REMOTE /
+ * RobotMode::RUN），避免魔法数字
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_DEPRECATED("use RobotMode enum overload instead")
 TL_API Result set_current_mode(SOCKETFD socketFd, int mode);
 
 /**
  * @brief 设置机器人当前模式（枚举重载）
- * @param mode RobotMode::TEACH（示教）/ RobotMode::REMOTE（远程）/ RobotMode::RUN（运行）
+ * @param mode RobotMode::TEACH（示教）/ RobotMode::REMOTE（远程）/
+ * RobotMode::RUN（运行）
  * @note 推荐使用本枚举重载版本，避免魔法数字
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result set_current_mode(SOCKETFD socketFd, RobotMode mode);
 
@@ -485,17 +635,23 @@ TL_API Result set_current_mode(SOCKETFD socketFd, RobotMode mode);
  * @brief 获取机器人当前模式
  * @param mode 当前模式 0：示教 1：远程 2：运行
  * @deprecated 请使用 RobotMode 枚举重载版本
- * @note 推荐使用枚举重载（RobotMode::TEACH / RobotMode::REMOTE / RobotMode::RUN），避免魔法数字
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @note 推荐使用枚举重载（RobotMode::TEACH / RobotMode::REMOTE /
+ * RobotMode::RUN），避免魔法数字
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_DEPRECATED("use RobotMode enum overload instead")
 TL_API Result get_current_mode(SOCKETFD socketFd, int& mode);
 
 /**
  * @brief 获取机器人当前模式（枚举重载）
- * @param mode 输出：RobotMode::TEACH（示教）/ RobotMode::REMOTE（远程）/ RobotMode::RUN（运行）
+ * @param mode 输出：RobotMode::TEACH（示教）/ RobotMode::REMOTE（远程）/
+ * RobotMode::RUN（运行）
  * @note 推荐使用本枚举重载版本，避免魔法数字
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_current_mode(SOCKETFD socketFd, RobotMode& mode);
 
@@ -503,11 +659,15 @@ TL_API Result get_current_mode(SOCKETFD socketFd, RobotMode& mode);
  * @brief 获取机器人当前位置
  * @param coord 入参 指定需要查询的坐标的坐标系
  * @param pos 出参 存储返回结果点位的容器
- * @note 单位约定：Coord::JOINT 返回关节角（度）；Coord::BASE / Coord::TOOL / Coord::USER
- *       返回 [X,Y,Z,RX,RY,RZ]（mm, rad），姿态角统一为弧度，与运动指令的弧度契约一致
+ * @note 单位约定：Coord::JOINT 返回关节角（度）；Coord::BASE / Coord::TOOL /
+ * Coord::USER 返回 [X,Y,Z,RX,RY,RZ]（mm,
+ * rad），姿态角统一为弧度，与运动指令的弧度契约一致
  * @deprecated 请使用 Coord 枚举重载版本
- * @note 推荐使用枚举重载（Coord::JOINT / Coord::BASE / Coord::TOOL / Coord::USER），避免魔法数字
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @note 推荐使用枚举重载（Coord::JOINT / Coord::BASE / Coord::TOOL /
+ * Coord::USER），避免魔法数字
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_DEPRECATED("use Coord enum overload instead")
 TL_API Result get_current_position(SOCKETFD socketFd, int coord, std::vector<double>& pos);
@@ -516,9 +676,12 @@ TL_API Result get_current_position(SOCKETFD socketFd, int coord, std::vector<dou
  * @brief 获取机器人当前位置（枚举坐标系重载）
  * @param coord 坐标系 Coord::JOINT / Coord::BASE / Coord::TOOL / Coord::USER
  * @param pos 出参 存储返回结果点位的容器
- * @note 单位约定：Coord::JOINT 返回关节角（度）；Coord::BASE / Coord::TOOL / Coord::USER
- *       返回 [X,Y,Z,RX,RY,RZ]（mm, rad），姿态角统一为弧度，与运动指令的弧度契约一致
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @note 单位约定：Coord::JOINT 返回关节角（度）；Coord::BASE / Coord::TOOL /
+ * Coord::USER 返回 [X,Y,Z,RX,RY,RZ]（mm,
+ * rad），姿态角统一为弧度，与运动指令的弧度契约一致
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_current_position(SOCKETFD socketFd, Coord coord, std::vector<double>& pos);
 
@@ -526,16 +689,22 @@ TL_API Result get_current_position(SOCKETFD socketFd, Coord coord, std::vector<d
  * @brief 获取机器人当前坐标系
  * @param coord 坐标系 0：关节 1：基坐标 2：工具 3：用户
  * @deprecated 请使用 Coord 枚举重载版本
- * @note 推荐使用枚举重载（Coord::JOINT / Coord::BASE / Coord::TOOL / Coord::USER），避免魔法数字
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @note 推荐使用枚举重载（Coord::JOINT / Coord::BASE / Coord::TOOL /
+ * Coord::USER），避免魔法数字
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_DEPRECATED("use Coord enum overload instead")
 TL_API Result get_current_coord(SOCKETFD socketFd, int& coord);
 
 /**
  * @brief 获取机器人当前坐标系（枚举重载）
- * @param coord 出参 坐标系 Coord::JOINT / Coord::BASE / Coord::TOOL / Coord::USER
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @param coord 出参 坐标系 Coord::JOINT / Coord::BASE / Coord::TOOL /
+ * Coord::USER
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_current_coord(SOCKETFD socketFd, Coord& coord);
 
@@ -543,8 +712,11 @@ TL_API Result get_current_coord(SOCKETFD socketFd, Coord& coord);
  * @brief 设置机器人当前坐标系
  * @param coord 坐标系 0：关节 1：基坐标 2：工具 3：用户
  * @deprecated 请使用 Coord 枚举重载版本
- * @note 推荐使用枚举重载（Coord::JOINT / Coord::BASE / Coord::TOOL / Coord::USER），避免魔法数字
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @note 推荐使用枚举重载（Coord::JOINT / Coord::BASE / Coord::TOOL /
+ * Coord::USER），避免魔法数字
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_DEPRECATED("use Coord enum overload instead")
 TL_API Result set_current_coord(SOCKETFD socketFd, int coord);
@@ -552,24 +724,31 @@ TL_API Result set_current_coord(SOCKETFD socketFd, int coord);
 /**
  * @brief 设置机器人当前坐标系（枚举重载）
  * @param coord 坐标系 Coord::JOINT / Coord::BASE / Coord::TOOL / Coord::USER
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result set_current_coord(SOCKETFD socketFd, Coord coord);
 
 /**
  * @brief 查询全局GP点位
  * @param posName 全局位置名 例如 "GP0001"
- * @param pos 全局点位数组 长度14 前7位为点位的坐标、姿态等信息，后7位为机器人位置
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @param pos 全局点位数组 长度14
+ * 前7位为点位的坐标、姿态等信息，后7位为机器人位置
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_global_position(SOCKETFD socketFd, std::string posName, std::vector<double>& pos);
 
 /**
  * @brief 设置全局GP点位
  * @param posName 需要修改全局位置名 例如 "GP0001"
- * @param pos[14] [0]坐标系 0：关节 1：基坐标 2：工具 3：用户  [1]:0 角度制 1弧度制 [2]形态 [3]工具手坐标序号
- * [4]用户坐标序号 [5][6] 备用 [7-13] 点位信息
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @param pos[14] [0]坐标系 0：关节 1：基坐标 2：工具 3：用户  [1]:0 角度制
+ * 1弧度制 [2]形态 [3]工具手坐标序号 [4]用户坐标序号 [5][6] 备用 [7-13] 点位信息
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result set_global_position(SOCKETFD socketFd, std::string posName, std::vector<double> pos);
 
@@ -577,39 +756,53 @@ TL_API Result set_global_position(SOCKETFD socketFd, std::string posName, std::v
  * @brief 开始点动
  * @param axis 轴号
  * @param dir 方向
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result robot_start_jogging(SOCKETFD socketFd, int axis, bool dir);
 
 /**
  * @brief 停止点动
  * @param axis 轴号
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result robot_stop_jogging(SOCKETFD socketFd, int axis);
 
 /**
  * @brief 设置电流环拖动示教灵敏度
- * @param sensitivity 包含各关节电流环拖动示教灵敏度参数的向量，按实际轴数排列（6轴为 J1-J6，7轴为 J1-J7），范围应在0-3之间
+ * @param sensitivity
+ * 包含各关节电流环拖动示教灵敏度参数的向量，按实际轴数排列（6轴为 J1-J6，7轴为
+ * J1-J7），范围应在0-3之间
  * @return Result 操作结果，SUCCESS表示成功，其他值表示失败
  */
-TL_API Result set_current_teach_sensitivity(SOCKETFD socketFd, const std::vector<double>& sensitivity);
+TL_API Result set_current_teach_sensitivity(SOCKETFD socketFd,
+                                            const std::vector<double>& sensitivity);
 
 /**
  * @brief 设置拖拽示教的拖拽方式
- * @param mode 拖拽模式  0-无  1-3D鼠标  2-力矩模式 3-位置 (22.07版本没有位置模式)
+ * @param mode 拖拽模式  0-无  1-3D鼠标  2-力矩模式 3-位置
+ * (22.07版本没有位置模式)
  * @deprecated 请使用 DragMode 枚举重载版本
- * @note 推荐使用枚举重载（DragMode::NONE / DragMode::MOUSE_3D / DragMode::TORQUE / DragMode::POSITION），避免魔法数字
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @note 推荐使用枚举重载（DragMode::NONE / DragMode::MOUSE_3D /
+ * DragMode::TORQUE / DragMode::POSITION），避免魔法数字
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_DEPRECATED("use DragMode enum overload instead")
 TL_API Result set_darg_mode(SOCKETFD socketFd, int mode);
 
 /**
  * @brief 设置拖拽示教的拖拽方式（枚举重载）
- * @param mode DragMode::NONE（无）/ DragMode::MOUSE_3D（3D鼠标）/ DragMode::TORQUE（力矩模式）/ DragMode::POSITION（位置模式）
+ * @param mode DragMode::NONE（无）/ DragMode::MOUSE_3D（3D鼠标）/
+ * DragMode::TORQUE（力矩模式）/ DragMode::POSITION（位置模式）
  * @note 推荐使用本枚举重载版本，避免魔法数字
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result set_darg_mode(SOCKETFD socketFd, DragMode mode);
 
@@ -618,7 +811,9 @@ TL_API Result set_darg_mode(SOCKETFD socketFd, DragMode mode);
  * @param type 0 点动 1 拖拽
  * @deprecated 请使用 TeachType 枚举重载版本
  * @note 推荐使用枚举重载（TeachType::JOG / TeachType::DRAG），避免魔法数字
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_DEPRECATED("use TeachType enum overload instead")
 TL_API Result set_teach_type(SOCKETFD socketFd, int type);
@@ -627,7 +822,9 @@ TL_API Result set_teach_type(SOCKETFD socketFd, int type);
  * @brief 设置示教模式类型（枚举重载）
  * @param type TeachType::JOG（点动）/ TeachType::DRAG（拖拽）
  * @note 推荐使用本枚举重载版本，避免魔法数字
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result set_teach_type(SOCKETFD socketFd, TeachType type);
 
@@ -636,7 +833,9 @@ TL_API Result set_teach_type(SOCKETFD socketFd, TeachType type);
  * @param type 输出：0 点动 1 拖拽
  * @deprecated 请使用 TeachType 枚举重载版本
  * @note 推荐使用枚举重载（TeachType::JOG / TeachType::DRAG），避免魔法数字
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_DEPRECATED("use TeachType enum overload instead")
 TL_API Result get_teach_type(SOCKETFD socketFd, int& type);
@@ -645,73 +844,98 @@ TL_API Result get_teach_type(SOCKETFD socketFd, int& type);
  * @brief 获取示教模式类型（枚举重载）
  * @param type 输出：TeachType::JOG（点动）/ TeachType::DRAG（拖拽）
  * @note 推荐使用本枚举重载版本，避免魔法数字
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_teach_type(SOCKETFD socketFd, TeachType& type);
 
 /**
  * @brief 回到设定的零点
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result robot_go_home(SOCKETFD socketFd);
 
 /**
  * @brief 回到控制器预设的复位点
  * @note 若控制器未配置复位点，接口可能返回错误码
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result robot_go_to_reset_position(SOCKETFD socketFd);
 
 // ==================== 坐标变换/标定 ====================
 
 /**
- * @brief 四元数转欧拉角（控制器端计算）
- * @param quat_vector 输入：四元数向量，4 元素 [w, x, y, z]（w 在首位；须为单位四元数）
+ * @brief 四元数转欧拉角（由控制器计算）
+ * @param quat_vector 输入：四元数向量，4 元素 [w, x, y, z]（w
+ * 在首位；须为单位四元数）
  * @param rpy_res 输出：欧拉角向量，3 元素 [rx, ry, rz]（弧度）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result get_quat2rpy(SOCKETFD socketFd, std::vector<double> quat_vector, std::vector<double>& rpy_res);
+TL_API Result get_quat2rpy(SOCKETFD socketFd, std::vector<double> quat_vector,
+                           std::vector<double>& rpy_res);
 
 /**
- * @brief 欧拉角转四元数（控制器端计算）
+ * @brief 欧拉角转四元数（由控制器计算）
  * @param rpy_vector 输入：欧拉角向量，3 元素 [rx, ry, rz]（弧度）
  * @param quat_res 输出：四元数向量，4 元素 [w, x, y, z]（w 在首位）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result get_rpy2quat(SOCKETFD socketFd, std::vector<double> rpy_vector, std::vector<double>& quat_res);
+TL_API Result get_rpy2quat(SOCKETFD socketFd, std::vector<double> rpy_vector,
+                           std::vector<double>& quat_res);
 
 /**
  * @brief 旋转矩阵转位姿
  * @param r_matrix 被转换的旋转矩阵，vector长度 = 9（行主序）
  * @param tr_res 接收位姿矩阵结果，vector长度 = 16（行主序）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result get_r2tr(SOCKETFD socketFd, std::vector<double> r_matrix, std::vector<double>& tr_res);
+TL_API Result get_r2tr(SOCKETFD socketFd, std::vector<double> r_matrix,
+                       std::vector<double>& tr_res);
 
 /**
- * @brief 欧拉角转旋转矩阵（控制器端计算）
+ * @brief 欧拉角转旋转矩阵（由控制器计算）
  * @param rpy_vector 输入：欧拉角向量，3 元素 [rx, ry, rz]（弧度）
  * @param r_res 输出：旋转矩阵 9 元素，行主序
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result get_rpy2r(SOCKETFD socketFd, std::vector<double> rpy_vector, std::vector<double>& r_res);
+TL_API Result get_rpy2r(SOCKETFD socketFd, std::vector<double> rpy_vector,
+                        std::vector<double>& r_res);
 
 /**
  * @brief 位姿转旋转矩阵
  * @param tr_matrix 被转换的位姿矩阵，vector长度 = 16（行主序）
  * @param r_res 接收旋转矩阵结果，vector长度 = 9（行主序）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result get_tr2r(SOCKETFD socketFd, std::vector<double> tr_matrix, std::vector<double>& r_res);
+TL_API Result get_tr2r(SOCKETFD socketFd, std::vector<double> tr_matrix,
+                       std::vector<double>& r_res);
 
 // ---- 本地坐标变换（无需连接控制器，纯数学计算）----
 
 /**
  * @brief 四元数转欧拉角（本地实现）
- * @param quat_vector 输入：四元数向量，4 元素 [w, x, y, z]（w 在首位；不校验单位性）
+ * @param quat_vector 输入：四元数向量，4 元素 [w, x, y, z]（w
+ * 在首位；不校验单位性）
  * @param rpy_res 输出：欧拉角向量，3 元素 [rx, ry, rz]（弧度）
- * @return 0=SUCCESS 成功；-3=PARAM_ERR 参数错误（长度不符或含非有限值；输出向量被清空）
- * @note 旋转序 XYZ 外旋；本接口纯本地计算，不依赖控制器连接
+ * @return 0=SUCCESS 成功；-3=PARAM_ERR
+ * 参数错误（长度不符或含非有限值；输出向量被清空）
+ * @note 旋转序与控制器位姿一致（R =
+ * Rx·Ry·Rz）；本接口纯本地计算，不依赖控制器连接
  */
 TL_API Result quat2rpy(const std::vector<double>& quat_vector, std::vector<double>& rpy_res);
 
@@ -719,8 +943,10 @@ TL_API Result quat2rpy(const std::vector<double>& quat_vector, std::vector<doubl
  * @brief 欧拉角转四元数（本地实现）
  * @param rpy_vector 输入：欧拉角向量，3 元素 [rx, ry, rz]（弧度）
  * @param quat_res 输出：四元数向量，4 元素 [w, x, y, z]（w 在首位，w >= 0）
- * @return 0=SUCCESS 成功；-3=PARAM_ERR 参数错误（长度不符或含非有限值；输出向量被清空）
- * @note 旋转序 XYZ 外旋；本接口纯本地计算，不依赖控制器连接
+ * @return 0=SUCCESS 成功；-3=PARAM_ERR
+ * 参数错误（长度不符或含非有限值；输出向量被清空）
+ * @note 旋转序与控制器位姿一致（R =
+ * Rx·Ry·Rz）；本接口纯本地计算，不依赖控制器连接
  */
 TL_API Result rpy2quat(const std::vector<double>& rpy_vector, std::vector<double>& quat_res);
 
@@ -728,7 +954,8 @@ TL_API Result rpy2quat(const std::vector<double>& rpy_vector, std::vector<double
  * @brief 旋转矩阵转位姿矩阵（本地实现）
  * @param r_matrix 输入：旋转矩阵 9 元素，行主序
  * @param tr_res 输出：位姿矩阵 16 元素，行主序 [R|0; 0 0 0 1]（平移分量置 0）
- * @return 0=SUCCESS 成功；-3=PARAM_ERR 参数错误（长度不符或含非有限值；输出向量被清空）
+ * @return 0=SUCCESS 成功；-3=PARAM_ERR
+ * 参数错误（长度不符或含非有限值；输出向量被清空）
  * @note 本接口纯本地计算，不依赖控制器连接
  */
 TL_API Result r2tr(const std::vector<double>& r_matrix, std::vector<double>& tr_res);
@@ -737,8 +964,10 @@ TL_API Result r2tr(const std::vector<double>& r_matrix, std::vector<double>& tr_
  * @brief 欧拉角转旋转矩阵（本地实现）
  * @param rpy_vector 输入：欧拉角向量，3 元素 [rx, ry, rz]（弧度）
  * @param r_res 输出：旋转矩阵 9 元素，行主序
- * @return 0=SUCCESS 成功；-3=PARAM_ERR 参数错误（长度不符或含非有限值；输出向量被清空）
- * @note 旋转序 XYZ 外旋：R = Rz(rz) * Ry(ry) * Rx(rx)；本接口纯本地计算，不依赖控制器连接
+ * @return 0=SUCCESS 成功；-3=PARAM_ERR
+ * 参数错误（长度不符或含非有限值；输出向量被清空）
+ * @note 旋转序与控制器位姿一致：R = Rx(rx) * Ry(ry) *
+ * Rz(rz)；本接口纯本地计算，不依赖控制器连接
  */
 TL_API Result rpy2r(const std::vector<double>& rpy_vector, std::vector<double>& r_res);
 
@@ -746,7 +975,8 @@ TL_API Result rpy2r(const std::vector<double>& rpy_vector, std::vector<double>& 
  * @brief 位姿矩阵转旋转矩阵（本地实现）
  * @param tr_matrix 输入：位姿矩阵 16 元素，行主序 [R|t; 0 0 0 1]
  * @param r_res 输出：旋转矩阵 9 元素，行主序（取左上 3x3）
- * @return 0=SUCCESS 成功；-3=PARAM_ERR 参数错误（长度不符或含非有限值；输出向量被清空）
+ * @return 0=SUCCESS 成功；-3=PARAM_ERR
+ * 参数错误（长度不符或含非有限值；输出向量被清空）
  * @note 本接口纯本地计算，不依赖控制器连接
  */
 TL_API Result tr2r(const std::vector<double>& tr_matrix, std::vector<double>& r_res);
@@ -755,55 +985,72 @@ TL_API Result tr2r(const std::vector<double>& tr_matrix, std::vector<double>& r_
  * @brief 旋转矩阵转欧拉角（本地实现）
  * @param r_matrix 输入：旋转矩阵 9 元素，行主序
  * @param rpy_res 输出：欧拉角向量，3 元素 [rx, ry, rz]（弧度）
- * @return 0=SUCCESS 成功；-3=PARAM_ERR 参数错误（长度不符或含非有限值；输出向量被清空）
- * @note 旋转序 XYZ 外旋，与 rpy2r 互逆（|ry| = π/2 万向节锁处约定 rx/rz，分解保持旋转）；
+ * @return 0=SUCCESS 成功；-3=PARAM_ERR
+ * 参数错误（长度不符或含非有限值；输出向量被清空）
+ * @note 旋转序与控制器位姿一致（R = Rx·Ry·Rz），与 rpy2r 互逆
+ *       （|ry| = π/2 万向节锁处约定 rx/rz，分解保持旋转）；
  *       本接口纯本地计算，不依赖控制器连接
  */
 TL_API Result r2rpy(const std::vector<double>& r_matrix, std::vector<double>& rpy_res);
 
 /**
  * @brief 位姿坐标转齐次变换矩阵（本地实现）
- * @param pose_vector 输入：位姿坐标 6 元素 [x, y, z, rx, ry, rz]（位移 + 欧拉角，弧度）
+ * @param pose_vector 输入：位姿坐标 6 元素 [x, y, z, rx, ry, rz]（位移 +
+ * 欧拉角，弧度）
  * @param tr_res 输出：齐次变换矩阵 16 元素，行主序 [R|t; 0 0 0 1]
- * @return 0=SUCCESS 成功；-3=PARAM_ERR 参数错误（长度不符或含非有限值；输出向量被清空）
- * @note 旋转序 XYZ 外旋：R = Rz(rz) * Ry(ry) * Rx(rx)；本接口纯本地计算，不依赖控制器连接
+ * @return 0=SUCCESS 成功；-3=PARAM_ERR
+ * 参数错误（长度不符或含非有限值；输出向量被清空）
+ * @note 旋转序与控制器位姿一致：R = Rx(rx) * Ry(ry) *
+ * Rz(rz)；本接口纯本地计算，不依赖控制器连接
  */
 TL_API Result pose2tr(const std::vector<double>& pose_vector, std::vector<double>& tr_res);
 
 /**
  * @brief 齐次变换矩阵转位姿坐标（本地实现）
  * @param tr_matrix 输入：齐次变换矩阵 16 元素，行主序 [R|t; 0 0 0 1]
- * @param pose_res 输出：位姿坐标 6 元素 [x, y, z, rx, ry, rz]（平移 + 欧拉角，弧度）
- * @return 0=SUCCESS 成功；-3=PARAM_ERR 参数错误（长度不符或含非有限值；输出向量被清空）
- * @note 旋转序 XYZ 外旋，与 pose2tr 互逆（万向节锁约定同 r2rpy）；本接口纯本地计算
+ * @param pose_res 输出：位姿坐标 6 元素 [x, y, z, rx, ry, rz]（平移 +
+ * 欧拉角，弧度）
+ * @return 0=SUCCESS 成功；-3=PARAM_ERR
+ * 参数错误（长度不符或含非有限值；输出向量被清空）
+ * @note 旋转序与控制器位姿一致（R = Rx·Ry·Rz），与 pose2tr 互逆
+ *       （万向节锁约定同 r2rpy）；本接口纯本地计算
  */
 TL_API Result tr2pose(const std::vector<double>& tr_matrix, std::vector<double>& pose_res);
 /**
  * @brief 获取当前使用的工具手编号
  * @param toolNum 工具手编号
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_tool_hand_number(SOCKETFD socketFd, int& toolNum);
 
 /**
  * @brief 设置工具手编号
  * @param toolNum 工具手编号
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result set_tool_hand_number(SOCKETFD socketFd, int toolNum);
 
 /**
  * @brief 设置工具手参数
  * @param toolNum 工具手编号
- * @param param 要修改的参数 长度6 X轴偏移量 Y轴偏移量 Z轴偏移量 绕A轴旋转量 绕B轴旋转量 绕C轴旋转量
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @param param 要修改的参数 长度6 X轴偏移量 Y轴偏移量 Z轴偏移量 绕A轴旋转量
+ * 绕B轴旋转量 绕C轴旋转量
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result set_tool_hand_param(SOCKETFD socketFd, int toolNum, ToolParam param);
 
 /**
  * @brief 获取当前工具手参数
  * @param toolNum 工具手编号
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_tool_hand_param(SOCKETFD socketFd, int toolNum, ToolParam& param);
 
@@ -813,7 +1060,8 @@ TL_API Result get_tool_hand_param(SOCKETFD socketFd, int toolNum, ToolParam& par
  * @param[out] range_param 工具坐标范围参数结构体
  * @return Result 操作结果
  */
-TL_API Result get_tool_coordinate_range(SOCKETFD socketFd, int tool_number, ToolCoordinateRange& range_param);
+TL_API Result get_tool_coordinate_range(SOCKETFD socketFd, int tool_number,
+                                        ToolCoordinateRange& range_param);
 
 /**
  * @brief 设置工具坐标范围参数
@@ -821,12 +1069,15 @@ TL_API Result get_tool_coordinate_range(SOCKETFD socketFd, int tool_number, Tool
  * @param range_param 工具坐标范围参数结构体
  * @return Result 操作结果
  */
-TL_API Result set_tool_coordinate_range(SOCKETFD socketFd, int tool_number, const ToolCoordinateRange& range_param);
+TL_API Result set_tool_coordinate_range(SOCKETFD socketFd, int tool_number,
+                                        const ToolCoordinateRange& range_param);
 
 /**
  * @brief 设置用户坐标编号
  * @param userNum 用户坐标编号
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result set_user_coord_number(SOCKETFD socketFd, int userNum);
 
@@ -835,7 +1086,9 @@ TL_API Result set_user_coord_number(SOCKETFD socketFd, int userNum);
  * @deprecated 请使用 UserCoordParam 重载版本
  * @param userNum 用户坐标编号
  * @param pos 坐标数据
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_DEPRECATED("use UserCoordParam overload instead")
 TL_API Result set_user_coordinate_data(SOCKETFD socketFd, int userNum, std::vector<double> pos);
@@ -844,20 +1097,26 @@ TL_API Result set_user_coordinate_data(SOCKETFD socketFd, int userNum, std::vect
  * @brief 标定用户坐标（新版：UserCoordParam 结构体，含类型/联动）
  * @param userNum 用户坐标编号
  * @param param 用户坐标参数结构体
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result set_user_coordinate_data(SOCKETFD socketFd, int userNum, const UserCoordParam& param);
 
 /**
  * @brief 设置笛卡尔参数为默认值
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result set_default_cartesian_params(SOCKETFD socketFd);
 
 /**
  * @brief 计算坐标
  * @param userNumber 用户坐标编号
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result calculate_user_coordinate(SOCKETFD socketFd, int userNumber);
 
@@ -865,7 +1124,9 @@ TL_API Result calculate_user_coordinate(SOCKETFD socketFd, int userNumber);
  * @brief 标定OXY
  * @param userNum 用户坐标编号
  * @param xyo 值 'X' 'Y' 'O'
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result calibration_oxy(SOCKETFD socketFd, int userNum, std::string xyo);
 
@@ -874,7 +1135,9 @@ TL_API Result calibration_oxy(SOCKETFD socketFd, int userNum, std::string xyo);
  * @param robotNum 机器人编号（多机器人模式下用于区分机器人）
  * @param userNum 用户坐标编号
  * @param xyo 值 'X' 'Y' 'O'
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result calibration_oxy_robot(SOCKETFD socketFd, int robotNum, int userNum, std::string xyo);
 
@@ -891,14 +1154,19 @@ TL_API Result calibration_oxy_robot(SOCKETFD socketFd, int robotNum, int userNum
  * @param convert_state true-逆解成功, false-逆解失败.
  * @param form 形态
  * @param reference_pos 参考点
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  * @deprecated 请使用 Coord 枚举重载版本
- * @note 推荐使用枚举重载（Coord::JOINT / Coord::BASE / Coord::TOOL / Coord::USER），避免魔法数字
+ * @note 推荐使用枚举重载（Coord::JOINT / Coord::BASE / Coord::TOOL /
+ * Coord::USER），避免魔法数字
  */
 TL_DEPRECATED("use Coord enum overload instead")
-TL_API Result get_origin_coord_to_target_coord(SOCKETFD socketFd, int originCoord, std::vector<double> originPos,
-                                        int targetCoord, std::vector<double>& targetPos, bool& convert_state,
-                                        int form = 0, const std::vector<double>& reference_pos = {});
+TL_API Result get_origin_coord_to_target_coord(SOCKETFD socketFd, int originCoord,
+                                               std::vector<double> originPos, int targetCoord,
+                                               std::vector<double>& targetPos, bool& convert_state,
+                                               int form = 0,
+                                               const std::vector<double>& reference_pos = {});
 
 /**
  * @brief 原坐标值转换为其他坐标值（无 convert_state 简化版）
@@ -908,50 +1176,138 @@ TL_API Result get_origin_coord_to_target_coord(SOCKETFD socketFd, int originCoor
  * @param targetPos 转换后的坐标值（点位数组）
  * @param form 形态（默认 0，与控制器协议对齐）
  * @param reference_pos 参考点（默认空）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误或逆解失败；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
- * @note 不带 convert_state 的简化版：逆解失败（convert_state=false）时统一返回 PARAM_ERR，
- *       调用方只需检查返回值；需要区分"转换执行成功但逆解失败"时请使用带 convert_state 的重载。
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常（含逆解失败，如奇异点/不可达）；-6=TIMEOUT 超时
+ * @note 逆解结果反映在返回值，调用方只需检查返回值。
  * @deprecated 请使用 Coord 枚举重载版本
- * @note 推荐使用枚举重载（Coord::JOINT / Coord::BASE / Coord::TOOL / Coord::USER），避免魔法数字
+ * @note 推荐使用枚举重载（Coord::JOINT / Coord::BASE / Coord::TOOL /
+ * Coord::USER），避免魔法数字
  */
 TL_DEPRECATED("use Coord enum overload instead")
-TL_API Result get_origin_coord_to_target_coord(SOCKETFD socketFd, int originCoord, std::vector<double> originPos,
-                                        int targetCoord, std::vector<double>& targetPos,
-                                        int form = 0, const std::vector<double>& reference_pos = {});
+TL_API Result get_origin_coord_to_target_coord(SOCKETFD socketFd, int originCoord,
+                                               std::vector<double> originPos, int targetCoord,
+                                               std::vector<double>& targetPos, int form = 0,
+                                               const std::vector<double>& reference_pos = {});
 
 /**
- * @brief 原坐标值转换为其他坐标值（枚举坐标系重载）
- * @param originCoord 原坐标系 Coord::JOINT / Coord::BASE / Coord::TOOL / Coord::USER
+ * @brief 原坐标值转换为其他坐标值（枚举坐标系重载，带 convert_state 出参）
+ * @param originCoord 原坐标系 Coord::JOINT / Coord::BASE / Coord::TOOL /
+ * Coord::USER
  * @param originPos 要进行转换的坐标值 [0,1,2,3,4,5,6]，取值范围同 int 版本
- * @param targetCoord 目标坐标系 Coord::JOINT / Coord::BASE / Coord::TOOL / Coord::USER
+ * @param targetCoord 目标坐标系 Coord::JOINT / Coord::BASE / Coord::TOOL /
+ * Coord::USER
  * @param targetPos 转换后的坐标值（点位数组）
  * @param convert_state true-逆解成功, false-逆解失败.
  * @param form 形态
  * @param reference_pos 参考点
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
- * @note 推荐使用枚举重载（Coord::JOINT / Coord::BASE / Coord::TOOL / Coord::USER），避免魔法数字
- * @note 控制器协议输出姿态角为度制，tl 封装层对外统一弧度（仅输出侧归一），入参按弧度解释；关节坐标保持度制
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @note 控制器协议输出姿态角为度制，SDK
+ * 对外统一弧度（仅输出侧归一），入参按弧度解释；关节坐标保持度制
+ * @deprecated convert_state 出参冗余，逆解结果已反映在返回值，
+ *            请使用无 convert_state 的枚举重载。
  */
-TL_API Result get_origin_coord_to_target_coord(SOCKETFD socketFd, Coord originCoord, std::vector<double> originPos,
-                                        Coord targetCoord, std::vector<double>& targetPos, bool& convert_state,
-                                        int form = 0, const std::vector<double>& reference_pos = {});
+TL_DEPRECATED(
+    "convert_state 出参冗余：逆解结果已反映在返回值，use overload without "
+    "convert_state")
+TL_API Result get_origin_coord_to_target_coord(SOCKETFD socketFd, Coord originCoord,
+                                               std::vector<double> originPos, Coord targetCoord,
+                                               std::vector<double>& targetPos, bool& convert_state,
+                                               int form = 0,
+                                               const std::vector<double>& reference_pos = {});
 
 /**
  * @brief 原坐标值转换为其他坐标值（枚举坐标系，无 convert_state 简化版）
- * @param originCoord 原坐标系 Coord::JOINT / Coord::BASE / Coord::TOOL / Coord::USER
+ * @param originCoord 原坐标系 Coord::JOINT / Coord::BASE / Coord::TOOL /
+ * Coord::USER
  * @param originPos 要进行转换的坐标值 [0,1,2,3,4,5,6]
- * @param targetCoord 目标坐标系 Coord::JOINT / Coord::BASE / Coord::TOOL / Coord::USER
+ * @param targetCoord 目标坐标系 Coord::JOINT / Coord::BASE / Coord::TOOL /
+ * Coord::USER
  * @param targetPos 转换后的坐标值（点位数组）
  * @param form 形态（默认 0，与控制器协议对齐）
  * @param reference_pos 参考点（默认空）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误或逆解失败；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
- * @note 不带 convert_state 的简化版：逆解失败（convert_state=false）时统一返回 PARAM_ERR，
- *       调用方只需检查返回值；需要区分"转换执行成功但逆解失败"时请使用带 convert_state 的重载。
- * @note 推荐使用枚举重载（Coord::JOINT / Coord::BASE / Coord::TOOL / Coord::USER），避免魔法数字
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常（含逆解失败，如奇异点/不可达）；-6=TIMEOUT 超时
+ * @note 逆解结果反映在返回值，调用方只需检查返回值。
+ * @note 推荐使用枚举重载（Coord::JOINT / Coord::BASE / Coord::TOOL /
+ * Coord::USER），避免魔法数字
+ * @note 工具坐标系（TOOL）转换语义与控制器一致（SDK 不做本地变换）；
+ *       需要"以当前 TCP 为原点"的工具坐标系位姿互转，请使用
+ * get_forward_kinematics / get_inverse_kinematics / convert_cartesian_coord。
  */
-TL_API Result get_origin_coord_to_target_coord(SOCKETFD socketFd, Coord originCoord, std::vector<double> originPos,
-                                        Coord targetCoord, std::vector<double>& targetPos,
-                                        int form = 0, const std::vector<double>& reference_pos = {});
+TL_API Result get_origin_coord_to_target_coord(SOCKETFD socketFd, Coord originCoord,
+                                               std::vector<double> originPos, Coord targetCoord,
+                                               std::vector<double>& targetPos, int form = 0,
+                                               const std::vector<double>& reference_pos = {});
+
+/**
+ * @brief 正运动学解算：关节角 → 指定坐标系下的 TCP 位姿
+ * @param frame 输出位姿所在坐标系 Coord::BASE / Coord::TOOL /
+ * Coord::USER（不支持 Coord::JOINT，传入返回 PARAM_ERR）
+ * @param joints 输入关节角，6 或 7 元素（度制；7 元素时第 7 位为外部轴，6
+ * 轴机器人补 0；6 元素视为无外部轴）
+ * @param pose 输出位姿，7 元素 [x, y, z, rx, ry, rz]（位移 mm + 姿态弧度，第 7
+ * 位为外部轴透传）
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @note BASE/USER 由控制器解算；TOOL 由 SDK
+ * 在基坐标系结果上做工具坐标系变换（工具原点即 TCP， 工具坐标系位姿 = 当前 TCP
+ * 位姿）。TCP 在自身工具坐标系下恒为原点位姿，属数学上正确的语义。
+ * @warning TOOL 输出锚定调用时刻的当前 TCP
+ * 位姿，仅适用于机械臂静止或对锚定时刻不敏感的场景。
+ */
+TL_API Result get_forward_kinematics(SOCKETFD socketFd, Coord frame,
+                                     const std::vector<double>& joints, std::vector<double>& pose);
+
+/**
+ * @brief 逆运动学解算：指定坐标系下的目标位姿 → 关节角
+ * @param frame 输入位姿所在坐标系 Coord::BASE / Coord::TOOL /
+ * Coord::USER（不支持 Coord::JOINT，传入返回 PARAM_ERR）
+ * @param pose 输入位姿，6 或 7 元素（位移 mm + 姿态弧度；7 元素时第 7
+ * 位为外部轴透传，6 元素视为无外部轴）
+ * @param joints 输出关节角，7 元素（度制）
+ * @param form 形态
+ * @param reference_pos 参考点（逆解优先选择离参考点最近的形态）
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-5=EXCEPTION
+ * 异常（含逆解失败，如奇异点/不可达）；-6=TIMEOUT 超时
+ * @note BASE/USER 由控制器解算；TOOL 输入位姿锚定在调用时刻的当前工具坐标系
+ *       （工具系随机械臂运动，SDK 取当前 TCP
+ * 位姿构造工具系变换后交控制器逆解）。
+ * @note 逆解结果反映在返回值：无论固件以错误码还是 convert_state 标记逆解失败，
+ *       本接口统一返回非 SUCCESS（含逆解失败折叠为
+ * EXCEPTION），调用方只需检查返回值； 逆解失败时 joints 输出被清空，成功时为 7
+ * 元素。
+ * @warning TOOL 输入位姿锚定调用时刻的当前 TCP
+ * 位姿，仅适用于机械臂静止或对锚定时刻不敏感的场景。
+ */
+TL_API Result get_inverse_kinematics(SOCKETFD socketFd, Coord frame,
+                                     const std::vector<double>& pose, std::vector<double>& joints,
+                                     int form = 0, const std::vector<double>& reference_pos = {});
+
+/**
+ * @brief 笛卡尔坐标系间转换：基坐标/工具坐标/用户坐标位姿互转（不经关节解算）
+ * @param from 输入位姿所在坐标系 Coord::BASE / Coord::TOOL /
+ * Coord::USER（不支持 Coord::JOINT，传入返回 PARAM_ERR）
+ * @param pos 输入位姿，6 或 7 元素 [x, y, z, rx, ry, rz]（位移 mm + 姿态弧度；7
+ * 元素时第 7 位为外部轴透传，6 元素视为无外部轴）
+ * @param to 输出位姿所在坐标系 Coord::BASE / Coord::TOOL / Coord::USER（不支持
+ * Coord::JOINT，传入返回 PARAM_ERR）
+ * @param out 输出位姿，7 元素（位移 mm + 姿态弧度，第 7 位为外部轴透传）
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @note TOOL 参与的转换由 SDK 本地经基坐标系枢纽完成（工具坐标系位姿 = 当前 TCP
+ * 位姿，锚定调用时刻）； BASE / USER
+ * 间转换由控制器解算。同坐标系输入原样返回并补齐为 7 元素（第 7 位外部轴补
+ * 0）。
+ * @warning TOOL 参与的转换锚定调用时刻的当前 TCP
+ * 位姿，仅适用于机械臂静止或对锚定时刻不敏感的场景。
+ */
+TL_API Result convert_cartesian_coord(SOCKETFD socketFd, Coord from, const std::vector<double>& pos,
+                                      Coord to, std::vector<double>& out);
 
 /**
  * @brief 检测目标点位是否可达
@@ -966,9 +1322,12 @@ TL_API Result get_origin_coord_to_target_coord(SOCKETFD socketFd, Coord originCo
  *        [7-13] 点位信息
  * @param movetype 移动方式 "MOVJ" 或 "MOVL"
  * @param result 输出：点位是否可达（true=可达）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result get_pos_reachable(SOCKETFD socketFd, std::vector<double> pos, std::string movetype, bool& result);
+TL_API Result get_pos_reachable(SOCKETFD socketFd, std::vector<double> pos, std::string movetype,
+                                bool& result);
 
 /**
  * @brief 获取逆运动学全解
@@ -979,31 +1338,39 @@ TL_API Result get_pos_reachable(SOCKETFD socketFd, std::vector<double> pos, std:
  * @param optimize 优化标志
  * @param param 逆运动学参数（InverseKinParameter：构型/工具/用户坐标/待机位等）
  * @param full_solution 输出：逆运动学全解结果（多组关节角）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_full_solution(SOCKETFD socketFd, std::vector<double> transMatrix,
-                                std::vector<double> posLast, std::vector<double> posACS, double swivel_angle,
-                                bool optimize, InverseKinParameter param,
+                                std::vector<double> posLast, std::vector<double> posACS,
+                                double swivel_angle, bool optimize, InverseKinParameter param,
                                 std::vector<std::vector<double>>& full_solution);
 
 /**
  * @brief 查询四点标定结果
  * @param result 输出：四点标定结果（查询到的标记点数据）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_four_point(SOCKETFD socketFd, std::vector<double>& result);
 
 /**
  * @brief 获取单圈值
  * @param single_cycle 输出：单圈值数组，长度7
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_single_cycle(SOCKETFD socketFd, std::vector<int>& single_cycle);
 
 /**
  * @brief 获取当前使用的用户坐标编号
  * @param userNum 输出：当前使用的用户坐标编号
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_user_coord_number(SOCKETFD socketFd, int& userNum);
 
@@ -1039,7 +1406,8 @@ TL_API Result set_user_coord_para(SOCKETFD socketFd, int userNum, const UserCoor
  * @param varValue 字符串变量值
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT
  */
-TL_API Result set_global_string(SOCKETFD socketFd, const std::string& varName, const std::string& varValue);
+TL_API Result set_global_string(SOCKETFD socketFd, const std::string& varName,
+                                const std::string& varValue);
 
 /**
  * @brief 查询字符串全局变量
@@ -1074,26 +1442,31 @@ TL_API Result get_single_cycle(SOCKETFD socketFd, std::vector<int>& single_cycle
 // ==================== 工具手标定（VERSION_DEV 新增） ====================
 
 /**
- * @brief 记录工具手标定点（2/12/15/20/21 点标定 — 新版带 toolNum + calibrationType）
+ * @brief 记录工具手标定点（2/12/15/20/21 点标定 — 新版带 toolNum +
+ * calibrationType）
  * @param point 标定点下标 0-19
  * @param toolNum 工具手编号 1-999
  * @param calibrationType 标定类型 2/12/15/20/21
  * @deprecated 请使用 CalibrationType 枚举重载版本
- * @note 推荐使用枚举重载（CalibrationType::POINT_2 / POINT_12 / POINT_15 / POINT_20 / POINT_21），避免魔法数字
+ * @note 推荐使用枚举重载（CalibrationType::POINT_2 / POINT_12 / POINT_15 /
+ * POINT_20 / POINT_21），避免魔法数字
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT
  */
 TL_DEPRECATED("use CalibrationType enum overload instead")
-TL_API Result tool_hand_2_or_20_point_calibrate(SOCKETFD socketFd, int point, int toolNum, int calibrationType);
+TL_API Result tool_hand_2_or_20_point_calibrate(SOCKETFD socketFd, int point, int toolNum,
+                                                int calibrationType);
 
 /**
  * @brief 记录工具手标定点（CalibrationType 枚举重载）
  * @param point 标定点下标 0-19
  * @param toolNum 工具手编号 1-999
- * @param calibrationType CalibrationType::POINT_2 / POINT_12 / POINT_15 / POINT_20 / POINT_21
+ * @param calibrationType CalibrationType::POINT_2 / POINT_12 / POINT_15 /
+ * POINT_20 / POINT_21
  * @note 推荐使用本枚举重载版本，避免魔法数字
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT
  */
-TL_API Result tool_hand_2_or_20_point_calibrate(SOCKETFD socketFd, int point, int toolNum, CalibrationType calibrationType);
+TL_API Result tool_hand_2_or_20_point_calibrate(SOCKETFD socketFd, int point, int toolNum,
+                                                CalibrationType calibrationType);
 
 /**
  * @brief 计算工具手标定结果（新版）
@@ -1101,21 +1474,27 @@ TL_API Result tool_hand_2_or_20_point_calibrate(SOCKETFD socketFd, int point, in
  * @param calibrationType 标定类型 2/12/15/20/21
  * @param noCalZero true=不校准零点 false=校准零点
  * @deprecated 请使用 CalibrationType 枚举重载版本
- * @note 推荐使用枚举重载（CalibrationType::POINT_2 / POINT_12 / POINT_15 / POINT_20 / POINT_21），避免魔法数字
+ * @note 推荐使用枚举重载（CalibrationType::POINT_2 / POINT_12 / POINT_15 /
+ * POINT_20 / POINT_21），避免魔法数字
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT
  */
 TL_DEPRECATED("use CalibrationType enum overload instead")
-TL_API Result tool_hand_2_or_20_point_calibrate_caculate(SOCKETFD socketFd, int toolNum, int calibrationType, bool noCalZero = false);
+TL_API Result tool_hand_2_or_20_point_calibrate_caculate(SOCKETFD socketFd, int toolNum,
+                                                         int calibrationType,
+                                                         bool noCalZero = false);
 
 /**
  * @brief 计算工具手标定结果（CalibrationType 枚举重载）
  * @param toolNum 工具手编号 1-999
- * @param calibrationType CalibrationType::POINT_2 / POINT_12 / POINT_15 / POINT_20 / POINT_21
+ * @param calibrationType CalibrationType::POINT_2 / POINT_12 / POINT_15 /
+ * POINT_20 / POINT_21
  * @param noCalZero true=不校准零点 false=校准零点
  * @note 推荐使用本枚举重载版本，避免魔法数字
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT
  */
-TL_API Result tool_hand_2_or_20_point_calibrate_caculate(SOCKETFD socketFd, int toolNum, CalibrationType calibrationType, bool noCalZero = false);
+TL_API Result tool_hand_2_or_20_point_calibrate_caculate(SOCKETFD socketFd, int toolNum,
+                                                         CalibrationType calibrationType,
+                                                         bool noCalZero = false);
 
 /**
  * @brief 清除工具手标定点状态（新版）
@@ -1126,17 +1505,20 @@ TL_API Result tool_hand_2_or_20_point_calibrate_caculate(SOCKETFD socketFd, int 
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT
  */
 TL_DEPRECATED("use CalibrationType enum overload instead")
-TL_API Result tool_hand_2_or_20_point_calibrate_clear(SOCKETFD socketFd, int point, int toolNum, int calibrationType);
+TL_API Result tool_hand_2_or_20_point_calibrate_clear(SOCKETFD socketFd, int point, int toolNum,
+                                                      int calibrationType);
 
 /**
  * @brief 清除工具手标定点状态（CalibrationType 枚举重载）
  * @param point 标定点下标 0-19（20=全部清除）
  * @param toolNum 工具手编号 1-999
- * @param calibrationType CalibrationType::POINT_2 / POINT_12 / POINT_15 / POINT_20 / POINT_21
+ * @param calibrationType CalibrationType::POINT_2 / POINT_12 / POINT_15 /
+ * POINT_20 / POINT_21
  * @note 推荐使用本枚举重载版本，避免魔法数字
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT
  */
-TL_API Result tool_hand_2_or_20_point_calibrate_clear(SOCKETFD socketFd, int point, int toolNum, CalibrationType calibrationType);
+TL_API Result tool_hand_2_or_20_point_calibrate_clear(SOCKETFD socketFd, int point, int toolNum,
+                                                      CalibrationType calibrationType);
 
 /**
  * @brief 记录工具手 4/6/7 点标定点
@@ -1144,11 +1526,13 @@ TL_API Result tool_hand_2_or_20_point_calibrate_clear(SOCKETFD socketFd, int poi
  * @param toolNum 工具手编号 1-999
  * @param calibrationType 标定类型 6 或 7
  * @deprecated 请使用 CalibrationType 枚举重载版本
- * @note 推荐使用枚举重载（CalibrationType::POINT_6 / CalibrationType::POINT_7），避免魔法数字
+ * @note 推荐使用枚举重载（CalibrationType::POINT_6 /
+ * CalibrationType::POINT_7），避免魔法数字
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT
  */
 TL_DEPRECATED("use CalibrationType enum overload instead")
-TL_API Result tool_hand_7_point_calibrate(SOCKETFD socketFd, int point, int toolNum, int calibrationType = 7);
+TL_API Result tool_hand_7_point_calibrate(SOCKETFD socketFd, int point, int toolNum,
+                                          int calibrationType = 7);
 
 /**
  * @brief 记录工具手 4/6/7 点标定点（CalibrationType 枚举重载）
@@ -1158,7 +1542,8 @@ TL_API Result tool_hand_7_point_calibrate(SOCKETFD socketFd, int point, int tool
  * @note 推荐使用本枚举重载版本，避免魔法数字
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT
  */
-TL_API Result tool_hand_7_point_calibrate(SOCKETFD socketFd, int point, int toolNum, CalibrationType calibrationType);
+TL_API Result tool_hand_7_point_calibrate(SOCKETFD socketFd, int point, int toolNum,
+                                          CalibrationType calibrationType);
 
 /**
  * @brief 计算工具手 4/6/7 点标定结果
@@ -1168,7 +1553,8 @@ TL_API Result tool_hand_7_point_calibrate(SOCKETFD socketFd, int point, int tool
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT
  */
 TL_DEPRECATED("use CalibrationType enum overload instead")
-TL_API Result tool_hand_7_point_calibrate_caculate(SOCKETFD socketFd, int toolNum, int calibrationType = 7);
+TL_API Result tool_hand_7_point_calibrate_caculate(SOCKETFD socketFd, int toolNum,
+                                                   int calibrationType = 7);
 
 /**
  * @brief 计算工具手 4/6/7 点标定结果（CalibrationType 枚举重载）
@@ -1177,7 +1563,8 @@ TL_API Result tool_hand_7_point_calibrate_caculate(SOCKETFD socketFd, int toolNu
  * @note 推荐使用本枚举重载版本，避免魔法数字
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT
  */
-TL_API Result tool_hand_7_point_calibrate_caculate(SOCKETFD socketFd, int toolNum, CalibrationType calibrationType);
+TL_API Result tool_hand_7_point_calibrate_caculate(SOCKETFD socketFd, int toolNum,
+                                                   CalibrationType calibrationType);
 
 /**
  * @brief 清除工具手 4/6/7 点标定点
@@ -1188,7 +1575,8 @@ TL_API Result tool_hand_7_point_calibrate_caculate(SOCKETFD socketFd, int toolNu
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT
  */
 TL_DEPRECATED("use CalibrationType enum overload instead")
-TL_API Result tool_hand_7_point_calibrate_clear(SOCKETFD socketFd, int point, int toolNum, int calibrationType = 7);
+TL_API Result tool_hand_7_point_calibrate_clear(SOCKETFD socketFd, int point, int toolNum,
+                                                int calibrationType = 7);
 
 /**
  * @brief 清除工具手 4/6/7 点标定点（CalibrationType 枚举重载）
@@ -1198,27 +1586,32 @@ TL_API Result tool_hand_7_point_calibrate_clear(SOCKETFD socketFd, int point, in
  * @note 推荐使用本枚举重载版本，避免魔法数字
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT
  */
-TL_API Result tool_hand_7_point_calibrate_clear(SOCKETFD socketFd, int point, int toolNum, CalibrationType calibrationType);
+TL_API Result tool_hand_7_point_calibrate_clear(SOCKETFD socketFd, int point, int toolNum,
+                                                CalibrationType calibrationType);
 
 /**
  * @brief 设置手眼标定类型并计算（新版带 calculateType）
  * @param visionNum 视觉ID
  * @param calculateType 计算类型 0=眼在手内 1=眼在手外
  * @deprecated 请使用 VisionCalculateType 枚举重载版本
- * @note 推荐使用枚举重载（VisionCalculateType::EYE_IN_HAND / VisionCalculateType::EYE_TO_HAND），避免魔法数字
+ * @note 推荐使用枚举重载（VisionCalculateType::EYE_IN_HAND /
+ * VisionCalculateType::EYE_TO_HAND），避免魔法数字
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT
  */
 TL_DEPRECATED("use VisionCalculateType enum overload instead")
-TL_API Result vision_hand_eye_calibration_calculation(SOCKETFD socketFd, int visionNum, int calculateType);
+TL_API Result vision_hand_eye_calibration_calculation(SOCKETFD socketFd, int visionNum,
+                                                      int calculateType);
 
 /**
  * @brief 设置手眼标定类型并计算（VisionCalculateType 枚举重载）
  * @param visionNum 视觉ID
- * @param calculateType VisionCalculateType::EYE_IN_HAND（眼在手内）/ VisionCalculateType::EYE_TO_HAND（眼在手外）
+ * @param calculateType VisionCalculateType::EYE_IN_HAND（眼在手内）/
+ * VisionCalculateType::EYE_TO_HAND（眼在手外）
  * @note 推荐使用本枚举重载版本，避免魔法数字
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT
  */
-TL_API Result vision_hand_eye_calibration_calculation(SOCKETFD socketFd, int visionNum, VisionCalculateType calculateType);
+TL_API Result vision_hand_eye_calibration_calculation(SOCKETFD socketFd, int visionNum,
+                                                      VisionCalculateType calculateType);
 
 /**
  * @brief 获取传感器负载参数
@@ -1233,12 +1626,15 @@ TL_API Result get_payload_param_by_sensor(SOCKETFD socketFd, PayloadParamBySenso
  * @param positioner_voltage 输出：外部轴各关节电压
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED …；-6=TIMEOUT
  */
-TL_API Result get_joint_voltage(SOCKETFD socketFd, std::vector<double>& joint_voltage, std::vector<double>& positioner_voltage);
+TL_API Result get_joint_voltage(SOCKETFD socketFd, std::vector<double>& joint_voltage,
+                                std::vector<double>& positioner_voltage);
 
 /**
  * @brief 获取关节温度
  * @param temperatures 输出：各关节温度
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_joint_temperature(SOCKETFD socketFd, std::vector<double>& temperatures);
 
@@ -1246,7 +1642,9 @@ TL_API Result get_joint_temperature(SOCKETFD socketFd, std::vector<double>& temp
  * @brief 获取当前电机电流（24.03/DEV 接口）
  * @param motor_current 输出：机器人本体电机电流，长度 7，单位 ‰
  * @param motor_current_sync 输出：外部轴电机电流，长度 5，单位 ‰
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_current_motor_current(SOCKETFD socketFd, std::vector<double>& motor_current,
                                         std::vector<double>& motor_current_sync);
@@ -1255,15 +1653,20 @@ TL_API Result get_current_motor_current(SOCKETFD socketFd, std::vector<double>& 
  * @brief 获取当前电机扭矩
  * @param motor_torque 输出：机器人本体电机扭矩，长度 7，单位 [%]
  * @param motor_torque_sync 输出：外部轴电机扭矩，长度 5，单位 [%]
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result get_current_motor_torque(SOCKETFD socketFd, std::vector<int>& motor_torque, std::vector<int>& motor_torque_sync);
+TL_API Result get_current_motor_torque(SOCKETFD socketFd, std::vector<int>& motor_torque,
+                                       std::vector<int>& motor_torque_sync);
 
 /**
  * @brief 获取当前电机转速
  * @param motor_speed 输出：机器人本体电机转速，长度 7，单位 [RPM]
  * @param motor_speed_sync 输出：外部轴电机转速，长度 5，单位 [RPM]
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_current_motor_speed(SOCKETFD socketFd, std::vector<int>& motor_speed,
                                       std::vector<int>& motor_speed_sync);
@@ -1272,7 +1675,9 @@ TL_API Result get_current_motor_speed(SOCKETFD socketFd, std::vector<int>& motor
  * @brief 获取当前电机负载
  * @param motor_payload 输出：机器人本体电机负载，长度 7，单位 [%]
  * @param motor_payload_sync 输出：外部轴电机负载，长度 5，单位 [%]
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_current_motor_payload(SOCKETFD socketFd, std::vector<double>& motor_payload,
                                         std::vector<double>& motor_payload_sync);
@@ -1282,26 +1687,35 @@ TL_API Result get_current_motor_payload(SOCKETFD socketFd, std::vector<double>& 
  * @param line_speed 输出：末端线速度，单位 [mm/s]
  * @param joint_speed 输出：关节速度，长度 7，单位 [度/s]
  * @param joint_speed_sync 输出：外部轴关节速度，长度 5，单位 [度/s]
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result get_current_line_speed_and_joint_speed(SOCKETFD socketFd, double& line_speed, std::vector<double>& joint_speed,
-                                                      std::vector<double>& joint_speed_sync);
+TL_API Result get_current_line_speed_and_joint_speed(SOCKETFD socketFd, double& line_speed,
+                                                     std::vector<double>& joint_speed,
+                                                     std::vector<double>& joint_speed_sync);
 
 // ==================== 全局变量 ====================
 
 /**
  * @brief 查询全局 GE 点位
  * @param posName 全局位置名，例如 "GE0001"
- * @param pos 输出：全局点位数组，长度21；前7位为点位的坐标、姿态等信息，中间7位为机器人位置，后7位为外部轴位置
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @param pos
+ * 输出：全局点位数组，长度21；前7位为点位的坐标、姿态等信息，中间7位为机器人位置，后7位为外部轴位置
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result get_global_sync_position(SOCKETFD socketFd, const std::string& posName, std::vector<double>& pos);
+TL_API Result get_global_sync_position(SOCKETFD socketFd, const std::string& posName,
+                                       std::vector<double>& pos);
 
 /**
  * @brief 查询全局变量
  * @param varName 全局变量名，支持形式如 "GI001" / "GD001" / "GB001"
  * @param value 输出：变量值
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_global_variant(SOCKETFD socketFd, const std::string& varName, double& value);
 
@@ -1309,29 +1723,43 @@ TL_API Result get_global_variant(SOCKETFD socketFd, const std::string& varName, 
  * @brief 获取指定坐标下的位置
  * @param name 点位名（P点、GP点、E点、GE点），如 "GP0001"
  * @param targetCoord 目标坐标系 0：关节 1：基坐标 2：工具 3：用户
- * @param targetPos 输出：转换后的位置，14位点位（坐标系,角度/弧度,形态/左右手,工具号,用户坐标号,预留,预留,1轴,2轴,3轴,4轴,5轴,6轴,7轴）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @param targetPos
+ * 输出：转换后的位置，14位点位（坐标系,角度/弧度,形态/左右手,工具号,用户坐标号,预留,预留,1轴,2轴,3轴,4轴,5轴,6轴,7轴）
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  * @deprecated 请使用 Coord 枚举重载版本
- * @note 推荐使用枚举重载（Coord::JOINT / Coord::BASE / Coord::TOOL / Coord::USER），避免魔法数字
+ * @note 推荐使用枚举重载（Coord::JOINT / Coord::BASE / Coord::TOOL /
+ * Coord::USER），避免魔法数字
  */
 TL_DEPRECATED("use Coord enum overload instead")
-TL_API Result get_target_coord_pos_value(SOCKETFD socketFd, std::string name, int targetCoord, std::vector<double>& targetPos);
+TL_API Result get_target_coord_pos_value(SOCKETFD socketFd, std::string name, int targetCoord,
+                                         std::vector<double>& targetPos);
 
 /**
  * @brief 获取指定坐标下的位置（枚举坐标系重载）
  * @param name 点位名（P点、GP点、E点、GE点），如 "GP0001"
- * @param targetCoord 目标坐标系 Coord::JOINT / Coord::BASE / Coord::TOOL / Coord::USER
- * @param targetPos 输出：转换后的位置，14位点位（坐标系,角度/弧度,形态/左右手,工具号,用户坐标号,预留,预留,1轴,2轴,3轴,4轴,5轴,6轴,7轴）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
- * @note 推荐使用枚举重载（Coord::JOINT / Coord::BASE / Coord::TOOL / Coord::USER），避免魔法数字
+ * @param targetCoord 目标坐标系 Coord::JOINT / Coord::BASE / Coord::TOOL /
+ * Coord::USER
+ * @param targetPos
+ * 输出：转换后的位置，14位点位（坐标系,角度/弧度,形态/左右手,工具号,用户坐标号,预留,预留,1轴,2轴,3轴,4轴,5轴,6轴,7轴）
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @note 推荐使用枚举重载（Coord::JOINT / Coord::BASE / Coord::TOOL /
+ * Coord::USER），避免魔法数字
  */
-TL_API Result get_target_coord_pos_value(SOCKETFD socketFd, std::string name, Coord targetCoord, std::vector<double>& targetPos);
+TL_API Result get_target_coord_pos_value(SOCKETFD socketFd, std::string name, Coord targetCoord,
+                                         std::vector<double>& targetPos);
 
 /**
  * @brief 获取局部 P 点
  * @param name 点位名，范围 P0001 - P9999
- * @param pos 输出：转换后的位置，14位点位（坐标系,角度/弧度,形态/左右手,工具号,用户坐标号,预留,预留,1轴,2轴,3轴,4轴,5轴,6轴,7轴）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @param pos
+ * 输出：转换后的位置，14位点位（坐标系,角度/弧度,形态/左右手,工具号,用户坐标号,预留,预留,1轴,2轴,3轴,4轴,5轴,6轴,7轴）
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_local_pos_p_value(SOCKETFD socketFd, std::string name, std::vector<double>& pos);
 
@@ -1340,7 +1768,9 @@ TL_API Result get_local_pos_p_value(SOCKETFD socketFd, std::string name, std::ve
 /**
  * @brief 获取拖拽结束标志
  * @param endFlag 输出：true 拖拽结束
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_drag_thread_is_end(SOCKETFD socketFd, bool& endFlag);
 
@@ -1349,13 +1779,17 @@ TL_API Result get_drag_thread_is_end(SOCKETFD socketFd, bool& endFlag);
  * @param mode 输出：拖拽模式值
  * @param port 输出：拖拽 IO 端口号
  * @param value 输出：拖拽 IO 值
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_drag_info_robot(SOCKETFD socketFd, int& mode, int& port, int& value);
 /**
  * @brief 获取拖拽力矩参数（24.03+ 固件，DragTorqueParam 版本）
  * @param param 输出：拖拽力矩参数（结构体 DragTorqueParam 详见 tl_types.h）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_drag_param(SOCKETFD socketFd, DragTorqueParam& param);
 
@@ -1364,7 +1798,9 @@ TL_API Result set_drag_param(SOCKETFD socketFd, const DragTorqueParam& param);
  * @brief 判断世界坐标系下某点是否触发干涉区
  * @param pos 点的世界坐标 [x, y, z]
  * @param[out] returnVal true 为触发，false 为不触发
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_pos_trigger_interfer(SOCKETFD socketFd, std::vector<double> pos, bool& returnVal);
 
@@ -1372,48 +1808,61 @@ TL_API Result get_pos_trigger_interfer(SOCKETFD socketFd, std::vector<double> po
  * @brief 判断带工具手的干涉区立方体在某位置是否触发干涉区
  * @param pos 工具手在世界坐标系下的位姿 [x, y, z, a, b, c]；a, b, c 为角度制
  * @param[out] returnVal true 为触发，false 为不触发
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result get_tool_trigger_interfer(SOCKETFD socketFd, std::vector<double> pos, bool& returnVal);
+TL_API Result get_tool_trigger_interfer(SOCKETFD socketFd, std::vector<double> pos,
+                                        bool& returnVal);
 
 // ==================== 传感器 ====================
 
 /**
  * @brief 获取六维力传感器数据
  * @param sensorData 用于接收六维力传感器数据的结构体
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_sensor_6d_data(SOCKETFD socketFd, Sensor6DData& sensorData);
 
 /**
  * @brief 获取六维力传感器的基础参数（质量、质心、标零状态）
  * @param baseParam 用于接收传感器基础参数的结构体
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result get_sensor_base_param(SOCKETFD socketFd, SensorBaseParam& baseParam);
 
 /**
  * @brief 执行六维力传感器标定
  * @param[out] success 标定是否成功的标志
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result mark_base_sensor(SOCKETFD socketFd, bool& success);
 
 /**
  * @brief 设置六维力传感器通讯
  * @param params 用于设置六维力传感器通讯参数的结构体
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result set_six_dimensional_force_communication_params(SOCKETFD socketFd,
-                                                      SixDimensionalForceCommunicationParams& params);
+TL_API Result set_six_dimensional_force_communication_params(
+    SOCKETFD socketFd, SixDimensionalForceCommunicationParams& params);
 
 /**
  * @brief 获取六维力传感器通讯参数
  * @param params 输出：用于接收六维力传感器通讯参数的结构体
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
-TL_API Result get_six_dimensional_force_communication_params(SOCKETFD socketFd,
-                                                      SixDimensionalForceCommunicationParams& params);
+TL_API Result get_six_dimensional_force_communication_params(
+    SOCKETFD socketFd, SixDimensionalForceCommunicationParams& params);
 
 } // namespace tl
 

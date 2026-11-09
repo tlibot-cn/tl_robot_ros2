@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>tl_hardware</name>
-  <version>3.0.0</version>
+  <version>3.1.0</version>
   <description>ROS2 control hardware interface for TL robot arm</description>
 
   <maintainer email="tlibot@tlibot.com">天链机器人</maintainer>
@@ -18,6 +18,8 @@
   <depend>std_srvs</depend>
   <depend>tl_ros2_interface</depend>
   <depend>trajectory_msgs</depend>
+
+  <exec_depend>tl_driver</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

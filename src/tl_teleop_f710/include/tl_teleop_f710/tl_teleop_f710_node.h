@@ -14,16 +14,16 @@
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <std_msgs/msg/float64_multi_array.hpp>
 #include <std_srvs/srv/trigger.hpp>
-#include <tl_ros2_interface/msg/servol_move.hpp>
 #include <tl_ros2_interface/srv/set_current_mode.hpp>
 #include <tl_ros2_interface/srv/set_speed.hpp>
 #include <tl_ros2_interface/srv/open_servo_j.hpp>
 #include <tl_ros2_interface/srv/coord_transform.hpp>
 
-// KDL FK (仿真模式)
+// KDL FK/IK (仿真模式)
 #include <kdl_parser/kdl_parser.hpp>
 #include <kdl/chain.hpp>
 #include <kdl/chainfksolverpos_recursive.hpp>
+#include <kdl/chainiksolverpos_lma.hpp>
 #include <kdl/frames.hpp>
 #include <kdl/jntarray.hpp>
 
@@ -41,16 +41,16 @@ private:
   // ========== 工具函数 ==========
   static double applyDeadzone(double value, double deadzone);
   void publishServoj(const std::vector<double>& joint_pos);
-  void publishServol();
   bool cartesianToJoint(const std::vector<double>& cart_pose, std::vector<double>& joint_out);
+  bool cartesianToJointKDL(const std::vector<double>& cart_pose, std::vector<double>& joint_out);
   bool currentJointToPose(std::vector<double>& pose_out);
 
   // ========== ServoJ 初始化 ==========
   void initServoj();
   void closeServoj();
 
-  // ========== FK（关节→笛卡尔，用于回零和初始位姿）==========
-  void initKDLFK();
+  // ========== KDL 运动学（仿真模式：FK 用于回零/初始位姿，IK 用于笛卡尔遥操作）==========
+  void initKDLKinematics();
   bool homeJointsToPose(std::vector<double>& pose_out);
 
   // ========== 回调 ==========
@@ -89,9 +89,8 @@ private:
   bool prev_bs_{false}; // Back+Start 边缘检测
 
   // ========== ServoJ 初始化状态机 ==========
-  // 0=等待服务 1=connect_arm 2=power_on 3=set_mode 4=set_speed 5=open_servoj 6=完成
+  // 0=等待服务 1=power_on 2=set_mode 3=set_speed 4=open_servoj 5=完成
   int init_state_;
-  rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr connect_arm_client_;
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr power_on_client_;
   rclcpp::Client<tl_ros2_interface::srv::SetCurrentMode>::SharedPtr set_mode_client_;
   rclcpp::Client<tl_ros2_interface::srv::SetSpeed>::SharedPtr set_speed_client_;
@@ -100,10 +99,11 @@ private:
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr power_off_client_;
   rclcpp::Client<tl_ros2_interface::srv::CoordTransform>::SharedPtr coord_transform_client_;
 
-  // ========== KDL FK（仿真模式） ==========
-  bool kdl_fk_ready_{false};
+  // ========== KDL FK/IK（仿真模式） ==========
+  bool kdl_ready_{false};
   KDL::Chain kdl_chain_;
   std::unique_ptr<KDL::ChainFkSolverPos_recursive> kdl_fk_solver_;
+  std::unique_ptr<KDL::ChainIkSolverPos_LMA> kdl_ik_solver_;
   int ndof_{6};
 
   // ========== 异步 FK/IK ==========
@@ -113,7 +113,6 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr js_sub_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr servoj_pub_;
-  rclcpp::Publisher<tl_ros2_interface::msg::ServolMove>::SharedPtr servol_pub_;
   rclcpp::TimerBase::SharedPtr init_timer_;
   rclcpp::TimerBase::SharedPtr control_timer_;
 };

@@ -1,0 +1,8 @@
+// 版本号来源：package.xml 的 <version>，构建时由 CMake 写入（模板 → build 目录的 version.hpp）
+// 因此本文件勿手动填写版本号，改版本请改 package.xml
+#ifndef TL_DRIVER__VERSION_HPP_
+#define TL_DRIVER__VERSION_HPP_
+
+#define TL_DRIVER_VERSION "@TL_DRIVER_VERSION@"
+
+#endif // TL_DRIVER__VERSION_HPP_

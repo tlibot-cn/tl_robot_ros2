@@ -1,5 +1,0 @@
-# 作业运行
-string job_name
----
-bool success
-string message

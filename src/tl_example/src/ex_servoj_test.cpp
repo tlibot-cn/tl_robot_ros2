@@ -11,7 +11,7 @@
  *   5. close_servoj                  —— 关闭跟踪模式
  *
  * 说明：
- *   - /tl_driver/set_servoj_pos 的数据单位为「度」。
+ *   - /tl_driver/set_servoj_pos 的数据单位为「rad」。
  *   - 目标角度方向：target_angle 为正表示关节正向运动。
  *   - 测试前请确保机械臂处于零点位置（关节角全为 0°）。
  *
@@ -25,6 +25,7 @@
  */
 
 #include <chrono>
+#include <cmath>
 #include <functional>
 #include <memory>
 #include <string>
@@ -38,6 +39,8 @@
 
 namespace tl_example
 {
+constexpr double kDegToRad = M_PI / 180.0;
+constexpr double kRadToDeg = 180.0 / M_PI;
 
 using OpenServoJ = tl_ros2_interface::srv::OpenServoJ;
 using Float64MultiArray = std_msgs::msg::Float64MultiArray;
@@ -65,13 +68,14 @@ public:
 
     arm_joints_ = this->get_parameter("arm_joints").as_int();
     joint_ = this->get_parameter("joint").as_int();
-    target_angle_ = this->get_parameter("target_angle").as_double();
+    // 参数沿用度制；接口统一为 rad
+    target_angle_ = this->get_parameter("target_angle").as_double() * kDegToRad;
     num_points_ = this->get_parameter("num_points").as_int();
     rate_ = this->get_parameter("rate").as_double();
     hold_time_ = this->get_parameter("hold_time").as_double();
-    vmax_ = this->get_parameter("vmax").as_double();
-    amax_ = this->get_parameter("amax").as_double();
-    jmax_ = this->get_parameter("jmax").as_double();
+    vmax_ = this->get_parameter("vmax").as_double() * kDegToRad;
+    amax_ = this->get_parameter("amax").as_double() * kDegToRad;
+    jmax_ = this->get_parameter("jmax").as_double() * kDegToRad;
 
     if (joint_ < 0 || joint_ >= arm_joints_)
     {
@@ -87,7 +91,7 @@ public:
     servoj_pub_ = this->create_publisher<Float64MultiArray>("/tl_driver/set_servoj_pos", 10);
 
     RCLCPP_INFO(this->get_logger(), "ServoJ 插补测试节点启动 (J%d: 0° -> %.1f°, %d 点 @ %.0fHz)", joint_ + 1,
-                target_angle_, num_points_, rate_);
+                target_angle_ * kRadToDeg, num_points_, rate_);
   }
 
   /// 运行测试主流程
@@ -115,7 +119,7 @@ public:
                 "请确保机械臂当前处于零点位置（关节角全为 0°），即将开始运动，Ctrl-C 可随时中断 ...");
     rclcpp::sleep_for(std::chrono::seconds(1));
 
-    // 3. 从零点位置开始，对指定关节线性插值（0° -> target_angle°）
+    // 3. 从零点位置开始，对指定关节线性插值（0 -> target_angle，接口单位 rad）
     rclcpp::Rate rate(rate_);
     std::vector<double> pos(arm_joints_, 0.0);
     bool aborted = false;
@@ -146,7 +150,7 @@ public:
 
       if (rclcpp::ok() && !aborted)
       {
-        RCLCPP_INFO(this->get_logger(), "插补完成：J%d 已到达 %.1f°", joint_ + 1, target_angle_);
+        RCLCPP_INFO(this->get_logger(), "插补完成：J%d 已到达 %.1f°", joint_ + 1, target_angle_ * kRadToDeg);
       }
     }
     catch (const std::exception& e)
@@ -225,7 +229,7 @@ private:
     return resp != nullptr && resp->success;
   }
 
-  /// 发布一组目标关节角（度）
+  /// 发布一组目标关节角（rad）
   void publishPos(const std::vector<double>& pos)
   {
     Float64MultiArray msg;

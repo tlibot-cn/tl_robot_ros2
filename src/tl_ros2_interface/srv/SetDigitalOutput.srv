@@ -1,6 +1,6 @@
 # 设置数字输出
-int32 port
-int32 value
+int32 port    # 输出端口号
+int32 value   # 输出值：0=低，1=高
 ---
 bool success
 string message

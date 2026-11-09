@@ -1,5 +1,5 @@
 # 设置当前模式
-int32 mode
+int32 mode   # 模式：0=示教 1=远程 2=运行
 ---
 bool success
 string message

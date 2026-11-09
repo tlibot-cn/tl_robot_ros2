@@ -12,6 +12,7 @@
 #include "tl_queue_operate.h"
 #include "tl_servo_ext.h"
 #include "tl_force.h"
+#include "tl_constant_force.h"
 #include "tl_io.h"
 #include "tl_job_operate.h"
 #include "tl_modbus.h"

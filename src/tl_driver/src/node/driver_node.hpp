@@ -1,0 +1,218 @@
+#ifndef TL_DRIVER__DRIVER_NODE_HPP_
+#define TL_DRIVER__DRIVER_NODE_HPP_
+
+// common
+#include <chrono>
+#include <exception>
+#include <functional>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+
+// ROS2
+#include <rmw/qos_profiles.h>
+#include <rclcpp/rclcpp.hpp>
+
+#include "arm_session.hpp"
+#include "node/publishers.hpp"
+
+namespace tl_driver
+{
+class MotionActionServers;
+
+/// @brief 机械臂驱动节点：参数、回调组、实体创建与服务/话题/action 注册。
+/// @note 回调实现按域分布：服务在 src/node/services_*.cpp，话题在 src/node/topics.cpp，
+///       action 在 src/node/actions_motion.cpp，由 node/registrars.hpp 声明的注册函数挂载。
+class DriverNode : public rclcpp::Node
+{
+public:
+  DriverNode();
+  ~DriverNode();
+
+  /// @brief 连接控制器并完成上电流程，由构造函数末尾调用。
+  /// @note 连接或切入示教模式失败即抛异常，由 main 返回 `EXIT_FAILURE`。
+  void init();
+
+  /// @brief 会话访问，供各域 handler 与 action 服务使用。
+  /// @return 会话对象引用
+  ArmSession& session() noexcept
+  {
+    return session_;
+  }
+
+  /// @brief 会话只读访问（action feedback、诊断路径）。
+  const ArmSession& session() const noexcept
+  {
+    return session_;
+  }
+
+  /// @brief 关节数，由 arm_joints 参数长度决定。
+  /// @return 关节数
+  int ndof() const noexcept
+  {
+    return ndof_;
+  }
+
+  /// @brief 连续状态流间隔（ms），用于帧龄判定。
+  int state_stream_interval_ms() const noexcept
+  {
+    return state_stream_interval_ms_;
+  }
+
+  /// @brief 执行器线程数（启动参数，构造期读取）。
+  int executor_threads() const noexcept
+  {
+    return executor_threads_;
+  }
+
+  /// @brief 是否有运动 action goal 正在执行。
+  bool motion_action_active() const;
+
+  /// @brief 记录外部运动指令，供 action goal 拒绝紧随其后的并发运动。
+  void note_external_motion();
+
+  /// @brief 运动 action 默认超时（秒）。
+  double motion_action_timeout() const noexcept
+  {
+    return motion_action_timeout_;
+  }
+
+  /// @brief 轨迹回放 action 默认超时（秒）。
+  double track_action_timeout() const noexcept
+  {
+    return track_action_timeout_;
+  }
+
+  /// @brief 创建服务并持有其生命周期，供各域 register_*_services 使用。
+  /// @note 包装 `rclcpp::Node::create_service`（固定 `rmw_qos_profile_services_default` 与服务回调组），
+  ///       并把服务存入 `services_` 保活——rclcpp Humble 只弱引用已创建的服务，不持有即注销。
+  /// @note 与下方 `create_subscription` 一并隐藏 `rclcpp::Node` 的同名重载（名称隐藏）。
+  /// @tparam ServiceT 服务类型，如 tl_ros2_interface::srv::SetSpeed
+  /// @tparam CallbackT 回调类型
+  /// @param[in] name 服务名（含 `/tl_driver/` 前缀）
+  /// @param[in] callback 该域的服务回调
+  /// @return 服务句柄
+  template <typename ServiceT, typename CallbackT>
+  typename rclcpp::Service<ServiceT>::SharedPtr create_service(const std::string& name, CallbackT&& callback)
+  {
+    // 异常绝不允许越过回调边界：rclcpp 不捕获服务回调异常，逃逸会终止整个进程。
+    using GuardedCallback =
+        std::function<void(std::shared_ptr<typename ServiceT::Request>, std::shared_ptr<typename ServiceT::Response>)>;
+    GuardedCallback guarded =
+        [logger = this->get_logger(), service_name = name, cb = std::forward<CallbackT>(callback)](
+            std::shared_ptr<typename ServiceT::Request> request,
+            std::shared_ptr<typename ServiceT::Response> response) mutable
+    {
+      try
+      {
+        cb(request, response);
+      }
+      catch (const std::exception& e)
+      {
+        RCLCPP_ERROR(logger, "[Service %s]: callback threw exception: %s", service_name.c_str(), e.what());
+        response->success = false;
+        response->message = std::string("Internal error: ") + e.what();
+      }
+      catch (...)
+      {
+        RCLCPP_ERROR(logger, "[Service %s]: callback threw unknown exception", service_name.c_str());
+        response->success = false;
+        response->message = "Internal error: unknown exception";
+      }
+    };
+
+    // 注册期必须先经 select_service_group() 选定域组；注册结束后该指针清空。
+    if (!selected_service_group_)
+    {
+      throw std::logic_error("service callback group not selected for " + name);
+    }
+    auto service = rclcpp::Node::create_service<ServiceT>(name, std::move(guarded), rmw_qos_profile_services_default,
+                                                          selected_service_group_);
+    services_.push_back(service);
+    return service;
+  }
+
+  /// @brief 创建订阅并持有其生命周期（回调组为话题组）。
+  /// @note 同 create_service：存入 `subscriptions_` 保活；订阅选项取自 `topic_options_`，
+  ///       该成员须在 create_callback_groups() 中绑定话题回调组。
+  /// @tparam MessageT 消息类型
+  /// @tparam CallbackT 回调类型
+  /// @param[in] name 话题名（含 `/tl_driver/` 前缀）
+  /// @param[in] qos 队列深度
+  /// @param[in] callback 话题回调
+  /// @return 订阅句柄
+  template <typename MessageT, typename CallbackT>
+  typename rclcpp::Subscription<MessageT>::SharedPtr create_subscription(const std::string& name, const size_t qos,
+                                                                         CallbackT&& callback)
+  {
+    auto subscription =
+        rclcpp::Node::create_subscription<MessageT>(name, qos, std::forward<CallbackT>(callback), topic_options_);
+    subscriptions_.push_back(subscription);
+    return subscription;
+  }
+
+private:
+  /// @brief 声明并读取节点参数。
+  void declare_parameters();
+
+  /// @brief 创建服务域/话题/定时器/action 互斥回调组。
+  void create_callback_groups();
+
+  /// @brief 设置后续 `create_service` 注册到哪个服务回调组（仅构造期使用）。
+  /// @param[in] group 服务回调组
+  void select_service_group(const rclcpp::CallbackGroup::SharedPtr& group);
+
+  /// @brief 按域注册全部服务、话题与 action。
+  void register_entities();
+
+  /// @brief 按配置创建监测与反馈定时器（频率为 0 时不创建）。
+  void create_aux_timers();
+
+  std::string arm_ip_{"192.168.1.13"};
+  std::string arm_port_{"6001"};
+  std::string arm_port_aux_{"7000"};
+  std::string arm_type_;
+
+  std::vector<std::string> arm_joints_;
+  int executor_threads_{8};
+  int ndof_{0};
+
+  int state_stream_interval_ms_{10};
+  double joint_monitor_rate_{2.0};
+  double feedback_rate_{100.0};
+  double motion_action_timeout_{60.0};
+  double track_action_timeout_{600.0};
+
+  ArmSession session_;
+
+  std::unique_ptr<tl_driver::StatePublishers> publishers_;
+  std::unique_ptr<tl_driver::MotionActionServers> actions_;
+
+  // 回调组持有者：必须始终持有强引用。
+  // rclcpp 的 Node 只弱引用回调组（node_base 内部为 WeakPtr），实体也只弱引用；
+  // 这些成员的强引用一旦释放，对应组即被销毁，组内所有实体将「能列出、永不回调」。
+  rclcpp::CallbackGroup::SharedPtr service_group_;
+  rclcpp::CallbackGroup::SharedPtr motion_service_group_;
+  rclcpp::CallbackGroup::SharedPtr topic_group_;
+  rclcpp::CallbackGroup::SharedPtr monitor_group_;
+  rclcpp::CallbackGroup::SharedPtr feedback_group_;
+  rclcpp::CallbackGroup::SharedPtr action_group_;
+
+  // 注册期当前目标组：仅作为 select_service_group() → create_service() 的传参槽位，
+  // 不得与上面的持有者共用成员，否则重置它会把组一起销毁。
+  rclcpp::CallbackGroup::SharedPtr selected_service_group_;
+  rclcpp::SubscriptionOptions topic_options_;
+
+  // 节点需持有服务/订阅对象，否则对象析构即注销
+  std::vector<rclcpp::ServiceBase::SharedPtr> services_;
+  std::vector<rclcpp::SubscriptionBase::SharedPtr> subscriptions_;
+
+  rclcpp::TimerBase::SharedPtr monitor_timer_;
+  rclcpp::TimerBase::SharedPtr feedback_timer_;
+};
+
+} // namespace tl_driver
+
+#endif // TL_DRIVER__DRIVER_NODE_HPP_

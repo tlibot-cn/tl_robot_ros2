@@ -1,5 +1,5 @@
 # 设置拖拽模式
-int32 mode
+int32 mode   # 拖拽方式：0=无 1=3D鼠标 2=力矩模式 3=位置模式
 ---
 bool success
 string message

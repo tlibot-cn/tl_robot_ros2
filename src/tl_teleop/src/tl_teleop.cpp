@@ -12,6 +12,7 @@ using json = nlohmann::json;
 
 static constexpr double GRIP_THRESHOLD = 0.9;
 static constexpr double CONTROL_PERIOD_S = 0.01;
+static constexpr double kDegToRad = M_PI / 180.0;
 struct TeleopTiming
 {
   using Clock = std::chrono::steady_clock;
@@ -53,7 +54,7 @@ struct TeleopTiming
   {
     VR_GET = 0,
     TCP_POSE,
-    SDK_QUAT,
+    RPY2QUAT,
     ORIENT,
     IK,
     INTERP,
@@ -63,7 +64,7 @@ struct TeleopTiming
   };
 
   static constexpr int REPORT_INTERVAL = 100;
-  static constexpr const char *NAMES[] = {"vr_get", "tcp_pose", "sdk_quat", "orient", "ik", "interp", "servo", "total"};
+  static constexpr const char *NAMES[] = {"vr_get", "tcp_pose", "rpy2quat", "orient", "ik", "interp", "servo", "total"};
 
   Slot slots[SECTION_COUNT]{};
   int counter{0};
@@ -117,7 +118,7 @@ TL_Teleop::TL_Teleop() : Node("tl_teleop_node")
   declare_parameter("arm_axis_mode", 0);
   declare_parameter("pos_scale", 0.5);
   declare_parameter("pos_deadzone", 0.005);
-  declare_parameter("max_pos_delta_mm", 300.0);
+  declare_parameter("max_pos_delta_m", 0.3);
   declare_parameter("singular_angle", 160.0);
   declare_parameter("singular_scale", 0.2);
   declare_parameter("joint_jump_threshold", 30.0);
@@ -141,10 +142,11 @@ TL_Teleop::TL_Teleop() : Node("tl_teleop_node")
   }
   pos_scale_ = get_parameter("pos_scale").as_double();
   pos_deadzone_ = get_parameter("pos_deadzone").as_double();
-  max_pos_delta_mm_ = get_parameter("max_pos_delta_mm").as_double();
-  singular_angle_ = get_parameter("singular_angle").as_double();
+  max_pos_delta_m_ = get_parameter("max_pos_delta_m").as_double();
+  // 配置沿用度制，内部统一为 rad
+  singular_angle_ = get_parameter("singular_angle").as_double() * kDegToRad;
   singular_scale_ = get_parameter("singular_scale").as_double();
-  joint_jump_threshold_ = get_parameter("joint_jump_threshold").as_double();
+  joint_jump_threshold_ = get_parameter("joint_jump_threshold").as_double() * kDegToRad;
   servo_speed_ = get_parameter("servo_speed").as_double();
   auto joint_limits_flat = get_parameter("joint_limits").as_double_array();
   if (joint_limits_flat.size() != static_cast<size_t>(arm_joints_ * 2))
@@ -162,22 +164,23 @@ TL_Teleop::TL_Teleop() : Node("tl_teleop_node")
   joint_limits_.clear();
   for (size_t i = 0; i < joint_limits_flat.size(); i += 2)
   {
-    joint_limits_.emplace_back(joint_limits_flat[i], joint_limits_flat[i + 1]);
+    // 配置为度，内部统一为 rad
+    joint_limits_.emplace_back(joint_limits_flat[i] * kDegToRad, joint_limits_flat[i + 1] * kDegToRad);
   }
 
   double servo_vmax_val = get_parameter("servo_vmax").as_double();
   double servo_amax_val = get_parameter("servo_amax").as_double();
   double servo_jmax_val = get_parameter("servo_jmax").as_double();
-  servo_vmax_.assign(7, servo_vmax_val);
-  servo_amax_.assign(7, servo_amax_val);
-  servo_jmax_.assign(7, servo_jmax_val);
+  // OpenServoJ 接口为 rad/s、rad/s²、rad/s³；配置沿用度制
+  servo_vmax_.assign(7, servo_vmax_val * kDegToRad);
+  servo_amax_.assign(7, servo_amax_val * kDegToRad);
+  servo_jmax_.assign(7, servo_jmax_val * kDegToRad);
 
   set_speed_client_ = create_client<tl_ros2_interface::srv::SetSpeed>("/tl_driver/set_speed");
   set_current_mode_client_ = create_client<tl_ros2_interface::srv::SetCurrentMode>("/tl_driver/set_current_mode");
   open_servoj_client_ = create_client<tl_ros2_interface::srv::OpenServoJ>("/tl_driver/open_servoj");
   close_servoj_client_ = create_client<std_srvs::srv::Trigger>("/tl_driver/close_servoj");
   coord_transform_client_ = create_client<tl_ros2_interface::srv::CoordTransform>("/tl_driver/coord_transform");
-  get_rpy2quat_client_ = create_client<tl_ros2_interface::srv::GetPosTransform>("/tl_driver/get_rpy2quat");
 
   servoj_pos_pub_ = create_publisher<std_msgs::msg::Float64MultiArray>("/tl_driver/set_servoj_pos", 10);
 
@@ -375,15 +378,9 @@ std::vector<double> TL_Teleop::get_arm_cartesian_pose()
   {
     return {};
   }
-  // tl_driver 发布的 /tcp_pose：position 单位 m、rpy 单位 rad（publish_tcp_pose 已做 mm→m 转换）
-  // 逆解请求（CoordTransform BASE→JOINT）入参要求 mm，此处统一转为 mm，作为遥操作基准坐标系
-  constexpr double kMToMm = 1000.0;
-  return {latest_tcp_pose_.position.x * kMToMm,
-          latest_tcp_pose_.position.y * kMToMm,
-          latest_tcp_pose_.position.z * kMToMm,
-          latest_tcp_pose_.rpy.x,
-          latest_tcp_pose_.rpy.y,
-          latest_tcp_pose_.rpy.z};
+  // /tcp_pose 与 CoordTransform 入参均为 m / rad，直接使用
+  return {latest_tcp_pose_.position.x, latest_tcp_pose_.position.y, latest_tcp_pose_.position.z,
+          latest_tcp_pose_.rpy.x,      latest_tcp_pose_.rpy.y,      latest_tcp_pose_.rpy.z};
 }
 
 std::vector<double> TL_Teleop::get_inverse_kinematics(double x, double y, double z, double rx, double ry, double rz)
@@ -410,29 +407,26 @@ std::vector<double> TL_Teleop::get_inverse_kinematics(double x, double y, double
   return resp->target_pos;
 }
 
-std::array<double, 4> TL_Teleop::get_rpy2quat_sdk(double rx, double ry, double rz)
+// RPY 欧拉角 → 四元数，返回顺序：[w, x, y, z]
+// 旋转序与控制器位姿一致：R = Rx(rx)·Ry(ry)·Rz(rz)（见 tl_interface.h 的 rpy2quat）
+std::array<double, 4> TL_Teleop::rpy2quat(double rx, double ry, double rz)
 {
-  auto req = std::make_shared<tl_ros2_interface::srv::GetPosTransform::Request>();
-  req->input = {rx, ry, rz};
-
-  auto future = get_rpy2quat_client_->async_send_request(req);
-  if (future.wait_for(std::chrono::seconds(5)) == std::future_status::timeout)
-  {
-    RCLCPP_WARN(get_logger(), "get_rpy2quat timeout");
-    return {1.0, 0.0, 0.0, 0.0};
-  }
-  auto resp = future.get();
-  if (!resp->success || resp->output.size() < 4)
-  {
-    RCLCPP_WARN(get_logger(), "get_rpy2quat failed");
-    return {1.0, 0.0, 0.0, 0.0};
-  }
-  // get_rpy2quat 返回值顺序: [w, x, y, z]
-  return {resp->output[0], resp->output[1], resp->output[2], resp->output[3]};
+  const double cr = std::cos(rx * 0.5);
+  const double sr = std::sin(rx * 0.5);
+  const double cp = std::cos(ry * 0.5);
+  const double sp = std::sin(ry * 0.5);
+  const double cy = std::cos(rz * 0.5);
+  const double sy = std::sin(rz * 0.5);
+  return {
+      cr * cp * cy - sr * sp * sy,
+      sr * cp * cy + cr * sp * sy,
+      cr * sp * cy - sr * cp * sy,
+      cr * cp * sy + sr * sp * cy,
+  };
 }
 
 // 将关节角度裁剪到限位范围内，防止运动超出机械臂物理限制
-// 输入/输出单位：度
+// 输入/输出单位：rad
 std::vector<double> TL_Teleop::clamp_joints(const std::vector<double>& joints)
 {
   std::vector<double> clamped;
@@ -446,7 +440,7 @@ std::vector<double> TL_Teleop::clamp_joints(const std::vector<double>& joints)
 }
 
 // 关节跳变检测：新指令与上一帧差值超过阈值则拒绝，防止异常指令或通信错误
-// 阈值单位：度
+// 阈值单位：rad
 bool TL_Teleop::joints_safe(const std::vector<double>& new_joints)
 {
   if (last_joints_.empty())
@@ -458,7 +452,7 @@ bool TL_Teleop::joints_safe(const std::vector<double>& new_joints)
   {
     if (std::abs(new_joints[i] - last_joints_[i]) > joint_jump_threshold_)
     {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Joint %zu jump too large: %.1f deg", i,
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Joint %zu jump too large: %.3f rad", i,
                            std::abs(new_joints[i] - last_joints_[i]));
       return false;
     }
@@ -515,7 +509,7 @@ std::array<double, 3> TL_Teleop::quat2rpy(const std::array<double, 4>& q)
 
 void TL_Teleop::control_loop()
 {
-  // 基准点：握下扳机瞬间的机械臂笛卡尔位置（mm）
+  // 基准点：握下扳机瞬间的机械臂笛卡尔位置（m）
   double base_x = 0.0, base_y = 0.0, base_z = 0.0;
   TeleopTiming prof;
 
@@ -561,10 +555,10 @@ void TL_Teleop::control_loop()
           base_y = cart[1];
           base_z = cart[2];
           double base_rx = cart[3], base_ry = cart[4], base_rz = cart[5];
-          // 将当前位姿的 RPY 通过 SDK 转为四元数，作为角度基准
+          // 将当前位姿的 RPY 本地转为四元数，作为角度基准
           auto t_section = std::chrono::steady_clock::now();
-          auto arm_quat = get_rpy2quat_sdk(base_rx, base_ry, base_rz);
-          prof.slots[TeleopTiming::SDK_QUAT].record(std::chrono::steady_clock::now() - t_section);
+          auto arm_quat = rpy2quat(base_rx, base_ry, base_rz);
+          prof.slots[TeleopTiming::RPY2QUAT].record(std::chrono::steady_clock::now() - t_section);
           // VR 手柄当前姿态（qx,qy,qz,qw 顺序）
           std::array<double, 4> current_vr_quat = {qx, qy, qz, qw};
           {
@@ -638,13 +632,13 @@ void TL_Teleop::control_loop()
       // VR 手柄坐标系 → 机械臂基座坐标系映射
       // VR: X右 Y上 Z前  |  机械臂: X前 Y左 Z上
       // 映射关系：X_arm = -Z_vr, Y_arm = -X_vr, Z_arm = Y_vr
-      // 手柄单位 m → 机械臂单位 mm（×1000），再乘位置缩放系数
-      double arm_delta_X = -dz * 1000.0 * pos_scale_ * scale;
-      double arm_delta_Y = -dx * 1000.0 * pos_scale_ * scale;
-      double arm_delta_Z = dy * 1000.0 * pos_scale_ * scale;
-      arm_delta_X = std::max(-max_pos_delta_mm_, std::min(max_pos_delta_mm_, arm_delta_X));
-      arm_delta_Y = std::max(-max_pos_delta_mm_, std::min(max_pos_delta_mm_, arm_delta_Y));
-      arm_delta_Z = std::max(-max_pos_delta_mm_, std::min(max_pos_delta_mm_, arm_delta_Z));
+      // 手柄与机械臂均为 m，直接乘位置缩放系数
+      double arm_delta_X = -dz * pos_scale_ * scale;
+      double arm_delta_Y = -dx * pos_scale_ * scale;
+      double arm_delta_Z = dy * pos_scale_ * scale;
+      arm_delta_X = std::max(-max_pos_delta_m_, std::min(max_pos_delta_m_, arm_delta_X));
+      arm_delta_Y = std::max(-max_pos_delta_m_, std::min(max_pos_delta_m_, arm_delta_Y));
+      arm_delta_Z = std::max(-max_pos_delta_m_, std::min(max_pos_delta_m_, arm_delta_Z));
 
       double target_x = base_x + arm_delta_X;
       double target_y = base_y + arm_delta_Y;

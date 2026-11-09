@@ -11,6 +11,7 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -26,6 +27,7 @@ target_include_directories(medical_demo PRIVATE
 
 ament_target_dependencies(medical_demo
   rclcpp
+  rclcpp_action
   std_srvs
   std_msgs
   tl_ros2_interface
@@ -140,7 +142,7 @@ install(TARGETS ex_info_query
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# 运动控制测试：通过话题下发 MoveJ / MoveL 并等待完成
+# 运动控制测试：通过 action 下发 MoveJ / MoveL 并等待完成
 add_executable(ex_move_control
   src/ex_move_control.cpp
 )
@@ -151,6 +153,7 @@ target_include_directories(ex_move_control PRIVATE
 
 ament_target_dependencies(ex_move_control
   rclcpp
+  rclcpp_action
   std_srvs
   std_msgs
   sensor_msgs

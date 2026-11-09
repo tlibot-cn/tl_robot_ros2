@@ -2,5 +2,5 @@
 ---
 bool success
 string message
-int32 tool_num
-int32 user_num
+int32 tool_num   # 当前工具坐标系编号
+int32 user_num   # 当前用户坐标系编号

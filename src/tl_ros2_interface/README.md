@@ -19,67 +19,57 @@ TL 系列机械臂 ROS2 接口说明
 * 2 [tl_ros2_interface使用说明](#tl_ros2_interface使用说明)
 * 3 [tl_ros2_interface文件总览](#tl_ros2_interface文件总览)
 * 4 [tl_ros2_interface消息（msg）说明](#tl_ros2_interface消息msg说明)
-* 4.1 [机械臂运行状态ArmStatus_msg](#机械臂运行状态ArmStatus_msg)
-* 4.2 [直角坐标系位姿CartesianPose_msg](#直角坐标系位姿CartesianPose_msg)
-* 4.3 [作业文件名JobFileName_msg](#作业文件名JobFileName_msg)
-* 4.4 [ModbusMaster参数ModbusMasterParam_msg](#ModbusMaster参数ModbusMasterParam_msg)
-* 4.5 [ModbusRTU参数ModbusRTUParam_msg](#ModbusRTU参数ModbusRTUParam_msg)
-* 4.6 [ModbusTCP参数ModbusTCPParam_msg](#ModbusTCP参数ModbusTCPParam_msg)
-* 4.7 [运动指令MoveCommand_msg](#运动指令MoveCommand_msg)
-* 4.8 [目标检测结果ObjectInfo_msg](#目标检测结果ObjectInfo_msg)
-* 4.9 [机器人DH参数RobotDHParam_msg](#机器人DH参数RobotDHParam_msg)
-* 4.10 [机械臂关节参数RobotJointParam_msg](#机械臂关节参数RobotJointParam_msg)
-* 4.11 [工具参数ToolParam_msg](#工具参数ToolParam_msg)
-* 4.12 [ServoL直线伺服ServolMove_msg](#servol直线伺服servolmove_msg)
+* 4.1 [直角坐标系位姿CartesianPose_msg](#直角坐标系位姿CartesianPose_msg)
+* 4.2 [ModbusMaster参数ModbusMasterParam_msg](#ModbusMaster参数ModbusMasterParam_msg)
+* 4.3 [ModbusRTU参数ModbusRTUParam_msg](#ModbusRTU参数ModbusRTUParam_msg)
+* 4.4 [ModbusTCP参数ModbusTCPParam_msg](#ModbusTCP参数ModbusTCPParam_msg)
+* 4.5 [运动指令MoveCommand_msg](#运动指令MoveCommand_msg)
+* 4.6 [机器人DH参数RobotDHParam_msg](#机器人DH参数RobotDHParam_msg)
+* 4.7 [机械臂关节参数RobotJointParam_msg](#机械臂关节参数RobotJointParam_msg)
+* 4.8 [工具参数ToolParam_msg](#工具参数toolparam_msg)
+* 4.9 [关节监测JointMonitor_msg](#关节监测jointmonitor_msg)
+* 4.10 [关节力矩JointTorque_msg](#关节力矩jointtorque_msg)
+* 4.11 [关节速度JointSpeed_msg](#关节速度jointspeed_msg)
+* 4.12 [线速度LineSpeed_msg](#线速度linespeed_msg)
+* 4.13 [错误与告警ErrorInfo_msg](#错误与告警errorinfo_msg)
 * 5 [tl_ros2_interface服务（srv）说明](#tl_ros2_interface服务srv说明)
 * 5.1 [坐标转换CoordTransform_srv](#坐标转换CoordTransform_srv)
-* 5.2 [所有作业文件名GetAllJobFileName_srv](#所有作业文件名GetAllJobFileName_srv)
-* 5.3 [坐标系编号GetCoordNum_srv](#坐标系编号GetCoordNum_srv)
-* 5.4 [当前坐标系GetCurrentCoord_srv](#当前坐标系GetCurrentCoord_srv)
-* 5.5 [机器人DH参数GetDHParam_srv](#机器人DH参数GetDHParam_srv)
-* 5.6 [数字输入输出状态GetDigitalInputOutput_srv](#数字输入输出状态GetDigitalInputOutput_srv)
-* 5.7 [全局路点GetGlobalPos_srv](#全局路点GetGlobalPos_srv)
-* 5.8 [关节软件版本号GetJointSoftwareVersion_srv](#关节软件版本号GetJointSoftwareVersion_srv)
-* 5.9 [关节温度GetJointTemperature_srv](#关节温度GetJointTemperature_srv)
-* 5.10 [关节电压GetJointVoltage_srv](#关节电压GetJointVoltage_srv)
-* 5.11 [电机温度GetMotorCurrent_srv](#电机温度GetMotorCurrent_srv)
-* 5.12 [目标位姿可达状态GetPosReachable_srv](#目标位姿可达状态GetPosReachable_srv)
-* 5.13 [位姿转换GetPosTransform_srv](#位姿转换GetPosTransform_srv)
-* 5.14 [关节参数GetRobotJointParam_srv](#关节参数GetRobotJointParam_srv)
-* 5.15 [机械臂运行状态GetRobotState_srv](#机械臂运行状态GetRobotState_srv)
-* 5.16 [获取机械臂运行速度GetSpeed_srv](#获取机械臂运行速度GetSpeed_srv)
-* 5.17 [插入运动指令JobInsertMove_srv](#插入运动指令JobInsertMove_srv)
-* 5.18 [运行指定作业文件JobRun_srv](#运行指定作业文件JobRun_srv)
-* 5.19 [机械臂点动Jogging_srv](#机械臂点动Jogging_srv)
-* 5.20 [下载日志LogDownload_srv](#下载日志LogDownload_srv)
-* 5.21 [写ModbusModbusWrite_srv](#写ModbusModbusWrite_srv)
-* 5.22 [读ModbusModbusRead_srv](#读ModbusModbusRead_srv)
-* 5.23 [关节跟踪OpenServoJ_srv](#关节跟踪OpenServoJ_srv)
-* 5.24 [MoveJ队列运动QueueMotionMoveJ_srv](#MoveJ队列运动QueueMotionMoveJ_srv)
-* 5.25 [MoveJ队列运动模式QueueMotionSetStatus_srv](#MoveJ队列运动模式QueueMotionSetStatus_srv)
-* 5.26 [机械臂默认DH参数RestoreDefaultDHParam_srv](#机械臂默认DH参数RestoreDefaultDHParam_srv)
-* 5.27 [设置关节零点SetAxisZeroPos_srv](#设置关节零点SetAxisZeroPos_srv)
-* 5.28 [控制器有线网口IP设置SetControllerIP_srv](#控制器有线网口IP设置SetControllerIP_srv)
-* 5.29 [设置坐标系编号SetCoordNum_srv](#设置坐标系编号SetCoordNum_srv)
-* 5.30 [设置当前坐标系SetCurrentCoord_srv](#设置当前坐标系SetCurrentCoord_srv)
-* 5.31 [设置当前运行模式SetCurrentMode_srv](#设置当前运行模式SetCurrentMode_srv)
-* 5.32 [设置机械臂DH参数SetDHParam_srv](#设置机械臂DH参数SetDHParam_srv)
-* 5.33 [设置数字输出SetDigitalOutput_srv](#设置数字输出SetDigitalOutput_srv)
-* 5.34 [设置拖拽模式SetDragMode_srv](#设置拖拽模式SetDragMode_srv)
-* 5.35 [设置全局位点SetGlobalPos_srv](#设置全局位点SetGlobalPos_srv)
-* 5.36 [设置关节参数SetRobotJointParam_srv](#设置关节参数SetRobotJointParam_srv)
-* 5.37 [设置运行速度SetSpeed_srv](#设置运行速度SetSpeed_srv)
-* 5.38 [设置工具手参数SetToolParam_srv](#设置工具手参数SetToolParam_srv)
-* 5.39 [设置用户坐标系SetUserCoord_srv](#设置用户坐标系SetUserCoord_srv)
-* 5.40 [工具手参数标定ToolHandCalib_srv](#工具手参数标定ToolHandCalib_srv)
-* 5.41 [拖拽轨迹回放TrackPlayback_srv](#拖拽轨迹回放TrackPlayback_srv)
-* 5.42 [拖拽轨迹保存TrackSave_srv](#拖拽轨迹保存TrackSave_srv)
-* 5.43 [当前电机力矩GetCurrentMotorTorque_srv](#当前电机力矩GetCurrentMotorTorque_srv)
-* 5.44 [当前线速度和关节速度GetCurrentLineJointSpeed_srv](#当前线速度和关节速度GetCurrentLineJointSpeed_srv)
-* 5.45 [查询当前运行模式GetCurrentMode_srv](#查询当前运行模式GetCurrentMode_srv)
+* 5.2 [坐标系编号GetCoordNum_srv](#坐标系编号GetCoordNum_srv)
+* 5.3 [当前坐标系GetCurrentCoord_srv](#当前坐标系GetCurrentCoord_srv)
+* 5.4 [机器人DH参数GetDHParam_srv](#机器人DH参数GetDHParam_srv)
+* 5.5 [数字输入输出状态GetDigitalInputOutput_srv](#数字输入输出状态GetDigitalInputOutput_srv)
+* 5.6 [目标位姿可达状态GetPosReachable_srv](#目标位姿可达状态GetPosReachable_srv)
+* 5.7 [关节参数GetRobotJointParam_srv](#关节参数GetRobotJointParam_srv)
+* 5.8 [机械臂点动Jogging_srv](#机械臂点动Jogging_srv)
+* 5.9 [写ModbusModbusWrite_srv](#写ModbusModbusWrite_srv)
+* 5.10 [读ModbusModbusRead_srv](#读ModbusModbusRead_srv)
+* 5.11 [关节跟踪OpenServoJ_srv](#关节跟踪OpenServoJ_srv)
+* 5.12 [MoveJ队列运动QueueMotionMoveJ_srv](#MoveJ队列运动QueueMotionMoveJ_srv)
+* 5.13 [MoveJ队列运动模式QueueMotionSetStatus_srv](#MoveJ队列运动模式QueueMotionSetStatus_srv)
+* 5.14 [设置关节零点SetAxisZeroPos_srv](#设置关节零点SetAxisZeroPos_srv)
+* 5.15 [控制器有线网口IP设置SetControllerIP_srv](#控制器有线网口IP设置SetControllerIP_srv)
+* 5.16 [设置坐标系编号SetCoordNum_srv](#设置坐标系编号SetCoordNum_srv)
+* 5.17 [设置当前坐标系SetCurrentCoord_srv](#设置当前坐标系SetCurrentCoord_srv)
+* 5.18 [设置当前运行模式SetCurrentMode_srv](#设置当前运行模式SetCurrentMode_srv)
+* 5.19 [设置数字输出SetDigitalOutput_srv](#设置数字输出SetDigitalOutput_srv)
+* 5.20 [设置拖拽模式SetDragMode_srv](#设置拖拽模式SetDragMode_srv)
+* 5.21 [设置运行速度SetSpeed_srv](#设置运行速度SetSpeed_srv)
+* 5.22 [设置工具手参数SetToolParam_srv](#设置工具手参数SetToolParam_srv)
+* 5.23 [设置用户坐标系SetUserCoord_srv](#设置用户坐标系SetUserCoord_srv)
+* 5.24 [拖拽轨迹保存TrackSave_srv](#拖拽轨迹保存TrackSave_srv)
+* 5.25 [查询当前运行模式GetCurrentMode_srv](#查询当前运行模式GetCurrentMode_srv)
+* 5.26 [正运动学Fk_srv](#正运动学fk_srv)
+* 5.27 [逆运动学Ik_srv](#逆运动学ik_srv)
+* 5.28 [查询运行速度GetSpeed_srv](#查询运行速度getspeed_srv)
+* 5.29 [查询机械臂运行状态GetArmStatus_srv](#查询机械臂运行状态getarmstatus_srv)
+* 5.30 [设置示教模式类型SetTeachType_srv](#设置示教模式类型setteachtype_srv)
+* 5.31 [查询示教模式类型GetTeachType_srv](#查询示教模式类型getteachtype_srv)
 
 ## tl_ros2_interface功能包说明
 tl_ros2_interface 功能包为 TL 系列机械臂在 ROS2 框架下提供消息（msg）和服务（srv）接口定义，供上层驱动或应用调用。该包本身没有可执行程序，主要作用为定义协议数据结构和服务接口。
+
+> **单位约定**：全部 ROS 接口使用 REP 103 单位（关节 rad、笛卡尔位置 m、线速度 m/s）。控制器/SDK 的 mm/度在 `tl_driver` 边界换算。
+> 例外：`GetPosReachable` 的 14 位点位数组是控制器协议包，自带单位制标志位，按协议原样透传。
 
 ## tl_ros2_interface使用说明
 该功能包并没有可执行的使用命令，其主要作用为为其他功能包提供必须的消息文件。
@@ -90,77 +80,69 @@ tl_ros2_interface/
 ├── CMakeLists.txt        # 编译规则
 ├── package.xml           # 依赖声明
 ├── msg/                  # 消息定义
-│   ├── ArmStatus.msg
 │   ├── CartesianPose.msg
-│   ├── JobFileName.msg
 │   ├── ModbusMasterParam.msg
 │   ├── ModbusRTUParam.msg
 │   ├── ModbusTCPParam.msg
 │   ├── MoveCommand.msg
-│   ├── ObjectInfo.msg
 │   ├── RobotDHParam.msg
 │   ├── RobotJointParam.msg
-│   ├── ServolMove.msg
-│   └── ToolParam.msg
+│   ├── ToolParam.msg
+│   ├── JointMonitor.msg
+│   ├── JointSpeed.msg
+│   ├── JointTorque.msg
+│   ├── LineSpeed.msg
+│   └── ErrorInfo.msg
+├── action/               # Action 定义
+│   ├── Move.action
+│   └── PlayTrack.action
 ├── srv/                  # 服务定义
 │   ├── CoordTransform.srv
-│   ├── GetAllJobFileName.srv
+│   ├── Fk.srv
+│   ├── GetArmStatus.srv
 │   ├── GetCoordNum.srv
 │   ├── GetCurrentCoord.srv
-│   ├── GetCurrentLineJointSpeed.srv
 │   ├── GetCurrentMode.srv
-│   ├── GetCurrentMotorTorque.srv
 │   ├── GetDHParam.srv
 │   ├── GetDigitalInputOutput.srv
-│   ├── GetGlobalPos.srv
-│   ├── GetJointSoftwareVersion.srv
-│   ├── GetJointTemperature.srv
-│   ├── GetJointVoltage.srv
-│   ├── GetMotorCurrent.srv
 │   ├── GetPosReachable.srv
-│   ├── GetPosTransform.srv
 │   ├── GetRobotJointParam.srv
-│   ├── GetRobotState.srv
 │   ├── GetSpeed.srv
-│   ├── JobRun.srv
-│   ├── JobInsertMove.srv
+│   ├── GetTeachType.srv
+│   ├── Ik.srv
 │   ├── Jogging.srv
-│   ├── LogDownload.srv
 │   ├── ModbusRead.srv
 │   ├── ModbusWrite.srv
 │   ├── OpenServoJ.srv
 │   ├── QueueMotionMoveJ.srv
 │   ├── QueueMotionSetStatus.srv
-│   ├── RestoreDefaultDHParam.srv
 │   ├── SetAxisZeroPos.srv
 │   ├── SetControllerIP.srv
 │   ├── SetCoordNum.srv
 │   ├── SetCurrentCoord.srv
 │   ├── SetCurrentMode.srv
-│   ├── SetDHParam.srv
 │   ├── SetDigitalOutput.srv
 │   ├── SetDragMode.srv
-│   ├── SetGlobalPos.srv
-│   ├── SetRobotJointParam.srv
 │   ├── SetSpeed.srv
+│   ├── SetTeachType.srv
 │   ├── SetToolParam.srv
 │   ├── SetUserCoord.srv
-│   ├── ToolHandCalib.srv
-│   ├── TrackPlayback.srv
 │   ├── TrackSave.srv
 ```
 
 ## tl_ros2_interface消息（msg）说明
-以下列出 msg 文件定义及字段说明。
+以下列出 msg 文件定义及字段说明。**13 个 msg 与 2 个 action，每个文件头部注释里都标了用途，读之前先看那一行：**
 
-### 机械臂运行状态ArmStatus_msg
-```
-builtin_interfaces/Time stamp
-string run_state
-```
-__msg成员__
-- stamp: 时间戳
-- run_state: 运行状态描述字符串
+| 用途 | 数量 | 定义 |
+| :-- | :--: | :-- |
+| 话题载荷（在 publisher / subscriber 上出现） | 6 | `CartesianPose`、`JointMonitor`、`JointSpeed`、`JointTorque`、`LineSpeed`、`ErrorInfo` |
+| Action goal 载荷 / srv 嵌套参数 | 1 | `MoveCommand` |
+| 仅作 srv 嵌套参数（不发布话题） | 6 | `ModbusMasterParam`、`ModbusRTUParam`、`ModbusTCPParam`、`RobotDHParam`、`RobotJointParam`、`ToolParam` |
+| Action | 2 | `Move`（`move_joint`/`move_linear`）、`PlayTrack`（`play_track`） |
+
+其中 `CartesianPose` 既发布/订阅话题，也作为 srv 嵌套参数（`SetUserCoord.pos`）；`MoveCommand` 作为 Move action goal 载荷，同时作为 srv 嵌套参数（`QueueMotionMoveJ.cmd`）。
+
+> **「仅在 srv 中出现的结构为什么放在 `msg/`」**：ROS2 的 `.srv` 只能声明内建类型或消息类型字段，无法内联结构体，也没有「仅供服务使用的结构」这一类——任何被 srv 复用的结构都必须定义成 `.msg`，生成出的类型名也就必然是 `<包>/msg/<名字>`。所以「`msg/` 目录里有不发布话题的类型」是 ROS2 类型系统的必然结果，不代表这些类型接口可以发布。判断一个类型是否发布，看驱动里有没有对应的 `create_publisher` / `create_subscription`。
 
 ### 直角坐标系位姿CartesianPose_msg
 ```
@@ -171,16 +153,9 @@ float64 arm_angle
 ```
 __msg成员__
 - header: 标准消息头
-- position: x,y,z 位置（米）
-- rpy: 姿态欧拉角（弧度）
-- arm_angle: 机械臂额外角度（弧度）
-
-### 作业文件名JobFileName_msg
-```
-string[] file_name
-```
-__msg成员__
-- file_name: 作业文件名数组
+- position: x,y,z 位置，单位 **m**（`/tcp_pose` 与 `SetUserCoord.pos` 一致）
+- rpy: 姿态欧拉角（弧度，XYZ 内旋）
+- arm_angle: 冗余臂角（弧度；6 轴为 0，`SetUserCoord` 未使用）
 
 ### ModbusMaster参数ModbusMasterParam_msg
 ```
@@ -241,41 +216,37 @@ int32 spin
 bool para_sync
 ```
 __msg成员__
-- target_pos_value: 目标位置数值数组（关节或笛卡尔）
-- target_pos_name: 目标位置名称
-- target_pos_type: 位置类型标识
-- coord: 坐标系编号
-- velocity/velocity_sync/acc/dec: 速度与加减速参数
-- pl/time: 轨迹/时间相关参数
+- target_pos_value: 14 维目标点位。前 7 位本体、后 7 位外部轴；`coord=0` 时 [0..6] 为关节角（rad）；`coord=1/2/3` 时位置 m、姿态 rad，[7..13] 外部轴按 SDK 原值透传
+- target_pos_name: 内置点位名（如 `"GP0001"`，`target_pos_type=5/6` 时使用）
+- target_pos_type: PosType：0=自定义数组 1=P 2=E 3=RP 4=AP 5=系统内置GP 6=含外部轴的GE
+- coord: 0=关节（rad）1=直角 2=工具 3=用户（1/2/3 时位置 m、姿态 rad）
+- velocity/velocity_sync: MOVJ 为 %（0<v≤100）；MOVL 为 m/s（0<v≤1）；队列接口同此口径
+- acc/dec: 加速度/减速度百分比，(0,100]
+- pl: 平滑过渡等级 0～5，非百分比
+- time: 提前执行时间（SDK 头未标注单位）
 - tool_num/user_num: 工具/用户坐标编号
-- posidtype/configuration/spin/para_sync: 其他标志位或配置
-
-### 目标检测结果ObjectInfo_msg
-```
-string type
-geometry_msgs/PointStamped pos
-```
-__msg成员__
-- type: 目标类型
-- pos: 检测到的目标位置（带时间戳）
+- posidtype: 0=一级(P/GP) 1=二级(P[I001]/GP[I001])
+- configuration: 形态
+- spin: MOVCA 使用：0=姿态不变 1=六轴不转 2=六轴旋转
+- para_sync: 外部轴是否同步
 
 ### 机器人DH参数RobotDHParam_msg
 ```
 # 对应 SDK tl::RobotDHParam：alpha[6]/a[6]/theta[6]/d[6]/eulerAngle/mountingAngle
-float64[] alpha           # 1-6轴DH参数alpha，单位：deg
-float64[] a               # 1-6轴DH参数a，单位：mm
-float64[] theta           # 1-6轴DH参数theta，单位：deg
-float64[] d               # 1-6轴DH参数d，单位：mm
+float64[] alpha           # 1-6轴DH参数alpha，单位：rad
+float64[] a               # 1-6轴DH参数a，单位：m
+float64[] theta           # 1-6轴DH参数theta，单位：rad
+float64[] d               # 1-6轴DH参数d，单位：m
 int32 euler_angle         # 欧拉角模式
-float64 mounting_angle    # 机器人安装角度，单位：deg
+float64 mounting_angle    # 机器人安装角度，单位：rad
 ```
 __msg成员__
-- alpha: 1-6轴DH参数alpha（deg）
-- a: 1-6轴DH参数a（mm）
-- theta: 1-6轴DH参数theta（deg）
-- d: 1-6轴DH参数d（mm）
+- alpha: 1-6轴DH参数alpha（rad）
+- a: 1-6轴DH参数a（m）
+- theta: 1-6轴DH参数theta（rad）
+- d: 1-6轴DH参数d（m）
 - euler_angle: 欧拉角模式
-- mounting_angle: 机器人安装角度（deg）
+- mounting_angle: 机器人安装角度（rad）
 
 ### 机械臂关节参数RobotJointParam_msg
 ```
@@ -296,16 +267,16 @@ int32 direction
 __msg成员__
 - reduction_ratio: 减速比
 - encoder_resolution: 编码器位数
-- pos_sw_limit: 轴正限位
-- neg_sw_limit: 轴反限位
-- rated_rot_speed: 电机额定正转速
-- rated_derot_speed: 电机额定反转速
-- max_rot_speed: 电机最大正转速
-- max_derot_speed: 电机最大反转速
-- rated_vel: 额定正速度
-- rated_devel: 额定反速度
-- max_acc: 最大加速度
-- max_dec: 最大减速度
+- pos_sw_limit: 轴正限位（rad）
+- neg_sw_limit: 轴反限位（rad）
+- rated_rot_speed: 电机额定正转速（rad/s）
+- rated_derot_speed: 电机额定反转速（rad/s；新 SDK 无对应字段，当前恒为 0）
+- max_rot_speed: 电机最大正转速（rad/s）
+- max_derot_speed: 电机最大反转速（rad/s；新 SDK 无对应字段，当前恒为 0）
+- rated_vel: 额定正速度（rad/s；新 SDK 无对应字段，当前恒为 0）
+- rated_devel: 额定反速度（rad/s；新 SDK 无对应字段，当前恒为 0）
+- max_acc: 最大加速度（rad/s²）
+- max_dec: 最大减速度（rad/s²）
 - direction: 模型方向，1：正向，-1：反向
 
 ### 工具参数ToolParam_msg
@@ -323,30 +294,67 @@ float64 payload_mass_center_y
 float64 payload_mass_center_z
 ```
 __msg成员__
-- x: X轴偏移方向
-- y: Y轴偏移方向
-- z: Z轴偏移方向
-- a: 绕A轴旋转
-- b: 绕B轴旋转
-- c: 绕C轴旋转
-- payload_mass: 负载质量
-- payload_inertia: 负载惯性
-- payload_mass_center_x: 负载质心X
-- payload_mass_center_y: 负载质心Y
-- payload_mass_center_z: 负载质心Z
+- x: X 轴偏移（m）
+- y: Y 轴偏移（m）
+- z: Z 轴偏移（m）
+- a: 绕 A 轴旋转（rad）
+- b: 绕 B 轴旋转（rad）
+- c: 绕 C 轴旋转（rad）
+- payload_mass: 负载质量（kg）
+- payload_inertia: 负载惯量（SDK 未标注单位）
+- payload_mass_center_x: 负载质心 X（m）
+- payload_mass_center_y: 负载质心 Y（m）
+- payload_mass_center_z: 负载质心 Z（m）
 
-### ServoL直线伺服ServolMove_msg
+### 关节监测JointMonitor_msg
 ```
-float64[] target_pose     # [x, y, z, rx, ry, rz] 目标笛卡尔位姿
-float64 step_size         # 插值步长 (mm)，相邻插值点之间的最大笛卡尔距离，默认 2.0
-int32 coord               # 坐标系：1=基座标系(Base) 2=工具坐标系(Tool) 3=用户坐标系(User)
+std_msgs/Header header
+float64[7] motor_current
+float64[7] temperature
+float64[7] joint_voltage
 ```
-__msg成员__
-- target_pose: 目标笛卡尔位姿 [x, y, z, rx, ry, rz]
-- step_size: 插值步长（mm），默认 2.0
-- coord: 坐标系编号（1=基座标系，2=工具坐标系，3=用户坐标系）
+- `/tl_driver/joint_monitor` 载荷，默认 2 Hz（`joint_monitor_rate` 可配，0–2，0=关闭）
+- 同一回调内依次查询电流、温度、电压，整帧覆盖，不跨帧缓存；`header.stamp` 为查询完成后的采样时刻
+- 单位：电流 A、温度 °C、电压 V
+- 定长数组，缺失元素为 `quiet_NaN`
 
-> 前置条件：需先调用 `open_servoj` 打开关节跟踪模式；每次收到该话题消息，节点自动获取当前位姿，插值并 IK 转为关节角后通过 servoj 发送。
+### 关节力矩JointTorque_msg
+```
+std_msgs/Header header
+float64[7] motor_torque
+```
+- `/tl_driver/joint_torque` 载荷，默认 100 Hz（`feedback_rate` 可配，0=关闭；与速度话题共用同一定时器）
+- 单位：额定扭矩千分之一（‰，±1000 对应 ±100%；不是 N·m，也不是 %）
+- 定长数组，缺失元素为 `quiet_NaN`
+
+### 关节速度JointSpeed_msg
+```
+std_msgs/Header header
+float64[7] joint_speed
+```
+- `/tl_driver/joint_speed` 载荷，默认 100 Hz（`feedback_rate` 可配，0=关闭）
+- 单位：rad/s；定长数组，缺失元素为 `quiet_NaN`
+- 与 `/tl_driver/line_speed` 由同一次查询产生，共用 `feedback_rate` 和 `header.stamp`
+
+### 线速度LineSpeed_msg
+```
+std_msgs/Header header
+float64 line_speed
+```
+- `/tl_driver/line_speed` 载荷，默认 100 Hz（`feedback_rate` 可配，0=关闭）
+- 单位：m/s；查询失败为 `quiet_NaN`
+- 与 `/tl_driver/joint_speed` 由同一次查询产生；与 `/tl_driver/joint_torque` 共用同一定时器
+
+### 错误与告警ErrorInfo_msg
+```
+std_msgs/Header header
+int32 message_type
+int32 message_code
+string message
+```
+- `/tl_driver/error_info` 载荷，事件驱动（无频率参数）：控制器 6001 主端口每推送一条错误/告警即发布一帧，不节流、不去重
+- `message_type` / `message_code` 为 SDK 回调原值，取值含义见控制器错误码表；`message` 为回调文本
+- QoS 为 `KeepLast(100)` + reliable，不使用 `transient_local`（新订阅者不应收到陈旧故障）
 
 ## tl_ros2_interface服务（srv）说明
 下面列出 srv 文件的请求/响应字段及简要说明。
@@ -363,20 +371,10 @@ bool success
 string message
 float64[] target_pos
 ```
-- origin_coord/target_coord: 源/目标坐标系编号
-- form: 转换模式
-- origin_pos/reference_pos: 输入位置与参考位置
-- 返回: success/message/target_pos
-
-### 所有作业文件名GetAllJobFileName_srv
-```
----
-bool success
-string message
-tl_ros2_interface/JobFileName[] robots_file
-```
-- 返回所有作业文件名列表
-- 返回: success/message/robots_file（作业文件名列表）
+- origin_coord/target_coord: 源/目标坐标系编号（0=关节 1=基坐标 2=工具 3=用户）
+- form: 形态
+- origin_pos/reference_pos: 输入坐标与逆解参考点。关节坐标为 rad；直角/工具/用户坐标为位置 m + 姿态 rad
+- 返回: success/message/target_pos（转换结果，单位同上）
 
 ### 坐标系编号GetCoordNum_srv
 ```
@@ -417,62 +415,8 @@ string message
 int32[] input
 int32[] output
 ```
-- 返回数字输入输出状态
+- 返回数字输入输出状态；数字 IO 的唯一读取接口（不发布 `io_state` 话题）
 - 返回: success/message/input（数字输入状态数组）/output（数字输出状态数组）
-
-### 全局路点GetGlobalPos_srv
-```
-string pos_name
----
-bool success
-string message
-float64[] pos
-```
-- 输入 pos_name，返回对应全局路点
-- pos_name: 全局位置点名称
-- 返回: success/message/pos（位置坐标数组）
-
-### 关节软件版本号GetJointSoftwareVersion_srv
-```
-int32 axis_num
----
-bool success
-string message
-```
-- 查询指定轴的软件版本（返回 message）
-- axis_num: 轴编号
-- 返回: success/message（软件版本信息）
-
-### 关节温度GetJointTemperature_srv
-```
----
-bool success
-string message
-float64[] temperatures
-```
-- 返回各关节温度数组
-- 返回: success/message/temperatures（各关节温度数组）
-
-### 关节电压GetJointVoltage_srv
-```
----
-bool success
-string message
-float64[] joint_voltage
-float64[] positioner_voltage
-```
-- 返回关节电压数组
-- 返回: success/message/joint_voltage（关节电压数组）/positioner_voltage（定位器电压数组）
-
-### 电机温度GetMotorCurrent_srv
-```
----
-bool success
-string message
-float64[] motor_current
-```
-- 返回电机电流数组
-- 返回: success/message/motor_current（电机电流数组）
 
 ### 目标位姿可达状态GetPosReachable_srv
 ```
@@ -481,23 +425,12 @@ string move_type
 ---
 bool success
 string message
+bool reachable
 ```
 - 输入目标位姿，返回是否可达
-- pos: 目标位姿数组
-- move_type: 运动类型（如关节运动、直线运动等）
-- 返回: success/message
-
-### 位姿转换GetPosTransform_srv
-```
-float64[] input
----
-bool success
-string message
-float64[] output
-```
-- 输入位姿，返回转换后的位姿
-- input: 输入位姿数组
-- 返回: success/message/output（转换后的位姿数组）
+- pos: 长度 14，布局同全局点位（控制器协议包，位置 mm、角度按 [1]）
+- move_type: 运动类型："MOVJ" 或 "MOVL"
+- 返回: success/reachable/message；`success` 表示查询是否成功，`reachable` 仅在查询成功时有效
 
 ### 关节参数GetRobotJointParam_srv
 ```
@@ -511,68 +444,6 @@ tl_ros2_interface/RobotJointParam param
 - id: 关节编号
 - 返回: success/message/param（关节参数）
 
-### 机械臂运行状态GetRobotState_srv
-```
-int32 channel
-bool stop
-int32 mode
-int32 interval
-bool io_state
-int32 position
-bool detail_motion_pos
-int32 pos_sum
-string[] io_port
-string[] optional
----
-bool success
-string message
-```
-- 获取机械臂运行相关状态，包含 IO 与运动详情
-- channel: 通道号
-- stop: 是否停止
-- mode: 模式
-- interval: 查询间隔
-- io_state: 是否返回 IO 状态
-- position: 位置类型
-- detail_motion_pos: 是否返回详细运动位置
-- pos_sum: 位置数量
-- io_port: 指定 IO 端口列表
-- optional: 其他可选参数
-- 返回: success/message
-
-### 获取机械臂运行速度GetSpeed_srv
-```
----
-bool success
-string message
-float64 speed
-```
-- 返回当前全局速度设置
-
-### 插入运动指令JobInsertMove_srv
-```
-int32 line
-tl_ros2_interface/MoveCommand cmd
----
-bool success
-string message
-```
-- 向作业文件插入一条运动指令
-- line: 插入的行序号
-- cmd: 运动指令（MoveCommand 类型）
-- 返回: success/message
-
-### 运行指定作业文件JobRun_srv
-```
-string job_name
----
-bool success
-string message
-```
-- 请求运行指定作业文件
-- job_name: 作业文件名
-- 返回: success/message
-
 ### 机械臂点动Jogging_srv
 ```
 int32 axis
@@ -584,19 +455,6 @@ string message
 - 点动控制指定轴及方向
 - axis: 轴编号
 - direction: 运动方向（true 为正方向，false 为负方向）
-- 返回: success/message
-
-### 下载日志LogDownload_srv
-```
-int32 count
-string directory_path
----
-bool success
-string message
-```
-- 请求下载日志到目录
-- count: 日志条数
-- directory_path: 下载保存路径
 - 返回: success/message
 
 ### 写ModbusModbusWrite_srv
@@ -644,9 +502,10 @@ bool success
 string message
 ```
 - 设置并打开关节伺服的最大速度/加速度
-- vmax: 最大速度数组
-- amax: 最大加速度数组
-- jmax: 最大加加速度数组
+- vmax: 最大速度数组，固定 7 元素（6 轴末位补 0；7 轴第 7 位为真实 J7），单位 rad/s
+- amax: 最大加速度数组，固定 7 元素，单位 rad/s²
+- jmax: 最大加加速度数组，固定 7 元素，单位 rad/s³
+- 注意：传 6 元素会导致控制器协议解析错乱并断开 7000 端口连接（SDK 警告）
 - 返回: success/message
 
 ### MoveJ队列运动QueueMotionMoveJ_srv
@@ -671,17 +530,6 @@ string message
 ```
 - 设置队列运动模式开关
 - status: true 开启队列运动，false 关闭队列运动
-- 返回: success/message
-
-### 机械臂默认DH参数RestoreDefaultDHParam_srv
-```
-int32 robot_num
----
-bool success
-string message
-```
-- 恢复默认 DH 参数
-- robot_num: 机器人编号
 - 返回: success/message
 
 ### 设置关节零点SetAxisZeroPos_srv
@@ -733,7 +581,7 @@ bool success
 string message
 ```
 - 设置当前坐标系
-- coord: 坐标系编号
+- coord: 0=关节 1=基坐标 2=工具 3=用户
 - 返回: success/message
 
 ### 设置当前运行模式SetCurrentMode_srv
@@ -745,17 +593,6 @@ string message
 ```
 - 设置当前工作模式
 - mode: 工作模式
-- 返回: success/message
-
-### 设置机械臂DH参数SetDHParam_srv
-```
-tl_ros2_interface/RobotDHParam param
----
-bool success
-string message
-```
-- 设置机器人 DH 参数
-- param: DH 参数
 - 返回: success/message
 
 ### 设置数字输出SetDigitalOutput_srv
@@ -779,33 +616,29 @@ bool success
 string message
 ```
 - 设置拖拽（示教）模式
-- mode: 拖拽模式（0 关闭，1 开启）
+- mode: 0=无 1=3D鼠标 2=力矩模式 3=位置模式
 - 返回: success/message
 
-### 设置全局位点SetGlobalPos_srv
+### 设置示教模式类型SetTeachType_srv
 ```
-string pos_name
-float64[] pos_info
+int32 type
 ---
 bool success
 string message
 ```
-- 设置/保存全局位置点
-- pos_name: 位置点名称
-- pos_info: 位置坐标数组
+- 设置示教模式类型（点动 / 拖拽）
+- type: 0=点动 1=拖拽；开启力引导拖拽需先 `set_drag_mode(mode=1)` 再 `set_teach_type(type=1)`，顺序不可颠倒，其他值不下发控制器
 - 返回: success/message
 
-### 设置关节参数SetRobotJointParam_srv
+### 查询示教模式类型GetTeachType_srv
 ```
-int32 id
-tl_ros2_interface/RobotJointParam param
 ---
+int32 type
 bool success
 string message
 ```
-- 设置指定关节参数
-- id: 关节编号
-- param: 关节参数
+- 查询当前的示教模式类型
+- type: 0=点动 1=拖拽；查询失败时保持 -1（哨兵值）
 - 返回: success/message
 
 ### 设置运行速度SetSpeed_srv
@@ -816,7 +649,7 @@ bool success
 string message
 ```
 - 设置全局速度
-- speed: 速度值（百分比或比例）
+- speed: 全局运行速度百分比，单位 %（0<speed≤100）
 - 返回: success/message
 
 ### 设置工具手参数SetToolParam_srv
@@ -842,31 +675,7 @@ string message
 ```
 - 设置用户坐标系的笛卡尔位姿
 - user_num: 用户坐标系编号
-- pos: 笛卡尔位姿
-- 返回: success/message
-
-### 工具手参数标定ToolHandCalib_srv
-```
-int32 tool_num
-int32 point_num
----
-bool success
-string message
-```
-- 工具手标定
-- tool_num: 工具编号
-- point_num: 标定点数
-- 返回: success/message
-
-### 拖拽轨迹回放TrackPlayback_srv
-```
-int32 vel
----
-bool success
-string message
-```
-- 回放轨迹
-- vel: 回放速度
+- pos: 笛卡尔位姿（position m、rpy rad；arm_angle 未使用）
 - 返回: success/message
 
 ### TrackSave_srv
@@ -880,31 +689,6 @@ string message
 - traj_name: 轨迹名称
 - 返回: success/message
 
-### 当前电机力矩GetCurrentMotorTorque_srv
-```
-
----
-bool success
-string message
-int32[] motor_torque
-int32[] motor_torque_sync
-```
-- 查询当前电机力矩
-- 返回: success/message/motor_torque（当前电机力矩）/motor_torque_sync（同步轴电机力矩）
-
-### 当前线速度和关节速度GetCurrentLineJointSpeed_srv
-```
-
----
-bool success
-string message
-float64 line_speed
-float64[] joint_speed
-float64[] joint_speed_sync
-```
-- 查询当前线速度和关节速度
-- 返回: success/message/line_speed（当前线速度）/joint_speed（关节速度）/joint_speed_sync（同步轴关节速度）
-
 ### 查询当前运行模式GetCurrentMode_srv
 ```
 
@@ -915,6 +699,98 @@ int32 mode
 ```
 - 查询当前运行模式
 - 返回: success/message/mode（当前模式：0-示教 1-远程 2-运行）
+
+### 正运动学Fk_srv
+```
+int32 frame
+float64[] joints
+---
+bool success
+string message
+tl_ros2_interface/CartesianPose pose
+```
+- 正运动学：关节角 → 指定坐标系下的 TCP 位姿
+- 服务名：`/tl_driver/fk`
+- frame: 输出位姿坐标系，1=基坐标 2=工具 3=用户（0=关节不支持）
+- joints: 关节角 rad，6 或 7 元素（7 元素时第 7 位为外部轴）
+- pose: position m、rpy rad；`arm_angle` 为 SDK 第 7 位外部轴角（度→rad）
+
+### 逆运动学Ik_srv
+```
+int32 frame
+tl_ros2_interface/CartesianPose pose
+int32 form
+float64[] reference_pos
+---
+bool success
+string message
+float64[7] joints
+```
+- 逆运动学：指定坐标系下的 TCP 位姿 → 关节角
+- 服务名：`/tl_driver/ik`
+- frame: 输入位姿坐标系，1=基坐标 2=工具 3=用户（0=关节不支持）
+- pose: position m、rpy rad；`arm_angle` 始终作为第 7 位外部轴（rad→度）
+- form: 形态；reference_pos: 逆解参考关节角 rad（可选）
+- joints: 定长 7，单位 rad；失败时为 NaN
+
+### 查询运行速度GetSpeed_srv
+```
+---
+bool success
+string message
+float64 speed
+```
+- 服务名：`/tl_driver/get_speed`
+- speed: 全局运行速度百分比 %
+
+### 查询机械臂运行状态GetArmStatus_srv
+```
+---
+bool success
+string message
+string run_state
+```
+- 服务名：`/tl_driver/get_arm_status`
+- success/message: 查询是否成功及描述
+- run_state: `STOP` / `PAUSE` / `RUNNING` / `UNKNOWN`
+- 事件驱动，每次调用直接查询控制器；不再周期发布 `/arm_status` 话题
+
+## tl_ros2_interface动作（action）说明
+
+### 运动Move_action
+```
+tl_ros2_interface/MoveCommand command
+float64 timeout_sec
+---
+bool success
+string message
+---
+float64 progress
+tl_ros2_interface/CartesianPose current_pose
+string state
+```
+- goal: `command` 为 `MoveCommand`，`target_pos_value` 必须 14 位、`target_pos_type` 必须 0；`timeout_sec<=0` 使用节点默认超时
+- feedback: `progress`（0–1，坐标系 2/3 无法估算时为 -1）、`current_pose`（MCS 状态流）、`state`（RUNNING/STOP/PAUSE）
+- result: `success`/`message`
+- cancel：控制器 SDK 无通用停止接口，驱动一律拒绝，不会返回“取消成功”
+- 并发：刚通过队列运动、轨迹回放等服务下发运动后 500 ms 内的 goal 会被拒绝
+- 完成校验：`move_joint` 仅接受 `coord=0`、`move_linear` 仅接受 `coord=1`；前者用 ACS、后者用 MCS 校验，到达容差 1° / 2 mm
+
+### 轨迹回放PlayTrack_action
+```
+int32 vel
+float64 timeout_sec
+---
+bool success
+string message
+---
+float64 progress
+string state
+```
+- goal: `vel` 回放速度百分比 1–100
+- feedback: `progress` 固定 -1（控制器不提供回放进度）、`state`
+- result: `success`/`message`
+- cancel：同样拒绝（无可用的回放停止接口）
 
 ## 说明与后续
 - 若需更详细的字段含义或示例用法，可提交 issue 或说明需要的具体消息/服务，文档将补充字段示例与使用场景。

@@ -15,7 +15,7 @@ joint_trajectory_controller (ros2_control)
   ▼
 TLHardwareInterface
   │  ┌─ subscriber: /joint_states         ◄── tl_driver 发布
-  │  ├─ publisher:  /tl_driver/set_servoj_pos  ──► tl_driver 接收 (deg)
+  │  ├─ publisher:  /tl_driver/set_servoj_pos  ──► tl_driver 接收 (rad)
   │  ├─ client:     /tl_driver/open_servoj     ──► 开启 servoj 流
   │  └─ client:     /tl_driver/close_servoj    ──► 关闭 servoj 流
   ▼  TCP/IP
@@ -27,7 +27,7 @@ TLHardwareInterface
 | 方向 | 方式 | 话题 / 服务 |
 |------|------|-------------|
 | **读取状态** | Subscriber | `/joint_states`（sensor_msgs/JointState） |
-| **写入指令** | Publisher | `/tl_driver/set_servoj_pos`（std_msgs/Float64MultiArray，**角度**） |
+| **写入指令** | Publisher | `/tl_driver/set_servoj_pos`（std_msgs/Float64MultiArray，**rad**） |
 | **开启流模式** | Service Client | `/tl_driver/open_servoj`（tl_ros2_interface/srv/OpenServoJ） |
 | **关闭流模式** | Service Client | `/tl_driver/close_servoj`（std_srvs/srv/Trigger） |
 
@@ -50,7 +50,8 @@ TLHardwareInterface
 1. 调用 `/tl_driver/open_servoj` 服务，传入 `vmax`/`amax`/`jmax` 参数
 2. 等待首帧 `/joint_states` 消息（超时 5 秒）
 3. 将接收到的关节位置/力矩数据写入状态接口，初始化速度计算状态
-4. 标记 `hardware_active_ = true`
+4. 用当前关节角播种命令接口（`joint_position_commands_`）：ros2_control 在控制器接管前就激活硬件，若不播种则会先持续下发零位，把机械臂拉向零点
+5. 标记 `hardware_active_ = true`
 
 ### `read()`
 
@@ -60,9 +61,8 @@ TLHardwareInterface
 
 ### `write()`
 
-- 读取 `joint_position_commands_`（弧度）
-- 转换为**角度**（× 180/π）
-- 发布 `Float64MultiArray` 到 `/tl_driver/set_servoj_pos`
+- 读取 `joint_position_commands_`（rad）
+- 直接发布 `Float64MultiArray` 到 `/tl_driver/set_servoj_pos`（驱动负责换算到 SDK 度制）
 
 ### `on_deactivate()`
 
@@ -85,9 +85,9 @@ TLHardwareInterface
 | `open_servoj_service` | `/tl_driver/open_servoj` | 开启 servoj 流服务 |
 | `close_servoj_service` | `/tl_driver/close_servoj` | 关闭 servoj 流服务 |
 | `state_timeout_sec` | `1.0` | 关节状态超时告警阈值（秒） |
-| `servoj_vmax` | `30.0` | 各关节最大速度（deg/s），支持单值或逗号分隔的逐关节值 |
-| `servoj_amax` | `100.0` | 各关节最大加速度（deg/s²），支持单值或逗号分隔的逐关节值 |
-| `servoj_jmax` | `500.0` | 各关节最大加加速度（deg/s³），支持单值或逗号分隔的逐关节值 |
+| `servoj_vmax` | `0.5236` | 各关节最大速度（rad/s），支持单值或逗号分隔的逐关节值（默认值等价 30°/s） |
+| `servoj_amax` | `1.7453` | 各关节最大加速度（rad/s²），支持单值或逗号分隔的逐关节值（默认值等价 100°/s²） |
+| `servoj_jmax` | `8.7266` | 各关节最大加加速度（rad/s³），支持单值或逗号分隔的逐关节值（默认值等价 500°/s³） |
 
 示例配置片段：
 
@@ -98,9 +98,9 @@ TLHardwareInterface
 <param name="open_servoj_service">/tl_driver/open_servoj</param>
 <param name="close_servoj_service">/tl_driver/close_servoj</param>
 <param name="state_timeout_sec">1.0</param>
-<param name="servoj_vmax">30.0,30.0,30.0,30.0,30.0,30.0,30.0</param>
-<param name="servoj_amax">100.0</param>
-<param name="servoj_jmax">500.0</param>
+<param name="servoj_vmax">0.5236,0.5236,0.5236,0.5236,0.5236,0.5236,0.5236</param>
+<param name="servoj_amax">1.7453</param>
+<param name="servoj_jmax">8.7266</param>
 ```
 
 ## 插件注册
@@ -176,3 +176,4 @@ source install/setup.bash
 - 位置指令的单位转换（rad → deg）在 `write()` 中自动完成，无需额外配置。
 - 速度由位置差分计算，不依赖 `tl_driver` 发布的速度值。
 - 若长时间收不到 `/joint_states`，插件会持续告警但不会自动 shutdown——此行为由上层控制器管理。
+- 命令接口在 `on_activate()` 中用当前关节角播种，`hardware_active_ = true` 之前 `write()` 不会发流；不要改成在 `on_init()` 预设零位命令，否则启动阶段会把机械臂拉向零点。

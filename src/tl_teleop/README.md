@@ -45,7 +45,6 @@ tl_teleop 运行时依赖 **tl_driver** 功能包提供以下服务：
 | `/tl_driver/open_servoj` | 服务 | 开启 ServoJ 模式 |
 | `/tl_driver/close_servoj` | 服务 | 关闭 ServoJ 模式 |
 | `/tl_driver/coord_transform` | 服务 | 逆运动学求解（笛卡尔 → 关节） |
-| `/tl_driver/get_rpy2quat` | 服务 | RPY → 四元数转换 |
 | `/tcp_pose` | 话题 | 获取当前末端位姿 |
 | `/tl_driver/set_servoj_pos` | 话题 | 发送目标关节位置 |
 
@@ -132,7 +131,7 @@ tl_teleop_node:
     # ========== 位置控制参数 ==========
     pos_scale: 0.5                   # 位置缩放系数（VR 位移 1m → 末端移动 0.5m）
     pos_deadzone: 0.005              # 位置死区（m），各轴独立判定
-    max_pos_delta_mm: 300.0          # 单步最大位置增量（mm），防止异常跳变
+    max_pos_delta_m: 0.3             # 单步最大位置增量（m），防止异常跳变
 
     # ========== 奇异点防护参数 ==========
     joint_jump_threshold: 30.0       # 关节跳变阈值（度），超过此值拒绝执行
@@ -144,9 +143,9 @@ tl_teleop_node:
 
     # ========== ServoJ 初始化参数（标量值，自动广播到所有关节）==========
     servo_speed: 25.0                # ServoJ 运动速度
-    servo_vmax: 80.0                 # ServoJ 最大速度（度/秒）
-    servo_amax: 3000.0               # ServoJ 最大加速度（度/秒²）
-    servo_jmax: 50000.0              # ServoJ 最大加加速度（度/秒³）
+    servo_vmax: 80.0                 # ServoJ 最大速度，配置用 °/s（内部转 rad/s）
+    servo_amax: 3000.0               # ServoJ 最大加速度，配置用 °/s²（内部转 rad/s²）
+    servo_jmax: 50000.0              # ServoJ 最大加加速度，配置用 °/s³（内部转 rad/s³）
 ```
 
 **参数说明**：
@@ -156,7 +155,7 @@ tl_teleop_node:
 | `arm_axis_mode` | int | — | 机械臂关节数，必须为 6 或 7 |
 | `pos_scale` | double | 0.5 | 位置缩放系数。手柄位移 1m → 末端移动 `pos_scale` m |
 | `pos_deadzone` | double | 0.005 | 位置死区（m），各轴独立判定，小于此值的位移被忽略 |
-| `max_pos_delta_mm` | double | 300.0 | 单步最大位置增量（mm），防止异常跳变 |
+| `max_pos_delta_m` | double | 0.3 | 单步最大位置增量（m），防止异常跳变 |
 | `singular_angle` | double | 160.0 | 奇异点判定角度（度）。6 轴检测 J5/J6，7 轴检测 J6/J7 |
 | `singular_scale` | double | 0.2 | 奇异点区域速度缩放系数 |
 | `joint_jump_threshold` | double | 30.0 | 关节跳变阈值（度），相邻帧超过此值拒绝执行 |
@@ -181,7 +180,7 @@ tl_teleop_node:
 ├── launch                             # 启动文件
 │   ├── tl_teleop_6axis.launch.py      # 6 轴启动
 │   └── tl_teleop_7axis.launch.py      # 7 轴启动
-├── lib                                # PXREA Robot SDK 专有库
+├── lib                                # PXREA Robot SDK 库（第三方预编译）
 │   ├── arm
 │   │   └── libPXREARobotSDK.so        # ARM64 架构预编译库
 │   ├── include
@@ -233,7 +232,7 @@ tl_teleop 作为客户端节点，主要使用（消费）tl_driver 提供的话
 ```
 | 话题 | 类型 | 说明 |
 |------|------|------|
-| `/tl_driver/set_servoj_pos` | `std_msgs/Float64MultiArray` | 目标关节角度数组（单位：度），100Hz 频率发布 |
+| `/tl_driver/set_servoj_pos` | `std_msgs/Float64MultiArray` | 目标关节角度数组（单位：rad），100Hz 频率发布 |
 
 ### 订阅的话题
 ```
@@ -252,10 +251,9 @@ tl_teleop 作为客户端节点，主要使用（消费）tl_driver 提供的话
     /tl_driver/open_servoj: tl_ros2_interface/srv/OpenServoJ
     /tl_driver/close_servoj: std_srvs/srv/Trigger
     /tl_driver/coord_transform: tl_ros2_interface/srv/CoordTransform
-    /tl_driver/get_rpy2quat: tl_ros2_interface/srv/GetPosTransform
 ```
 
-以上 **6 个服务**均为调用 tl_driver 提供的接口，tl_teleop 本身不提供服务端。
+以上 **5 个服务**均为调用 tl_driver 提供的接口，tl_teleop 本身不提供服务端。
 
 ### 控制逻辑说明
 

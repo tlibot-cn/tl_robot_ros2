@@ -13,7 +13,7 @@
  * ⚠ 安全警告：start_jogging 会直接驱动机器人运动！
  *   运行前请确保工作区安全、无人靠近，并随时准备急停。
  *
- * ⚠ 点动维持说明：按《tl_driver服务与话题说明书》，点动指令需周期性调用才能
+ * ⚠ 点动维持说明：按《tl_driver接口说明书》，点动指令需周期性调用才能
  *   维持运动（通常每 40ms 一次）。本示例在点动持续期间按 jog_refresh_ms 周期
  *   重发 start_jogging，结束后再调用 stop_jogging，保证实机可持续运动。
  *
@@ -40,8 +40,8 @@
 
 #include <sensor_msgs/msg/joint_state.hpp>
 
-#include "tl_ros2_interface/msg/arm_status.hpp"
 #include "tl_ros2_interface/msg/cartesian_pose.hpp"
+#include "tl_ros2_interface/srv/get_arm_status.hpp"
 #include "tl_ros2_interface/srv/jogging.hpp"
 #include "tl_ros2_interface/srv/set_current_coord.hpp"
 #include "tl_ros2_interface/srv/set_current_mode.hpp"
@@ -51,9 +51,9 @@ namespace tl_example
 
 // 类型别名 — 简化代码
 using Trigger = std_srvs::srv::Trigger;
-using ArmStatus = tl_ros2_interface::msg::ArmStatus;
 using CartesianPose = tl_ros2_interface::msg::CartesianPose;
 using JointState = sensor_msgs::msg::JointState;
+using GetArmStatus = tl_ros2_interface::srv::GetArmStatus;
 using Jogging = tl_ros2_interface::srv::Jogging;
 using SetCurrentCoord = tl_ros2_interface::srv::SetCurrentCoord;
 using SetCurrentMode = tl_ros2_interface::srv::SetCurrentMode;
@@ -97,18 +97,15 @@ public:
     jog_refresh_ms_ = this->get_parameter("jog_refresh_ms").as_int();
 
     // ── 服务客户端 ──
-    connect_cli_ = this->create_client<Trigger>("/tl_driver/connect_arm");
-    disconnect_cli_ = this->create_client<Trigger>("/tl_driver/disconnect_arm");
     power_on_cli_ = this->create_client<Trigger>("/tl_driver/power_on");
     power_off_cli_ = this->create_client<Trigger>("/tl_driver/power_off");
     set_mode_cli_ = this->create_client<SetCurrentMode>("/tl_driver/set_current_mode");
     set_current_coord_cli_ = this->create_client<SetCurrentCoord>("/tl_driver/set_current_coord");
     start_jogging_cli_ = this->create_client<Jogging>("/tl_driver/start_jogging");
     stop_jogging_cli_ = this->create_client<Jogging>("/tl_driver/stop_jogging");
+    arm_status_cli_ = this->create_client<GetArmStatus>("/tl_driver/get_arm_status");
 
-    // ── 状态订阅（运行状态 + 关节角度 + 末端位姿，用于点动前后对比）──
-    arm_status_sub_ = this->create_subscription<ArmStatus>(
-        "/arm_status", 10, std::bind(&TeachControlDemo::onArmStatus, this, std::placeholders::_1));
+    // ── 状态订阅（关节角度 + 末端位姿，用于点动前后对比）──
     joint_state_sub_ = this->create_subscription<JointState>(
         "/joint_states", 10, std::bind(&TeachControlDemo::onJointState, this, std::placeholders::_1));
     tcp_pose_sub_ = this->create_subscription<CartesianPose>(
@@ -123,20 +120,16 @@ public:
 
 private:
   // ── ROS2 通信 ──
-  rclcpp::Client<Trigger>::SharedPtr connect_cli_;
-  rclcpp::Client<Trigger>::SharedPtr disconnect_cli_;
   rclcpp::Client<Trigger>::SharedPtr power_on_cli_;
   rclcpp::Client<Trigger>::SharedPtr power_off_cli_;
   rclcpp::Client<SetCurrentMode>::SharedPtr set_mode_cli_;
   rclcpp::Client<SetCurrentCoord>::SharedPtr set_current_coord_cli_;
   rclcpp::Client<Jogging>::SharedPtr start_jogging_cli_;
   rclcpp::Client<Jogging>::SharedPtr stop_jogging_cli_;
-  rclcpp::Subscription<ArmStatus>::SharedPtr arm_status_sub_;
+  rclcpp::Client<GetArmStatus>::SharedPtr arm_status_cli_;
   rclcpp::Subscription<JointState>::SharedPtr joint_state_sub_;
   rclcpp::Subscription<CartesianPose>::SharedPtr tcp_pose_sub_;
 
-  // 最近一次接收到的机械臂运行状态（/arm_status）
-  std::string arm_run_state_ = "unknown";
   // 最近一次接收到的关节角度 / 末端位姿（话题均为弧度/米，打印时转角度/mm）
   JointState::SharedPtr last_joint_state_;
   CartesianPose::SharedPtr last_tcp_pose_;
@@ -151,10 +144,6 @@ private:
   int jog_refresh_ms_ = 40;  // 点动维持重发周期（ms），<=0 表示只发一次
 
   // ── 话题回调 ──
-  void onArmStatus(const ArmStatus::SharedPtr msg)
-  {
-    arm_run_state_ = msg->run_state;
-  }
   void onJointState(const JointState::SharedPtr msg)
   {
     last_joint_state_ = msg;
@@ -237,7 +226,7 @@ private:
     return resp;
   }
 
-  /// 执行一次点动（start → 周期性维持 → stop），期间持续 spin 收集 /arm_status
+  /// 执行一次点动（start → 周期性维持 → stop），结束后查询运行状态
   void jogOnce(int axis, bool dir, int seconds, const std::string& desc)
   {
     RCLCPP_INFO(this->get_logger(), "  ▶ %s（axis=%d, %s, %d 秒）", desc.c_str(), axis, dir ? "正方向" : "负方向",
@@ -263,12 +252,17 @@ private:
         next_refresh = std::chrono::steady_clock::now() + std::chrono::milliseconds(jog_refresh_ms_);
       }
     }
-    RCLCPP_INFO(this->get_logger(), "  点动结束，期间 run_state = %s",
-                arm_run_state_ == "unknown" ? "(未收到)" : arm_run_state_.c_str());
+    std::string run_state = "UNKNOWN";
     auto stop_req = std::make_shared<Jogging::Request>();
     stop_req->axis = axis;
     stop_req->direction = dir;
     callService<Jogging>(stop_jogging_cli_, stop_req, "stop_jogging");
+    // 先停止再查询，避免 get_arm_status 的同步等待拖后 stop_jogging。
+    auto status_resp =
+        callService<GetArmStatus>(arm_status_cli_, std::make_shared<GetArmStatus::Request>(), "get_arm_status");
+    if (status_resp && status_resp->success)
+      run_state = status_resp->run_state;
+    RCLCPP_INFO(this->get_logger(), "  点动结束，run_state = %s", run_state.c_str());
   }
 
   /// 短暂 spin 收集话题数据（确保拿到最新关节角度 / 末端位姿）
@@ -303,7 +297,7 @@ private:
     RCLCPP_INFO(this->get_logger(), "  %s 关节角度(度): [%s]", tag.c_str(), s.c_str());
   }
 
-  /// 打印当前末端位姿（话题位置为 mm、姿态为弧度，姿态转角度更直观）
+  /// 打印当前末端位姿（话题位置为 m、姿态为弧度，姿态转角度更直观）
   void printTcpPose(const std::string& tag)
   {
     if (!last_tcp_pose_)
@@ -312,7 +306,7 @@ private:
       return;
     }
     constexpr double kRad2Deg = 180.0 / 3.14159265358979323846;
-    RCLCPP_INFO(this->get_logger(), "  %s 末端位姿: pos(%.1f, %.1f, %.1f)mm  rpy(%.2f, %.2f, %.2f)°", tag.c_str(),
+    RCLCPP_INFO(this->get_logger(), "  %s 末端位姿: pos(%.3f, %.3f, %.3f)m  rpy(%.2f, %.2f, %.2f)°", tag.c_str(),
                 last_tcp_pose_->position.x, last_tcp_pose_->position.y, last_tcp_pose_->position.z,
                 last_tcp_pose_->rpy.x * kRad2Deg, last_tcp_pose_->rpy.y * kRad2Deg, last_tcp_pose_->rpy.z * kRad2Deg);
   }
@@ -328,26 +322,16 @@ void tl_example::TeachControlDemo::run()
 {
   // ── 1. 检查核心服务就绪 ──
   RCLCPP_INFO(this->get_logger(), "\n========== 1. 检查核心服务就绪 ==========");
-  if (!waitService("connect_arm", connect_cli_) || !waitService("set_current_mode", set_mode_cli_) ||
-      !waitService("power_on", power_on_cli_) || !waitService("start_jogging", start_jogging_cli_) ||
-      !waitService("disconnect_arm", disconnect_cli_))
+  if (!waitService("set_current_mode", set_mode_cli_) || !waitService("power_on", power_on_cli_) ||
+      !waitService("start_jogging", start_jogging_cli_) || !waitService("get_arm_status", arm_status_cli_))
   {
     RCLCPP_ERROR(this->get_logger(), "tl_driver 核心服务未就绪，请先启动 tl_driver 节点");
     rclcpp::shutdown();
     return;
   }
 
-  // ── 2. 连接机械臂 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 2. 连接机械臂 ==========");
-  if (!callTrigger(connect_cli_, "connect_arm"))
-  {
-    RCLCPP_ERROR(this->get_logger(), "连接失败，退出测试");
-    rclcpp::shutdown();
-    return;
-  }
-
-  // ── 3. 切换示教模式 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 3. 切换示教模式 ==========");
+  // ── 2. 切换示教模式 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 2. 切换示教模式 ==========");
   {
     auto req = std::make_shared<SetCurrentMode::Request>();
     req->mode = 0; // 示教模式（0=示教，1=远程，2=运行）
@@ -357,20 +341,19 @@ void tl_example::TeachControlDemo::run()
     }
   }
 
-  // ── 4. 机械臂上电 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 4. 机械臂上电 ==========");
+  // ── 3. 机械臂上电 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 3. 机械臂上电 ==========");
   if (!callTrigger(power_on_cli_, "power_on"))
   {
     RCLCPP_ERROR(this->get_logger(), "上电失败，退出测试");
-    callTrigger(disconnect_cli_, "disconnect_arm（清理）");
     rclcpp::shutdown();
     return;
   }
 
-  // ── 5. 关节坐标系点动（⚠ 真实运动）──
+  // ── 4. 关节坐标系点动（⚠ 真实运动）──
   // 说明：坐标系=0（关节）时，start_jogging 的 axis 1~7 代表关节轴号 J1~J7，
   //       即「几号轴就转几号关节」。
-  RCLCPP_INFO(this->get_logger(), "\n========== 5. 关节坐标系点动（⚠ 真实运动）==========");
+  RCLCPP_INFO(this->get_logger(), "\n========== 4. 关节坐标系点动（⚠ 真实运动）==========");
   RCLCPP_INFO(this->get_logger(), "  说明：坐标系=0（关节）时，axis 1~7 = 关节轴号 J1~J7");
   {
     auto req = std::make_shared<SetCurrentCoord::Request>();
@@ -385,10 +368,10 @@ void tl_example::TeachControlDemo::run()
           "关节 J" + std::to_string(jog_axis_) + (jog_dir_ ? " 正方向" : " 负方向") + "点动");
   printJointStateDeg("点动后（对比 J" + std::to_string(jog_axis_) + " 应发生变化）");
 
-  // ── 6. 直角坐标系点动（⚠ 真实运动）──
+  // ── 5. 直角坐标系点动（⚠ 真实运动）──
   // 说明：坐标系=1（直角）时，start_jogging 的 axis 含义变化：
   //       axis 1~3 = 位置 X/Y/Z（直线平移），axis 4~6 = 姿态 RX/RY/RZ（旋转）。
-  RCLCPP_INFO(this->get_logger(), "\n========== 6. 直角坐标系点动（⚠ 真实运动）==========");
+  RCLCPP_INFO(this->get_logger(), "\n========== 5. 直角坐标系点动（⚠ 真实运动）==========");
   RCLCPP_INFO(this->get_logger(), "  说明：坐标系=1（直角）时，axis 1~3 = 位置 X/Y/Z，axis 4~6 = 姿态 RX/RY/RZ");
   {
     auto req = std::make_shared<SetCurrentCoord::Request>();
@@ -411,13 +394,9 @@ void tl_example::TeachControlDemo::run()
     callService<SetCurrentCoord>(set_current_coord_cli_, req, "set_current_coord(0=关节，恢复)");
   }
 
-  // ── 7. 机械臂下电 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 7. 机械臂下电 ==========");
+  // ── 6. 机械臂下电 ──
+  RCLCPP_INFO(this->get_logger(), "\n========== 6. 机械臂下电 ==========");
   callTrigger(power_off_cli_, "power_off");
-
-  // ── 8. 断开连接 ──
-  RCLCPP_INFO(this->get_logger(), "\n========== 8. 断开连接 ==========");
-  callTrigger(disconnect_cli_, "disconnect_arm");
 
   RCLCPP_INFO(this->get_logger(), "\n============================================================");
   RCLCPP_INFO(this->get_logger(), "  点动（示教）测试完成，节点退出");

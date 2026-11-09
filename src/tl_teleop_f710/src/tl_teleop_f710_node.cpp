@@ -22,9 +22,14 @@
 #include <algorithm>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 
+namespace
+{
+constexpr double kDegToRad = M_PI / 180.0;
+} // namespace
+
 F710TeleopNode::F710TeleopNode()
     : rclcpp::Node("tl_teleop_f710_node"), latest_joy_(nullptr), speed_value_(50.0), stop_mode_(false),
-      target_pose_ready_(false), init_state_(0), kdl_fk_ready_(false)
+      target_pose_ready_(false), init_state_(0), kdl_ready_(false)
 {
   declareParameters();
   loadParameters();
@@ -49,23 +54,20 @@ F710TeleopNode::F710TeleopNode()
 
   // 发布 /tl_driver/set_servoj_pos（Float64MultiArray）
   servoj_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/tl_driver/set_servoj_pos", 10);
-  // 发布 /tl_driver/set_servol_pos（ServolMove，仿真模式用）
-  servol_pub_ = this->create_publisher<tl_ros2_interface::msg::ServolMove>("/tl_driver/set_servol_pos", 10);
 
   // 服务客户端
   set_mode_client_ = this->create_client<tl_ros2_interface::srv::SetCurrentMode>("/tl_driver/set_current_mode");
   set_speed_client_ = this->create_client<tl_ros2_interface::srv::SetSpeed>("/tl_driver/set_speed");
   open_servoj_client_ = this->create_client<tl_ros2_interface::srv::OpenServoJ>("/tl_driver/open_servoj");
   close_servoj_client_ = this->create_client<std_srvs::srv::Trigger>("/tl_driver/close_servoj");
-  connect_arm_client_ = this->create_client<std_srvs::srv::Trigger>("/tl_driver/connect_arm");
   power_on_client_ = this->create_client<std_srvs::srv::Trigger>("/tl_driver/power_on");
   coord_transform_client_ = this->create_client<tl_ros2_interface::srv::CoordTransform>("/tl_driver/coord_transform");
   power_off_client_ = this->create_client<std_srvs::srv::Trigger>("/tl_driver/power_off");
 
-  // 仿真模式：提前初始化 KDL FK（jointStateCallback 首帧触发初始位姿）
+  // 仿真模式：提前初始化 KDL FK/IK（jointStateCallback 首帧触发初始位姿）
   if (simulation_mode_)
   {
-    initKDLFK();
+    initKDLKinematics();
   }
 
   // ServoJ 初始化定时器（1Hz）
@@ -74,7 +76,7 @@ F710TeleopNode::F710TeleopNode()
   // 控制定时器（250Hz = 4ms）
   control_timer_ = this->create_wall_timer(std::chrono::milliseconds(4), std::bind(&F710TeleopNode::controlLoop, this));
 
-  RCLCPP_INFO(this->get_logger(), "F710 遥操作节点已启动 (250Hz, 灵敏度 %.1fmm/s, vmax=%.1f°/s)", pos_sensitivity_,
+  RCLCPP_INFO(this->get_logger(), "F710 遥操作节点已启动 (250Hz, 灵敏度 %.3fm/s, vmax=%.3frad/s)", pos_sensitivity_,
               servo_vmax_);
 }
 
@@ -132,13 +134,18 @@ void F710TeleopNode::loadParameters()
   speed_max_ = this->get_parameter("speed_max").as_double();
   speed_step_ = this->get_parameter("speed_step").as_double();
   servo_speed_ = this->get_parameter("servo_speed").as_double();
-  servo_vmax_ = this->get_parameter("servo_vmax").as_double();
-  servo_amax_ = this->get_parameter("servo_amax").as_double();
-  servo_jmax_ = this->get_parameter("servo_jmax").as_double();
-  pos_sensitivity_ = this->get_parameter("pos_sensitivity").as_double();
+  // 配置沿用度制、mm/s；内部统一为 rad/s、rad/s²、rad/s³、m/s、rad
+  servo_vmax_ = this->get_parameter("servo_vmax").as_double() * kDegToRad;
+  servo_amax_ = this->get_parameter("servo_amax").as_double() * kDegToRad;
+  servo_jmax_ = this->get_parameter("servo_jmax").as_double() * kDegToRad;
+  pos_sensitivity_ = this->get_parameter("pos_sensitivity").as_double() / 1000.0;
   rot_sensitivity_ = this->get_parameter("rot_sensitivity").as_double();
   deadzone_ = this->get_parameter("deadzone").as_double();
   home_joints_ = this->get_parameter("home_joints").as_double_array();
+  for (auto& joint : home_joints_)
+  {
+    joint *= kDegToRad;
+  }
 
   axis_left_x_ = this->get_parameter("axis_left_x").as_int();
   axis_left_y_ = this->get_parameter("axis_left_y").as_int();
@@ -170,17 +177,6 @@ void F710TeleopNode::publishServoj(const std::vector<double>& joint_pos)
   auto msg = std_msgs::msg::Float64MultiArray();
   msg.data = joint_pos;
   servoj_pub_->publish(msg);
-}
-
-void F710TeleopNode::publishServol()
-{
-  if (target_pose_.size() < 6)
-    return;
-  auto msg = tl_ros2_interface::msg::ServolMove();
-  msg.target_pose = target_pose_;
-  msg.step_size = 5.0;
-  msg.coord = 1; // 基座标系
-  servol_pub_->publish(msg);
 }
 
 bool F710TeleopNode::cartesianToJoint(const std::vector<double>& cart_pose, std::vector<double>& joint_out)
@@ -227,9 +223,54 @@ bool F710TeleopNode::cartesianToJoint(const std::vector<double>& cart_pose, std:
   return true;
 }
 
-// ========== KDL FK 初始化（仿真模式）==========
+bool F710TeleopNode::cartesianToJointKDL(const std::vector<double>& cart_pose, std::vector<double>& joint_out)
+{
+  if (!kdl_ik_solver_ || cart_pose.size() < 6)
+    return false;
 
-void F710TeleopNode::initKDLFK()
+  KDL::JntArray q_guess(ndof_);
+  {
+    std::lock_guard<std::mutex> lock(joint_mutex_);
+    if (static_cast<int>(last_joint_cmd_.size()) != ndof_)
+      return false;
+    for (int i = 0; i < ndof_; ++i)
+      q_guess(i) = last_joint_cmd_[i];
+  }
+
+  KDL::Frame target;
+  target.p = KDL::Vector(cart_pose[0], cart_pose[1], cart_pose[2]);
+  target.M = KDL::Rotation::RPY(cart_pose[3], cart_pose[4], cart_pose[5]);
+
+  KDL::JntArray q_out(ndof_);
+  int ret = kdl_ik_solver_->CartToJnt(q_guess, target, q_out);
+  if (ret != 0)
+  {
+    // LMA 在迭代无法继续时可能返回 -100/-101，解本身仍可用；用 FK 残差兜底判定
+    KDL::Frame actual;
+    if (kdl_fk_solver_->JntToCart(q_out, actual) != 0)
+    {
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "KDL IK 求解失败, ret=%d", ret);
+      return false;
+    }
+    const double pos_err = (actual.p - target.p).Norm();
+    const double rot_err = KDL::diff(actual.M, target.M).Norm();
+    if (!std::isfinite(pos_err) || !std::isfinite(rot_err) || pos_err > 1e-4 || rot_err > 1e-3)
+    {
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                           "KDL IK 未收敛, ret=%d, pos_err=%.6f m, rot_err=%.6f rad", ret, pos_err, rot_err);
+      return false;
+    }
+  }
+
+  joint_out.resize(ndof_);
+  for (int i = 0; i < ndof_; ++i)
+    joint_out[i] = q_out(i);
+  return true;
+}
+
+// ========== KDL 运动学初始化（仿真模式）==========
+
+void F710TeleopNode::initKDLKinematics()
 {
   std::string urdf_path;
   try
@@ -244,14 +285,14 @@ void F710TeleopNode::initKDLFK()
 
   if (access(urdf_path.c_str(), F_OK) != 0)
   {
-    RCLCPP_WARN(this->get_logger(), "KDL FK: URDF 未找到: %s", urdf_path.c_str());
+    RCLCPP_WARN(this->get_logger(), "KDL: URDF 未找到: %s", urdf_path.c_str());
     return;
   }
 
   KDL::Tree tree;
   if (!kdl_parser::treeFromFile(urdf_path, tree))
   {
-    RCLCPP_WARN(this->get_logger(), "KDL FK: 无法解析 URDF");
+    RCLCPP_WARN(this->get_logger(), "KDL: 无法解析 URDF");
     return;
   }
 
@@ -259,13 +300,21 @@ void F710TeleopNode::initKDLFK()
   std::string tip_link = "link" + std::to_string(ndof_);
   if (!tree.getChain("link0", tip_link, kdl_chain_))
   {
-    RCLCPP_WARN(this->get_logger(), "KDL FK: 无法获取 chain link0 -> %s", tip_link.c_str());
+    RCLCPP_WARN(this->get_logger(), "KDL: 无法获取 chain link0 -> %s", tip_link.c_str());
+    return;
+  }
+  if (static_cast<int>(kdl_chain_.getNrOfJoints()) != ndof_)
+  {
+    RCLCPP_ERROR(this->get_logger(), "KDL chain 关节数 %u 与 home_joints 长度 %d 不一致", kdl_chain_.getNrOfJoints(),
+                 ndof_);
     return;
   }
 
   kdl_fk_solver_ = std::make_unique<KDL::ChainFkSolverPos_recursive>(kdl_chain_);
-  kdl_fk_ready_ = true;
-  RCLCPP_INFO(this->get_logger(), "KDL FK 就绪: %d 轴, tip=%s", ndof_, tip_link.c_str());
+  // 250 Hz 控制循环内同步求解，限制最大迭代次数，避免不可达目标长期占用周期
+  kdl_ik_solver_ = std::make_unique<KDL::ChainIkSolverPos_LMA>(kdl_chain_, 1e-5, 50, 1e-15);
+  kdl_ready_ = true;
+  RCLCPP_INFO(this->get_logger(), "KDL FK/IK 就绪: %d 轴, tip=%s", ndof_, tip_link.c_str());
 }
 
 // ========== 关节→笛卡尔（FK）==========
@@ -286,6 +335,7 @@ bool F710TeleopNode::homeJointsToPose(std::vector<double>& pose_out)
     req->origin_coord = 0;
     req->target_coord = 1;
     req->form = 0;
+    // CoordTransform 入参：关节 rad
     std::vector<double> pos = home_joints_;
     pos.resize(7, 0.0);
     req->origin_pos = pos;
@@ -308,7 +358,7 @@ bool F710TeleopNode::homeJointsToPose(std::vector<double>& pose_out)
   }
 
   // 仿真：KDL 本地 FK
-  if (!kdl_fk_ready_)
+  if (!kdl_ready_)
   {
     RCLCPP_ERROR(this->get_logger(), "FK 未就绪");
     return false;
@@ -317,7 +367,7 @@ bool F710TeleopNode::homeJointsToPose(std::vector<double>& pose_out)
   KDL::JntArray q_in(ndof);
   for (int i = 0; i < ndof; ++i)
   {
-    q_in(i) = home_joints_[i] * M_PI / 180.0;
+    q_in(i) = home_joints_[i]; // 内部已是 rad
   }
 
   KDL::Frame frame_out;
@@ -328,9 +378,10 @@ bool F710TeleopNode::homeJointsToPose(std::vector<double>& pose_out)
     return false;
   }
 
-  double x = frame_out.p.x() * 1000.0;
-  double y = frame_out.p.y() * 1000.0;
-  double z = frame_out.p.z() * 1000.0;
+  // CoordTransform 与 KDL 均为 m
+  double x = frame_out.p.x();
+  double y = frame_out.p.y();
+  double z = frame_out.p.z();
   double rx, ry, rz;
   frame_out.M.GetRPY(rx, ry, rz);
 
@@ -344,19 +395,18 @@ void F710TeleopNode::initServoj()
 {
   if (simulation_mode_)
   {
-    init_state_ = 6;
+    init_state_ = 5;
     return;
   }
-  if (init_state_ == 6)
+  if (init_state_ == 5)
     return;
 
   auto& clk = *this->get_clock();
 
-  // 状态 0：等待所有服务就绪
+  // 状态 0：等待所有服务就绪（连接已由 tl_driver 启动时建立）
   if (init_state_ == 0)
   {
-    if (!connect_arm_client_->wait_for_service(std::chrono::milliseconds(100)) ||
-        !power_on_client_->wait_for_service(std::chrono::milliseconds(100)) ||
+    if (!power_on_client_->wait_for_service(std::chrono::milliseconds(100)) ||
         !set_mode_client_->wait_for_service(std::chrono::milliseconds(100)) ||
         !set_speed_client_->wait_for_service(std::chrono::milliseconds(100)) ||
         !open_servoj_client_->wait_for_service(std::chrono::milliseconds(100)))
@@ -365,44 +415,35 @@ void F710TeleopNode::initServoj()
       return;
     }
     RCLCPP_INFO(this->get_logger(), "ServoJ 初始化中...");
-    connect_arm_client_->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>());
+    power_on_client_->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>());
     init_state_ = 1;
     return;
   }
 
-  // 状态 1：连接机械臂
+  // 状态 1：上电
   if (init_state_ == 1)
-  {
-    RCLCPP_INFO(this->get_logger(), "机械臂已连接");
-    power_on_client_->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>());
-    init_state_ = 2;
-    return;
-  }
-
-  // 状态 2：上电
-  if (init_state_ == 2)
   {
     RCLCPP_INFO(this->get_logger(), "伺服已上电");
     auto req = std::make_shared<tl_ros2_interface::srv::SetCurrentMode::Request>();
     req->mode = 2;
     set_mode_client_->async_send_request(req);
-    init_state_ = 3;
+    init_state_ = 2;
     return;
   }
 
-  // 状态 3：设置远程模式
-  if (init_state_ == 3)
+  // 状态 2：设置远程模式
+  if (init_state_ == 2)
   {
     RCLCPP_INFO(this->get_logger(), "远程模式已设置");
     auto req = std::make_shared<tl_ros2_interface::srv::SetSpeed::Request>();
     req->speed = servo_speed_;
     set_speed_client_->async_send_request(req);
-    init_state_ = 4;
+    init_state_ = 3;
     return;
   }
 
-  // 状态 4：设置 ServoJ 速度
-  if (init_state_ == 4)
+  // 状态 3：设置 ServoJ 速度
+  if (init_state_ == 3)
   {
     RCLCPP_INFO(this->get_logger(), "ServoJ 速度已设为 %.1f", servo_speed_);
     auto req = std::make_shared<tl_ros2_interface::srv::OpenServoJ::Request>();
@@ -410,15 +451,15 @@ void F710TeleopNode::initServoj()
     req->amax = std::vector<double>(7, servo_amax_);
     req->jmax = std::vector<double>(7, servo_jmax_);
     open_servoj_client_->async_send_request(req);
-    init_state_ = 5;
+    init_state_ = 4;
     return;
   }
 
-  // 状态 5：ServoJ 开启完成
-  if (init_state_ == 5)
+  // 状态 4：ServoJ 开启完成
+  if (init_state_ == 4)
   {
     RCLCPP_INFO(this->get_logger(), "ServoJ 已开启，等待 joint_states 初始化位姿...");
-    init_state_ = 6;
+    init_state_ = 5;
     // 初始化位姿由 jointStateCallback 首帧触发
     return;
   }
@@ -449,17 +490,12 @@ void F710TeleopNode::jointStateCallback(const sensor_msgs::msg::JointState::Shar
   }
 
   // 首帧到达且初始化完成 → 用当前关节角初始化位姿
-  if (joint_state_ready_ && init_state_ >= 6 && !target_pose_ready_)
+  if (joint_state_ready_ && init_state_ >= 5 && !target_pose_ready_)
   {
-    // /joint_states 为弧度，set_servoJ_pos 需角度 → 转换
-    std::vector<double> joint_deg = current_joint_state_;
-    for (auto& v : joint_deg)
-      v *= 180.0 / M_PI;
-
-    // 用当前关节角作为初始指令（不移动）
+    // /joint_states 与 set_servoj_pos 均为 rad，直接作为初始指令（不移动）
     {
       std::lock_guard<std::mutex> lock(joint_mutex_);
-      last_joint_cmd_ = joint_deg;
+      last_joint_cmd_ = current_joint_state_;
     }
 
     // 异步 FK 算出当前笛卡尔位姿作为 target_pose_
@@ -472,7 +508,7 @@ void F710TeleopNode::jointStateCallback(const sensor_msgs::msg::JointState::Shar
                      {
                        target_pose_ = pose;
                        target_pose_ready_ = true;
-                       RCLCPP_INFO(this->get_logger(), "初始位姿（当前关节角FK）: [%.1f, %.1f, %.1f, %.2f, %.2f, %.2f]",
+                       RCLCPP_INFO(this->get_logger(), "初始位姿（当前关节角FK）: [%.3f, %.3f, %.3f, %.2f, %.2f, %.2f]",
                                    target_pose_[0], target_pose_[1], target_pose_[2], target_pose_[3], target_pose_[4],
                                    target_pose_[5]);
                      }
@@ -494,10 +530,8 @@ bool F710TeleopNode::currentJointToPose(std::vector<double>& pose_out)
     req->origin_coord = 0;
     req->target_coord = 1;
     req->form = 0;
-    // /joint_states 为弧度，coord_transform 需角度 → 转换
+    // CoordTransform 入参：关节 rad
     std::vector<double> pos = current_joint_state_;
-    for (auto& v : pos)
-      v *= 180.0 / M_PI;
     pos.resize(7, 0.0);
     req->origin_pos = pos;
     req->reference_pos = std::vector<double>(7, 0.0);
@@ -516,7 +550,7 @@ bool F710TeleopNode::currentJointToPose(std::vector<double>& pose_out)
   }
 
   // 仿真：KDL 本地 FK
-  if (!kdl_fk_ready_)
+  if (!kdl_ready_)
     return false;
 
   KDL::JntArray q_in(ndof_);
@@ -525,9 +559,9 @@ bool F710TeleopNode::currentJointToPose(std::vector<double>& pose_out)
   KDL::Frame frame_out;
   if (kdl_fk_solver_->JntToCart(q_in, frame_out) != 0)
     return false;
-  double x = frame_out.p.x() * 1000.0;
-  double y = frame_out.p.y() * 1000.0;
-  double z = frame_out.p.z() * 1000.0;
+  double x = frame_out.p.x();
+  double y = frame_out.p.y();
+  double z = frame_out.p.z();
   double rx, ry, rz;
   frame_out.M.GetRPY(rx, ry, rz);
   pose_out = {x, y, z, rx, ry, rz};
@@ -536,7 +570,8 @@ bool F710TeleopNode::currentJointToPose(std::vector<double>& pose_out)
 
 void F710TeleopNode::closeServoj()
 {
-  if (init_state_ < 5)
+  // 状态 4 = open_servoj 请求已发出；从该状态起关机都需要关闭 ServoJ 并恢复示教/下电。
+  if (init_state_ < 4)
     return;
   try
   {
@@ -642,20 +677,19 @@ void F710TeleopNode::controlLoop()
     last_a_press_ = now;
     stop_mode_ = false;
     speed_value_ = speed_default_;
-    // 直接发 home_joints（度），不做 IK（与 Python 版本一致）
+    // 直接发 home_joints（内部已转为 rad），不做 IK（与 Python 版本一致）
     {
       std::lock_guard<std::mutex> lock(joint_mutex_);
       last_joint_cmd_ = home_joints_;
     }
-    // 仿真模式：立即发 ServolMove，否则 sim_bridge 不会收到回零指令
+    // 仿真模式：同步更新 target_pose_；home 关节指令由控制循环持续发布
     if (simulation_mode_)
     {
       std::vector<double> home_pose;
       if (homeJointsToPose(home_pose))
       {
         target_pose_ = home_pose;
-        publishServol();
-        RCLCPP_INFO(this->get_logger(), "回零 -> [%.1f, %.1f, %.1f, %.2f, %.2f, %.2f]", target_pose_[0],
+        RCLCPP_INFO(this->get_logger(), "回零 -> [%.3f, %.3f, %.3f, %.2f, %.2f, %.2f]", target_pose_[0],
                     target_pose_[1], target_pose_[2], target_pose_[3], target_pose_[4], target_pose_[5]);
       }
     }
@@ -669,7 +703,7 @@ void F710TeleopNode::controlLoop()
                                    if (homeJointsToPose(home_pose))
                                    {
                                      target_pose_ = home_pose;
-                                     RCLCPP_INFO(this->get_logger(), "回零 -> [%.1f, %.1f, %.1f, %.2f, %.2f, %.2f]",
+                                     RCLCPP_INFO(this->get_logger(), "回零 -> [%.3f, %.3f, %.3f, %.2f, %.2f, %.2f]",
                                                  target_pose_[0], target_pose_[1], target_pose_[2], target_pose_[3],
                                                  target_pose_[4], target_pose_[5]);
                                    }
@@ -706,12 +740,13 @@ void F710TeleopNode::controlLoop()
     cart_vel[5] = 0.0;
   }
 
+  std::vector<double> candidate_pose = target_pose_;
   bool has_input = false;
   for (int i = 0; i < 6; ++i)
   {
     if (std::abs(cart_vel[i]) > 1e-6)
     {
-      target_pose_[i] += cart_vel[i] * dt;
+      candidate_pose[i] += cart_vel[i] * dt;
       has_input = true;
     }
   }
@@ -722,30 +757,40 @@ void F710TeleopNode::controlLoop()
     publishServoj(last_joint_cmd_);
   }
 
-  // ========== 6. 有输入时更新关节角 / Servol ==========
+  // ========== 6. 有输入时更新关节角 ==========
   if (has_input)
   {
     if (simulation_mode_)
     {
-      // 仿真：发布 ServolMove（笛卡尔位姿），由 sim_bridge 做 IK
-      publishServol();
+      // 仿真：本地 KDL IK；仅在求解成功后提交目标，避免不可达方向累计漂移
+      std::vector<double> joint_cmd;
+      if (cartesianToJointKDL(candidate_pose, joint_cmd))
+      {
+        target_pose_ = candidate_pose;
+        std::lock_guard<std::mutex> lock(joint_mutex_);
+        last_joint_cmd_ = joint_cmd;
+      }
     }
-    else if (!ik_pending_.load())
+    else
     {
-      // 真机：异步 IK 更新关节角
-      ik_pending_.store(true);
-      std::vector<double> target_copy = target_pose_;
-      async_future_ = std::async(std::launch::async,
-                                 [this, target_copy]()
-                                 {
-                                   std::vector<double> joint_cmd;
-                                   if (cartesianToJoint(target_copy, joint_cmd))
+      // 真机：目标持续累积（与改前一致），仅 IK 请求本身受 pending 限制
+      target_pose_ = candidate_pose;
+      if (!ik_pending_.load())
+      {
+        ik_pending_.store(true);
+        std::vector<double> target_copy = candidate_pose;
+        async_future_ = std::async(std::launch::async,
+                                   [this, target_copy]()
                                    {
-                                     std::lock_guard<std::mutex> lock(joint_mutex_);
-                                     last_joint_cmd_ = joint_cmd;
-                                   }
-                                   ik_pending_.store(false);
-                                 });
+                                     std::vector<double> joint_cmd;
+                                     if (cartesianToJoint(target_copy, joint_cmd))
+                                     {
+                                       std::lock_guard<std::mutex> lock(joint_mutex_);
+                                       last_joint_cmd_ = joint_cmd;
+                                     }
+                                     ik_pending_.store(false);
+                                   });
+      }
     }
   }
 }

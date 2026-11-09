@@ -6,31 +6,26 @@ test_all_interfaces.py
 
 参照 tx.cpp（C++ 版驱动快速自检）的分组与调用逻辑实现，覆盖：
 
-  §2  连接管理      connect_arm / power_on / power_off（disconnect_arm 不自动调用，需手动断开）
-  §3  日志管理      log_download
-  §4  信息查询      get_speed / get_controller_id / get_robot_state / get_library_version /
-                    get_robot_joint_param / get_joint_temperature / get_joint_voltage /
-                    get_motor_current / get_joint_software_version / get_nexmotion_lib_version /
-                    get_current_coord / get_coord_num / get_dh_param / get_all_job_filename /
-                    get_pos_reachable / get_current_motor_torque / get_current_line_joint_speed
-                    + 话题 /joint_states、/tcp_pose、/arm_status
+  §2  连接管理      power_on / power_off（连接与断开由驱动节点启动/退出自动完成）
+  §4  信息查询      get_controller_id / get_library_version / get_robot_joint_param /
+                    get_current_coord / get_coord_num / get_dh_param / get_pos_reachable
+                    + 话题 /joint_states、/tcp_pose、
+                    /tl_driver/joint_monitor、/tl_driver/joint_torque、
+                    /tl_driver/joint_speed、/tl_driver/line_speed、
+                    /tl_driver/error_info（事件驱动，自检期间通常无数据）
+  §4  信息查询      get_speed / get_arm_status / fk / ik
   §5  基础设置      set_speed / coord_transform
-  §6  作业运动      job_insert_moveJ / job_insert_moveL / job_insert_imove / job_insert_moveC
   §8  坐标系与工具  set_tool_param / set_user_coord / set_coord_num / set_current_coord
   §9  示教操作      stop_jogging / set_drag_mode / get_drag_status / track_save
   §10 错误/零位    clear_error
-  §11 全局路点      get_global_pos / set_global_pos
   §12 模式与IO     set_current_mode / get_current_mode / set_digital_output / get_digital_input_output
   §13 Modbus       modbus_write / modbus_read
   §14 队列运动      queue_motion_set_status / queue_motion_stop
   §15 ServoJ       close_servoj
-  §16 位姿转换      get_quat2rpy / get_rpy2quat / get_rpy2r / get_tr2r / get_r2tr
 
 危险接口（会触发运动、改动标定/IP、删除文件等）默认跳过，仅打印提示：
-  disconnect_arm（需用户手动断开）/
-  moveJ / moveL / start_jogging / queue_motion_movej / open_servoj / job_run / job_delete /
-  track_playback / set_axis_zero_pos / set_dh_param / set_robot_joint_param /
-  set_controller_ip / restore_default_dh_param / set_default_cartesian_param
+  move_joint / move_linear action / start_jogging / queue_motion_movej / open_servoj /
+  track_save / set_axis_zero_pos / set_controller_ip / set_default_cartesian_param
 
 @usage
   方式一（推荐，需已 source install/setup.bash）:
@@ -99,87 +94,48 @@ from std_msgs.msg import Float64MultiArray
 from sensor_msgs.msg import JointState
 
 from tl_ros2_interface.msg import (
-    ArmStatus,
     CartesianPose,
-    MoveCommand,
+    ErrorInfo,
+    JointMonitor,
+    JointSpeed,
+    JointTorque,
+    LineSpeed,
     ToolParam,
     ModbusMasterParam,
     ModbusTCPParam,
     ModbusRTUParam,
-    JobFileName,
-    ServolMove,
 )
 from tl_ros2_interface.srv import (
     CoordTransform,
-    GetAllJobFileName,
+    Fk,
+    GetArmStatus,
     GetCoordNum,
     GetCurrentCoord,
-    GetCurrentLineJointSpeed,
     GetCurrentMode,
-    GetCurrentMotorTorque,
     GetDHParam,
     GetDigitalInputOutput,
-    GetGlobalPos,
-    GetJointSoftwareVersion,
-    GetJointTemperature,
-    GetJointVoltage,
-    GetMotorCurrent,
     GetPosReachable,
-    GetPosTransform,
     GetRobotJointParam,
-    GetRobotState,
     GetSpeed,
-    JobInsertMove,
-    JobRun,
+    Ik,
     Jogging,
-    LogDownload,
     ModbusRead,
     ModbusWrite,
     OpenServoJ,
     QueueMotionMoveJ,
     QueueMotionSetStatus,
-    RestoreDefaultDHParam,
     SetAxisZeroPos,
     SetControllerIP,
     SetCoordNum,
     SetCurrentCoord,
     SetCurrentMode,
-    SetDHParam,
     SetDigitalOutput,
     SetDragMode,
-    SetGlobalPos,
-    SetRobotJointParam,
     SetSpeed,
     SetToolParam,
     SetUserCoord,
-    TrackPlayback,
     TrackSave,
 )
-
-
-# ============================================================
-# 工具
-# ============================================================
-def make_move_cmd(target_pos_value=None, coord=0, velocity=30.0, acc=20.0, dec=20.0, pl=0):
-    """构造 MoveCommand"""
-    cmd = MoveCommand()
-    cmd.target_pos_type = 0
-    cmd.target_pos_value = target_pos_value if target_pos_value is not None else [0.0] * 7
-    cmd.target_pos_name = ""
-    cmd.coord = coord
-    cmd.velocity = velocity
-    cmd.velocity_sync = 0.0
-    cmd.acc = acc
-    cmd.dec = dec
-    cmd.pl = pl
-    cmd.time = 0
-    cmd.tool_num = 0
-    cmd.user_num = 0
-    cmd.posidtype = 0
-    cmd.configuration = 0
-    cmd.spin = 0
-    cmd.para_sync = False
-    return cmd
 
 
 class DriverQuickTest(Node):
@@ -190,9 +146,13 @@ class DriverQuickTest(Node):
         self.logger = self.get_logger()
 
         # 话题最近数据
-        self.arm_run_state = "unknown"
         self.joint_state = None
         self.tcp_pose = None
+        self.joint_monitor = None
+        self.joint_torque = None
+        self.joint_speed = None
+        self.line_speed = None
+        self.error_info = None
 
         self._create_topic_subs()
 
@@ -205,12 +165,34 @@ class DriverQuickTest(Node):
             reliability=ReliabilityPolicy.RELIABLE,
             history=HistoryPolicy.KEEP_LAST,
         )
-        self.create_subscription(ArmStatus, "/arm_status", self._on_arm_status, reliable)
         self.create_subscription(JointState, "/joint_states", self._on_joint_state, reliable)
         self.create_subscription(CartesianPose, "/tcp_pose", self._on_tcp_pose, reliable)
+        self.create_subscription(
+            JointMonitor, "/tl_driver/joint_monitor", self._on_joint_monitor, reliable
+        )
+        self.create_subscription(
+            JointTorque, "/tl_driver/joint_torque", self._on_joint_torque, reliable
+        )
+        self.create_subscription(
+            JointSpeed, "/tl_driver/joint_speed", self._on_joint_speed, reliable
+        )
+        self.create_subscription(LineSpeed, "/tl_driver/line_speed", self._on_line_speed, reliable)
+        self.create_subscription(ErrorInfo, "/tl_driver/error_info", self._on_error_info, reliable)
 
-    def _on_arm_status(self, msg):
-        self.arm_run_state = msg.run_state
+    def _on_joint_monitor(self, msg):
+        self.joint_monitor = msg
+
+    def _on_joint_torque(self, msg):
+        self.joint_torque = msg
+
+    def _on_joint_speed(self, msg):
+        self.joint_speed = msg
+
+    def _on_line_speed(self, msg):
+        self.line_speed = msg
+
+    def _on_error_info(self, msg):
+        self.error_info = msg
 
     def _on_joint_state(self, msg):
         self.joint_state = msg
@@ -287,9 +269,11 @@ class DriverQuickTest(Node):
     # ------------------------------------------------------------
     def test_topics(self):
         self.logger.info("\n========== §4 信息查询（话题）==========")
-        self.logger.info("  --- /arm_status（运行状态）---")
-        self.spin_for(2.0)
-        self.logger.info(f"      run_state = {self.arm_run_state}")
+        self.logger.info("  --- get_arm_status（运行状态，服务）---")
+        cli = self.wait_service("/tl_driver/get_arm_status", GetArmStatus)
+        resp = self.call_srv(cli, GetArmStatus.Request(), "get_arm_status")
+        if resp and resp.success:
+            self.logger.info(f"      run_state = {resp.run_state}")
 
         self.logger.info("  --- /joint_states（关节角度, rad）---")
         self.spin_for(2.0)
@@ -310,30 +294,54 @@ class DriverQuickTest(Node):
         else:
             self.logger.warn("      未收到 /tcp_pose")
 
+        self.logger.info("  --- /tl_driver/joint_monitor（电流/温度/电压）---")
+        self.spin_for(2.0)
+        if self.joint_monitor is not None:
+            m = self.joint_monitor
+            self.print_arr("      motor_current(A) ", m.motor_current)
+            self.print_arr("      temperature(℃) ", m.temperature)
+            self.print_arr("      joint_voltage(V) ", m.joint_voltage)
+        else:
+            self.logger.warn("      未收到 /tl_driver/joint_monitor")
+
+        self.logger.info("  --- /tl_driver/joint_torque（关节力矩）---")
+        self.spin_for(2.0)
+        if self.joint_torque is not None:
+            self.print_arr("      motor_torque(‰额定) ", self.joint_torque.motor_torque)
+        else:
+            self.logger.warn("      未收到 /tl_driver/joint_torque")
+
+        self.logger.info("  --- /tl_driver/joint_speed + /tl_driver/line_speed ---")
+        self.spin_for(2.0)
+        if self.joint_speed is not None:
+            self.print_arr("      joint_speed(rad/s) ", self.joint_speed.joint_speed)
+        else:
+            self.logger.warn("      未收到 /tl_driver/joint_speed")
+        if self.line_speed is not None:
+            self.logger.info(f"      line_speed = {self.line_speed.line_speed:.3f} m/s")
+        else:
+            self.logger.warn("      未收到 /tl_driver/line_speed")
+
+        # 错误/告警是事件驱动话题：自检期间没有故障时收不到消息属于正常现象，
+        # 但“无发布者”说明驱动未运行或话题名/QoS 变更，两者必须区分，避免假通过。
+        self.logger.info("  --- /tl_driver/error_info（错误/告警，事件驱动）---")
+        publisher_count = self.count_publishers("/tl_driver/error_info")
+        self.spin_for(1.0)
+        if publisher_count == 0:
+            self.logger.warn("      /tl_driver/error_info 无发布者（驱动未运行或话题名/QoS 变更）")
+        elif self.error_info is not None:
+            self.logger.info(
+                f"      type={self.error_info.message_type} "
+                f"code={self.error_info.message_code} msg={self.error_info.message}"
+            )
+        else:
+            self.logger.info("      自检期间无错误/告警推送（正常）")
+
     # ------------------------------------------------------------
     # 各分组测试
     # ------------------------------------------------------------
     def test_info_query(self):
         self.logger.info("\n========== §4 信息查询（服务）==========")
-
-        cli = self.wait_service("/tl_driver/get_speed", GetSpeed)
-        resp = self.call_srv(cli, GetSpeed.Request(), "get_speed")
-        if resp and resp.success:
-            self.logger.info(f"      speed = {resp.speed:.1f}%")
-
-        cli = self.wait_service("/tl_driver/get_robot_state", GetRobotState)
-        req = GetRobotState.Request()
-        req.channel = 1
-        req.stop = False
-        req.mode = 0
-        req.interval = 100
-        req.io_state = False
-        req.position = 0
-        req.detail_motion_pos = False
-        req.pos_sum = 1
-        resp = self.call_srv(cli, req, "get_robot_state")
-        if resp and resp.success:
-            self.logger.info(f"      信息: {resp.message}")
 
         cli = self.wait_service("/tl_driver/get_robot_joint_param", GetRobotJointParam)
         req = GetRobotJointParam.Request()
@@ -342,29 +350,8 @@ class DriverQuickTest(Node):
         if resp and resp.success:
             p = resp.param
             self.logger.info(
-                f"      减速比={p.reduction_ratio:.3f} 限位[{p.neg_sw_limit:.1f},{p.pos_sw_limit:.1f}] 额定速度={p.rated_vel:.1f}"
+                f"      减速比={p.reduction_ratio:.3f} 限位[{p.neg_sw_limit:.3f},{p.pos_sw_limit:.3f}]rad 额定速度={p.rated_vel:.3f}rad/s"
             )
-
-        cli = self.wait_service("/tl_driver/get_joint_temperature", GetJointTemperature)
-        resp = self.call_srv(cli, GetJointTemperature.Request(), "get_joint_temperature")
-        if resp and resp.success:
-            self.print_arr("      temperature(℃) ", resp.temperatures)
-
-        cli = self.wait_service("/tl_driver/get_joint_voltage", GetJointVoltage)
-        resp = self.call_srv(cli, GetJointVoltage.Request(), "get_joint_voltage")
-        if resp and resp.success:
-            self.print_arr("      joint_voltage(V) ", resp.joint_voltage)
-            self.print_arr("      positioner_voltage(V) ", resp.positioner_voltage)
-
-        cli = self.wait_service("/tl_driver/get_motor_current", GetMotorCurrent)
-        resp = self.call_srv(cli, GetMotorCurrent.Request(), "get_motor_current")
-        if resp and resp.success:
-            self.print_arr("      motor_current ", resp.motor_current)
-
-        cli = self.wait_service("/tl_driver/get_joint_software_version", GetJointSoftwareVersion)
-        req = GetJointSoftwareVersion.Request()
-        req.axis_num = 1
-        self.call_srv(cli, req, "get_joint_software_version(axis=1)")
 
         cli = self.wait_service("/tl_driver/get_current_coord", GetCurrentCoord)
         resp = self.call_srv(cli, GetCurrentCoord.Request(), "get_current_coord")
@@ -379,32 +366,39 @@ class DriverQuickTest(Node):
         cli = self.wait_service("/tl_driver/get_dh_param", GetDHParam)
         self.call_srv(cli, GetDHParam.Request(), "get_dh_param")
 
-        cli = self.wait_service("/tl_driver/get_all_job_filename", GetAllJobFileName)
-        resp = self.call_srv(cli, GetAllJobFileName.Request(), "get_all_job_filename")
-        if resp and resp.success:
-            for f in resp.robots_file:
-                for name in f.file_name:
-                    self.logger.info(f"      file: {name}")
-
         cli = self.wait_service("/tl_driver/get_pos_reachable", GetPosReachable)
         req = GetPosReachable.Request()
-        req.pos = [0.0] * 7
+        req.pos = [0.0] * 14
         req.move_type = "MOVJ"
         self.call_srv(cli, req, "get_pos_reachable")
 
-        cli = self.wait_service("/tl_driver/get_current_motor_torque", GetCurrentMotorTorque)
-        resp = self.call_srv(cli, GetCurrentMotorTorque.Request(), "get_current_motor_torque")
+        cli = self.wait_service("/tl_driver/get_speed", GetSpeed)
+        resp = self.call_srv(cli, GetSpeed.Request(), "get_speed")
         if resp and resp.success:
-            self.print_arr("      motor_torque ", [float(v) for v in resp.motor_torque])
-            self.print_arr("      motor_torque_sync ", [float(v) for v in resp.motor_torque_sync])
+            self.logger.info(f"      speed = {resp.speed:.1f}%")
 
-        cli = self.wait_service("/tl_driver/get_current_line_joint_speed", GetCurrentLineJointSpeed)
-        resp = self.call_srv(
-            cli, GetCurrentLineJointSpeed.Request(), "get_current_line_joint_speed"
-        )
-        if resp and resp.success:
-            self.logger.info(f"      line_speed = {resp.line_speed:.2f} mm/s")
-            self.print_arr("      joint_speed ", resp.joint_speed)
+        # fk/ik：用当前关节角与末端位姿做一次正逆解往返
+        if self.joint_state is not None:
+            cli = self.wait_service("/tl_driver/fk", Fk)
+            req = Fk.Request()
+            req.frame = 1
+            req.joints = list(self.joint_state.position)
+            resp = self.call_srv(cli, req, "fk(frame=1)")
+            if resp and resp.success:
+                p = resp.pose.position
+                self.logger.info(f"      pos = [{p.x:.3f}, {p.y:.3f}, {p.z:.3f}] m")
+
+        if self.tcp_pose is not None:
+            cli = self.wait_service("/tl_driver/ik", Ik)
+            req = Ik.Request()
+            req.frame = 1
+            req.pose = self.tcp_pose
+            req.form = 0
+            if self.joint_state is not None:
+                req.reference_pos = list(self.joint_state.position)
+            resp = self.call_srv(cli, req, "ik(frame=1)")
+            if resp and resp.success:
+                self.print_arr("      joints(rad) ", resp.joints)
 
     def test_basic_set(self):
         self.logger.info("\n========== §5 基础设置 ==========")
@@ -423,33 +417,6 @@ class DriverQuickTest(Node):
         resp = self.call_srv(cli, req, "coord_transform(0->1)")
         if resp and resp.success:
             self.print_arr("      target_pos ", resp.target_pos)
-
-    def test_jobs(self):
-        self.logger.info("\n========== §6 作业（仅插入，运行/删除跳过）==========")
-        # 4 个插入指令服务
-        insert_cmds = [
-            ("/tl_driver/job_insert_moveJ", "job_insert_moveJ"),
-            ("/tl_driver/job_insert_moveL", "job_insert_moveL"),
-            ("/tl_driver/job_insert_imove", "job_insert_imove"),
-            ("/tl_driver/job_insert_moveC", "job_insert_moveC"),
-        ]
-        for srv_name, label in insert_cmds:
-            cli = self.wait_service(srv_name, JobInsertMove)
-            req = JobInsertMove.Request()
-            req.line = 0
-            req.cmd = make_move_cmd()
-            self.call_srv(cli, req, label)
-
-        # 危险：作业运行/删除
-        for srv_name, label in [
-            ("/tl_driver/job_run", "job_run"),
-            ("/tl_driver/job_delete", "job_delete"),
-        ]:
-            cli = self.wait_service(srv_name, JobRun, timeout_s=1.0)
-            if cli:
-                self.skip(label, "会运行/删除作业文件，仅做就绪检查")
-            else:
-                self.logger.warn(f"  [{label}] 服务未就绪")
 
     def test_coord_tool(self):
         self.logger.info("\n========== §8 坐标系与工具 ==========")
@@ -497,28 +464,10 @@ class DriverQuickTest(Node):
         cli = self.wait_service("/tl_driver/clear_error", Trigger)
         self.call_trigger(cli, "clear_error")
 
-        # 危险：start_jogging / track_playback
+        # 危险：start_jogging
         cli = self.wait_service("/tl_driver/start_jogging", Jogging, timeout_s=1.0)
         if cli:
             self.skip("start_jogging", "会触发运动")
-        cli = self.wait_service("/tl_driver/track_playback", TrackPlayback, timeout_s=1.0)
-        if cli:
-            self.skip("track_playback", "会触发运动")
-
-    def test_global_pos(self):
-        self.logger.info("\n========== §11 全局路点 ==========")
-        cli = self.wait_service("/tl_driver/set_global_pos", SetGlobalPos)
-        req = SetGlobalPos.Request()
-        req.pos_name = "GP0001"
-        req.pos_info = [1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 300.0, 0.0, 200.0, 3.14, 0.0, 0.0, 0.0]
-        self.call_srv(cli, req, "set_global_pos(GP0001)")
-
-        cli = self.wait_service("/tl_driver/get_global_pos", GetGlobalPos)
-        req = GetGlobalPos.Request()
-        req.pos_name = "GP0001"
-        resp = self.call_srv(cli, req, "get_global_pos(GP0001)")
-        if resp and resp.success:
-            self.print_arr("      pos ", resp.pos)
 
     def test_mode_io(self):
         self.logger.info("\n========== §12 模式与 IO ==========")
@@ -616,32 +565,12 @@ class DriverQuickTest(Node):
         if cli:
             self.skip("open_servoj", "会触发运动")
 
-    def test_pose_transform(self):
-        self.logger.info("\n========== §16 位姿转换 ==========")
-        cases = [
-            ("/tl_driver/get_quat2rpy", [0.0, 0.0, 0.0, 1.0]),
-            ("/tl_driver/get_rpy2quat", [0.0, 0.0, 0.0]),
-            ("/tl_driver/get_rpy2r", [0.0, 0.0, 0.0]),
-            ("/tl_driver/get_tr2r", [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
-            ("/tl_driver/get_r2tr", [1, 0, 0, 0, 1, 0, 0, 0, 1]),
-        ]
-        for srv_name, inp in cases:
-            cli = self.wait_service(srv_name, GetPosTransform)
-            req = GetPosTransform.Request()
-            req.input = [float(v) for v in inp]
-            resp = self.call_srv(cli, req, srv_name.split("/")[-1])
-            if resp and resp.success:
-                self.print_arr("      output ", resp.output)
-
     def test_dangerous(self):
         self.logger.info("\n========== 极高风险接口汇总（均跳过）==========")
         for label, reason in [
-            ("moveJ/moveL 话题", "会触发运动"),
+            ("move_joint/move_linear action", "会触发运动"),
             ("set_axis_zero_pos", "改动零点标定"),
-            ("set_dh_param", "改动 DH 参数"),
-            ("set_robot_joint_param", "改动关节参数"),
             ("set_controller_ip", "修改控制器网络"),
-            ("restore_default_dh_param", "恢复出厂 DH"),
             ("set_default_cartesian_param", "重置笛卡尔参数"),
         ]:
             self.skip(label, reason)
@@ -655,9 +584,8 @@ class DriverQuickTest(Node):
         self.logger.info("============================================================")
 
         # 核心服务就绪检查
-        cli_connect = self.wait_service("/tl_driver/connect_arm", Trigger)
         cli_version = self.wait_service("/tl_driver/get_library_version", Trigger)
-        if cli_connect is None or cli_version is None:
+        if cli_version is None:
             self.logger.error("tl_driver 核心服务未就绪，请先启动 tl_driver 节点")
             return
 
@@ -666,37 +594,22 @@ class DriverQuickTest(Node):
         # ============================================================
         self.logger.info("\n========== §2 连接管理 ==========")
         self.call_trigger(cli_version, "get_library_version（库版本）")
-        cli_nex = self.wait_service("/tl_driver/get_nexmotion_lib_version", Trigger)
-        self.call_trigger(cli_nex, "get_nexmotion_lib_version（算法库版本）")
         cli_id = self.wait_service("/tl_driver/get_controller_id", Trigger)
         self.call_trigger(cli_id, "get_controller_id（控制器序列号）")
-        self.call_trigger(cli_connect, "connect_arm（连接机械臂）")
 
-        self.test_topics()  # §4 话题（连接后才有数据）
-
-        self.logger.info("\n========== §3 日志管理 ==========")
-        cli = self.wait_service("/tl_driver/log_download", LogDownload)
-        req = LogDownload.Request()
-        req.count = 1
-        req.directory_path = "/tmp"
-        self.call_srv(cli, req, "log_download")
+        self.test_topics()  # §4 话题（驱动启动后才有数据）
 
         # self.test_info_query()
         # self.test_basic_set()
-        # self.test_jobs()
         # self.test_coord_tool()
         # self.test_jog_track()
-        # self.test_global_pos()
         # self.test_mode_io()
         self.test_modbus()
         # self.test_queue()
         # self.test_servoj()
-        # self.test_pose_transform()
         # self.test_dangerous()
 
         self.logger.info("\n========== 结束 ==========")
-        # disconnect_arm 不自动调用（由用户手动断开）
-        self.skip("disconnect_arm", "不自动调用，请手动断开")
 
         self.logger.info("\n============================================================")
         self.logger.info("  驱动快速自检完成")

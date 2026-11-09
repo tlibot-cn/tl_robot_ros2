@@ -1,6 +1,6 @@
-# 获取所有数字输入输出
+# 获取所有数字输入输出（数字 IO 的唯一读取接口；不发布 io_state 话题）
 ---
 bool success
 string message
-int32[] input
-int32[] output
+int32[] input    # 数字输入状态（0=低，1=高）
+int32[] output   # 数字输出状态（0=低，1=高）
