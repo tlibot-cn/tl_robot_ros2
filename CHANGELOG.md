@@ -12,6 +12,10 @@
 
 ## [Unreleased]
 
+### 2026-11-09
+
+- 修复：`real_hardware_demo.launch.py`（14 个臂型）不再启动 `joint_state_broadcaster`。`/joint_states` 由 `tl_driver` 发布且同时是 `tl_hardware` 的状态输入，broadcaster 会把状态接口回播到同一话题，形成双发布者与自反馈，MoveIt2 侧看到的 `/joint_states` 在关节顺序、时间戳与字段集合间交错（表现为跳变）；虚拟 `demo.launch.py` 仍由 broadcaster 发布，不受影响
+
 ### 2026-11-03
 
 - **破坏性变更**：`Fk.srv` / `Ik.srv` 新增请求字段 `source`（0=控制器，默认；1=本地模型），`reference_pos` 改为必填（空数组直接返回失败）

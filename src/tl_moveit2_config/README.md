@@ -171,7 +171,7 @@ tl_moveit2_config/
 │       ├── moveit_rviz.launch.py       # RViz2 可视化启动文件
 │       ├── rsp.launch.py               # robot_state_publisher 启动文件
 │       ├── setup_assistant.launch.py   # Setup Assistant 启动文件
-│       ├── spawn_controllers.launch.py # 控制器启动文件
+│       ├── spawn_controllers.launch.py # 控制器启动文件（含 JSB，真实硬件勿用）
 │       ├── static_virtual_joint_tfs.launch.py # 静态虚拟关节 TF 发布
 │       └── warehouse_db.launch.py      # warehouse 数据库启动文件
 ├── tl_tcb605f_config/                  # tcb605f 配置（文件解释参考 tcb605）
@@ -214,7 +214,7 @@ tl_moveit2_config/
 | `launch/moveit_rviz.launch.py` | RViz2 可视化启动文件 |
 | `launch/rsp.launch.py` | robot_state_publisher 启动文件 |
 | `launch/setup_assistant.launch.py` | Setup Assistant 启动文件 |
-| `launch/spawn_controllers.launch.py` | 控制器启动文件 |
+| `launch/spawn_controllers.launch.py` | 控制器启动文件（无条件 spawn `joint_state_broadcaster`，真实硬件模式勿用） |
 | `launch/static_virtual_joint_tfs.launch.py` | 静态虚拟关节 TF 发布 |
 | `launch/warehouse_db.launch.py` | warehouse 数据库启动文件 |
 
@@ -230,11 +230,13 @@ ros2 run rqt_graph rqt_graph
 
 运行成功后界面将显示如下画面。
 
+> 下图（`doc/image4.png`）为**修复前**采集的拓扑，图中可见 `joint_state_broadcaster` 与 `tl_driver` 同时在发布 `/joint_states`；当前版本的真实硬件启动已移除该 broadcaster，节点关系以下文描述为准。
+
 ![image](doc/image4.png)
 
-该图反映了当前运行的节点与节点之间的话题通信关系，首先查看 `/joint_states` 话题。
+真实硬件模式下 `/joint_states` 的**唯一发布者**是 `tl_driver`，`real_hardware_demo.launch.py` 不再启动 `joint_state_broadcaster`。`/joint_states` 主要被 `/robot_state_publisher`、`/tl_hardware` 与 `move_group` 订阅。`/robot_state_publisher` 接收 `/joint_states` 是为了持续发布关节间的 TF 变换；`/tl_hardware` 接收 `/joint_states` 是为了获取当前机械臂的关节状态信息，作为 ros2_control 控制闭环的状态反馈输入；`move_group` 用它维护当前机器人状态。
 
-由图可知，`/joint_states` 话题由 `tl_driver` 发布，`joint_state_broadcaster` 获取 ros2_control 状态接口中的反馈数据后也向该话题转发。`/joint_states` 被 `/robot_state_publisher` 节点和 `/tl_hardware` 节点订阅。`/robot_state_publisher` 接收 `/joint_states` 是为了持续发布关节间的 TF 变换；`/tl_hardware` 接收 `/joint_states` 是为了获取当前机械臂的关节状态信息，作为 ros2_control 控制闭环的状态反馈输入。
+> 早期版本同时启动了 `joint_state_broadcaster`，它会从 `TLHardwareInterface` 的状态接口再发布一份 `/joint_states`。由于 `tl_hardware` 订阅的正是 `/joint_states`，这等于把硬件接口自己的输出再喂回去：话题上出现两个发布者，关节顺序、时间戳与字段集合都不一致，MoveIt2/RViz2 侧会看到交错的关节状态（表现为 `/joint_states` 跳变）。因此真实硬件路径已禁止启动该 broadcaster；`ros2_controllers.yaml` 中保留其声明仅为了复用同一份配置给虚拟 `demo.launch.py`（mock 模式仍由它发布 `/joint_states`）。
 
 `tl_hardware` 同时发布了 `/tl_driver/set_servoj_pos` 话题，该话题是机械臂透传功能的话题，通过该话题 `tl_hardware` 将规划的关节位置指令发布给 `tl_driver` 节点，`tl_driver` 接收后控制机械臂进行运动。
 
@@ -271,7 +273,15 @@ ros2 topic echo /joint_states
 
 **Q：`joint_state_broadcaster` 在真实硬件模式中是否必要？**
 
-A：在真实硬件模式下，`joint_state_broadcaster` 将 `TLHardwareInterface` 状态接口中的关节数据重新发布到 `/joint_states`。由于 `tl_driver` 已经持续发布 `/joint_states`（`TLHardwareInterface` 正是从该话题读取数据），broadcaster 实际上是在重复发布相同的数据，因此并非必需。保留它的好处是同一套 `ros2_controllers.yaml` 同时兼容虚拟模式和真实模式，避免维护两份配置。
+A：不必要，且真实硬件模式下**不能启动**。`TLHardwareInterface` 从 `/joint_states` 读状态，broadcaster 又把同一份状态接口数据发回 `/joint_states`，话题上会出现两个发布者（`tl_driver` 与 `joint_state_broadcaster`），关节顺序、时间戳与字段集合都不一致，MoveIt2 侧会看到交错的关节状态，表现为 `/joint_states` 跳变。`real_hardware_demo.launch.py` 已不再 spawn 该控制器；`ros2_controllers.yaml` 中保留声明只是为了让虚拟 `demo.launch.py` 复用同一份配置（mock 模式需要它发布 `/joint_states`）。
+
+**Q：真实硬件模式下 `/joint_states` 在跳变？**
+
+A：先确认 `/joint_states` 只有一个发布者：
+```bash
+ros2 topic info /joint_states
+```
+若 `Publisher count > 1`，通常是同时启动了虚拟 `demo.launch.py`（mock hardware + `joint_state_broadcaster`）、执行了 `launch/spawn_controllers.launch.py`（该文件无条件 spawn `joint_state_broadcaster`，真实硬件模式不要使用；需要手动起控制器时只 spawn `tcb_group_controller`），或手动 spawn 了 `joint_state_broadcaster`。真实硬件只允许 `tl_driver` 发布 `/joint_states`；启动顺序为 `tl_driver` 的 bringup/launch → `real_hardware_demo.launch.py`。
 
 **Q：启动时报错 "Failed to find hardware interface tl_hardware/TLHardwareInterface"？**
 

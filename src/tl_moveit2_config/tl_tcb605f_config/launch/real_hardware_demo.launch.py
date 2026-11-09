@@ -45,17 +45,9 @@ def generate_launch_description():
         output="screen",
     )
 
-    # Joint state broadcaster spawner
-    joint_state_broadcaster_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=[
-            "joint_state_broadcaster",
-            "--controller-manager",
-            "/controller_manager",
-        ],
-        output="screen",
-    )
+    # 不启动 joint_state_broadcaster：/joint_states 的唯一发布者是 tl_driver。
+    # 硬件接口订阅的正是 /joint_states，JSB 再回播同一状态会造成双发布者与自反馈，
+    # MoveIt 侧收到交错消息（关节顺序、时间戳与字段集合都不一致）。
 
     # Trajectory controller spawner
     tcb_group_controller_spawner = Node(
@@ -108,7 +100,6 @@ def generate_launch_description():
     return LaunchDescription(
         [
             controller_manager_node,
-            joint_state_broadcaster_spawner,
             tcb_group_controller_spawner,
             robot_state_publisher_node,
             move_group_node,
