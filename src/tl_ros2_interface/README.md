@@ -65,6 +65,7 @@ TL 系列机械臂 ROS2 接口说明
 * 5.30 [查询示教模式类型GetTeachType_srv](#查询示教模式类型getteachtype_srv)
 * 5.31 [回放拖动轨迹DragTrajectoryPlayback_srv](#回放拖动轨迹dragtrajectoryplayback_srv)
 * 5.32 [删除拖动轨迹DragTrajectoryDelete_srv](#删除拖动轨迹dragtrajectorydelete_srv)
+* 5.33 [打开周期同步扭矩模式OpenServoCst_srv](#打开周期同步扭矩模式openservocst_srv)
 
 ## tl_ros2_interface功能包说明
 tl_ros2_interface 功能包为 TL 系列机械臂在 ROS2 框架下提供消息（msg）和服务（srv）接口定义，供上层驱动或应用调用。该包本身没有可执行程序，主要作用为定义协议数据结构和服务接口。
@@ -114,6 +115,7 @@ tl_ros2_interface/
 │   ├── Jogging.srv
 │   ├── ModbusRead.srv
 │   ├── ModbusWrite.srv
+│   ├── OpenServoCst.srv
 │   ├── OpenServoJ.srv
 │   ├── QueueMotionMoveJ.srv
 │   ├── QueueMotionSetStatus.srv
@@ -508,6 +510,18 @@ string message
 - amax: 最大加速度数组，固定 7 元素，单位 rad/s²
 - jmax: 最大加加速度数组，固定 7 元素，单位 rad/s³
 - 注意：传 6 元素会导致控制器协议解析错乱并断开 7000 端口连接（SDK 警告）
+- 返回: success/message
+
+### 打开周期同步扭矩模式OpenServoCst_srv
+```
+bool disable_gravity_compensation
+---
+bool success
+string message
+```
+- 打开 CST（周期同步扭矩）模式，可选择是否开启控制器重力补偿
+- disable_gravity_compensation: `false`（默认）= 开启重力补偿；`true` = 关闭，`set_servo_cst_torque` 为纯扭矩透传
+- 驱动先下发重力补偿开关再打开 CST；开关失败直接返回失败且不进入 CST
 - 返回: success/message
 
 ### MoveJ队列运动QueueMotionMoveJ_srv

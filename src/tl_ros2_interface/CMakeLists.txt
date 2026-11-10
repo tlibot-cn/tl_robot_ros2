@@ -59,6 +59,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetPosReachable.srv"
   "srv/GetDHParam.srv"
   "srv/OpenServoJ.srv"
+  "srv/OpenServoCst.srv"
   "srv/SetCurrentMode.srv"
   "srv/GetCurrentMode.srv"
   "srv/QueueMotionSetStatus.srv"

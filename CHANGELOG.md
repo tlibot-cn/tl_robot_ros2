@@ -14,7 +14,8 @@
 
 ### 2026-11-10
 
-- tl_driver：新增 `/tl_driver/set_servo_cst_gravity_compensation`（`std_srvs/srv/SetBool`）——透传控制器在 CST 模式下的重力补偿开关，默认关闭（纯扭矩透传）；开启后 `/tl_driver/set_servo_cst_torque` 下发的是重力之外的附加扭矩。驱动不缓存开关状态，`close_servo_cst` 不会自动复位
+- tl_driver：新增 `/tl_driver/set_servo_cst_gravity_compensation`（`std_srvs/srv/SetBool`）——透传控制器在 CST 模式下的重力补偿开关；`open_servo_cst` 默认开启，本服务用于运行期切换。驱动不缓存开关状态，`close_servo_cst` 不会自动复位
+- **破坏性变更**：`/tl_driver/open_servo_cst` 服务类型由 `std_srvs/srv/Trigger` 改为 `tl_ros2_interface/srv/OpenServoCst`（`bool disable_gravity_compensation`），打开 CST 时选择重力补偿且**默认开启**；驱动先下发重力补偿开关，失败则不进入 CST；运行期仍可用 `/tl_driver/set_servo_cst_gravity_compensation` 切换
 - tl_ros2_interface：新增 `DragTrajectoryPlayback.srv`（`trajectory_name` + `velocity`）与 `DragTrajectoryDelete.srv`（`trajectory_name`）
 - tl_driver：新增 `/tl_driver/drag_trajectory_playback`、`/tl_driver/drag_trajectory_delete`，按控制器内 `.json` 文件名回放/删除拖动轨迹；驱动侧拒绝空名、超长（>255 字节）、控制字符、路径分隔符与 `..`，回放速度限制 [1,100]；删除需控制器固件 24.03+；SDK 无轨迹列表接口，文件名由调用方维护
 - 文档：接口说明书 V1.29（新增 9.9/9.10/15.11，服务数 44 → 47），删除 CST「力矩补偿尚未实现」表述，改为由重力补偿开关控制

@@ -21,6 +21,7 @@
 #include "tl_ros2_interface/srv/drag_trajectory_playback.hpp"
 #include "tl_ros2_interface/srv/get_speed.hpp"
 #include "tl_ros2_interface/srv/jogging.hpp"
+#include "tl_ros2_interface/srv/open_servo_cst.hpp"
 #include "tl_ros2_interface/srv/open_servo_j.hpp"
 #include "tl_ros2_interface/srv/queue_motion_move_j.hpp"
 #include "tl_ros2_interface/srv/queue_motion_set_status.hpp"
@@ -371,12 +372,13 @@ void handle_close_servo_csv_service(DriverNode& node, const std::shared_ptr<std_
 /**
  * @brief 开启周期同步扭矩模式（CST）。
  * @note CST 与 CSV / ServoJ 共用 7000 端口的 servoJ 会话，SDK 不做互斥检测。
- *       默认纯力矩透传；控制器侧重力补偿由 set_servo_cst_gravity_compensation 单独开启。
+ *       重力补偿默认开启；请求显式 disable_gravity_compensation=true 时关闭（纯扭矩透传）。
+ *       开关先于模式打开下发，开关失败则不进入 CST，避免在非预期补偿状态下运行。
  */
-void handle_open_servo_cst_service(DriverNode& node, const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                   std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+void handle_open_servo_cst_service(DriverNode& node,
+                                   const std::shared_ptr<tl_ros2_interface::srv::OpenServoCst::Request> request,
+                                   std::shared_ptr<tl_ros2_interface::srv::OpenServoCst::Response> response)
 {
-  (void)request;
   if (!node.session().is_connected())
   {
     response->success = false;
@@ -390,9 +392,27 @@ void handle_open_servo_cst_service(DriverNode& node, const std::shared_ptr<std_s
     return;
   }
 
-  tl::Result ret = tl::open_servo_cst_mode(node.session().fd_aux());
+  const bool enable_gravity_compensation = !request->disable_gravity_compensation;
+  tl::Result ret = tl::set_servo_cst_gravity_compensation_enable(node.session().fd_aux(), enable_gravity_compensation);
+  if (ret != tl::Result::SUCCESS)
+  {
+    response->success = false;
+    response->message = std::string("Failed to set CST gravity compensation: ") + arm_client::result_to_string(ret);
+    return;
+  }
+
+  ret = tl::open_servo_cst_mode(node.session().fd_aux());
   response->success = (ret == tl::Result::SUCCESS);
-  response->message = response->success ? "CST mode open successfully" : "Failed to open CST mode";
+  if (!response->success)
+  {
+    // SDK 无回读接口，开关已生效但打开失败时无法回滚；在响应中披露当前开关状态，避免误判
+    response->message = std::string("Failed to open CST mode (gravity compensation already ") +
+                        (enable_gravity_compensation ? "enabled" : "disabled") +
+                        "): " + arm_client::result_to_string(ret);
+    return;
+  }
+  response->message = enable_gravity_compensation ? "CST mode open successfully (gravity compensation enabled)"
+                                                  : "CST mode open successfully (gravity compensation disabled)";
 }
 
 void handle_close_servo_cst_service(DriverNode& node, const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
@@ -582,7 +602,7 @@ void register_motion_services(DriverNode& node)
   node.create_service<std_srvs::srv::Trigger>(
       "/tl_driver/close_servo_csv",
       std::bind(&handle_close_servo_csv_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
-  node.create_service<std_srvs::srv::Trigger>(
+  node.create_service<tl_ros2_interface::srv::OpenServoCst>(
       "/tl_driver/open_servo_cst",
       std::bind(&handle_open_servo_cst_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
   node.create_service<std_srvs::srv::Trigger>(

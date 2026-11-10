@@ -322,12 +322,23 @@ ros2 service call /tl_driver/open_servoj tl_ros2_interface/srv/OpenServoJ "{vmax
 ros2 service call /tl_driver/close_servoj std_srvs/srv/Trigger "{}"
 ```
 
+### `/tl_driver/open_servo_cst` — `OpenServoCst`（disable_gravity_compensation）
+```bash
+ros2 service call /tl_driver/open_servo_cst tl_ros2_interface/srv/OpenServoCst "{disable_gravity_compensation: false}"
+```
+> 默认（false）开启重力补偿；true 为纯扭矩透传。打开前先关闭其他 7000 端口模式（servoJ/CSV）。
+
+### `/tl_driver/close_servo_cst` — `std_srvs/srv/Trigger`
+```bash
+ros2 service call /tl_driver/close_servo_cst std_srvs/srv/Trigger "{}"
+```
+
 ### `/tl_driver/set_servo_cst_gravity_compensation` — `std_srvs/srv/SetBool`
 ```bash
 ros2 service call /tl_driver/set_servo_cst_gravity_compensation std_srvs/srv/SetBool "{data: true}"
 ros2 service call /tl_driver/set_servo_cst_gravity_compensation std_srvs/srv/SetBool "{data: false}"
 ```
-> 默认关闭（纯扭矩透传）；开启后 `set_servo_cst_torque` 只发重力之外的附加扭矩。
+> `open_servo_cst` 默认开启重力补偿；本服务用于运行期切换。
 
 ### `/tl_driver/queue_motion_set_status` — `QueueMotionSetStatus`（status）
 ```bash

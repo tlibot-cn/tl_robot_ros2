@@ -35,7 +35,7 @@
 |V1.26 | 2026-11-03 | 新增 9.7 [设置示教模式类型](#97-设置示教模式类型)、9.8 [查询示教模式类型](#98-查询示教模式类型) 服务（`SetTeachType.srv` / `GetTeachType.srv`）；开启力引导拖拽需 `set_drag_mode(1)` + `set_teach_type(1)` 两步且顺序不可颠倒；服务数 39 → 41 |
 |V1.27 | 2026-11-03 | 新增 15.5–15.10：周期同步速度模式（CSV）与周期同步扭矩模式（CST）的开关服务与下发话题（服务数 41 → 45，订阅 1 → 3）；两个话题采用 `Float64MultiArray`，速度 rad/s、扭矩 ‰ 额定扭矩；力矩补偿尚未实现 |
 |V1.28 | 2026-11-03 | `fk`/`ik` 新增 `source`（0=控制器 1=本地模型）；`reference_pos` 改为必填；`CartesianPose.arm_angle` 明确为冗余臂角 ψ；启动时校验控制器机型轴数与 `arm_joints`，不一致即退出；删除 `set_axis_zero_pos` 服务（服务数 45 → 44） |
-|V1.29 | 2026-11-10 | 新增 9.9 [/tl_driver/drag_trajectory_playback](#99-回放控制器内拖动轨迹)、9.10 [/tl_driver/drag_trajectory_delete](#910-删除控制器内拖动轨迹) 与 15.11 [设置 CST 重力补偿开关](#1511-设置-cst-重力补偿开关)（服务数 44 → 47）；CST 不再声称「力矩补偿尚未实现」，重力补偿由控制器侧开关控制，默认关闭 |
+|V1.29 | 2026-11-10 | 新增 9.9 [/tl_driver/drag_trajectory_playback](#99-回放控制器内拖动轨迹)、9.10 [/tl_driver/drag_trajectory_delete](#910-删除控制器内拖动轨迹) 与 15.11 [设置 CST 重力补偿开关](#1511-设置-cst-重力补偿开关)（服务数 44 → 47）；**破坏性变更**：`/tl_driver/open_servo_cst` 类型由 `Trigger` 改为 `OpenServoCst`，通过 `disable_gravity_compensation` 选择，默认开启重力补偿；CST 不再声称「力矩补偿尚未实现」 |
 
 </div>
 
@@ -1799,23 +1799,26 @@ ros2 topic pub -r 100 /tl_driver/set_servo_csv_velocity std_msgs/msg/Float64Mult
 | :---: | :---- |
 | 通信机制 | ROS2服务 |
 | 服务名 | `/tl_driver/open_servo_cst` |
-| 服务类型 | `std_srvs::srv::Trigger` |
+| 服务类型 | `tl_ros2_interface/srv/OpenServoCst` |
 
 **输入参数**
-无请求参数（空 `Trigger`）。
+| 参数名 | 类型 | 默认 | 说明 |
+|--------|------|------|------|
+| disable_gravity_compensation | bool | `false` | `false` = 控制器叠加重力补偿（默认开启）；`true` = 关闭重力补偿，`set_servo_cst_torque` 为纯扭矩透传 |
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
-| success | bool | `true` = 进入成功，`false` = 进入失败 |
-| message | string | 失败时包含错误描述；运动 action 运行中会返回 `A motion action is active` |
+| success | bool | `true` = 进入成功，`false` = 进入失败；重力补偿开关下发失败时不会进入 CST |
+| message | string | 失败时包含错误描述与 SDK 返回码；若开关已生效但打开 CST 失败，会说明当前重力补偿状态（驱动无回读，不回滚） |
 
 > **注意（模式互斥）**：与 CSV / ServoJ 同样共用 7000 端口的 servoJ 会话，SDK 不做互斥检测，切换前先关闭当前模式。
-> **注意（安全）**：默认（重力补偿关闭）下 CST 为纯力矩透传，机械臂**不受位置/重力补偿保护**，开启后若不下发保持力矩会发生重力坠落——必须有支撑或人工扶持。
-> **注意（重力补偿）**：控制器侧重力补偿由 [设置 CST 重力补偿开关](#1511-设置-cst-重力补偿开关) 控制，默认关闭；开启后 `/tl_driver/set_servo_cst_torque` 下发的是重力之外的附加扭矩。
+> **注意（安全）**：默认开启重力补偿；显式 `disable_gravity_compensation=true` 后为纯力矩透传，机械臂**不受重力补偿保护**，若不下发保持力矩会发生重力坠落——必须有支撑或人工扶持。
+> **注意（重力补偿）**：驱动先下发重力补偿开关再打开 CST，开关失败直接返回失败且不进入 CST；开启重力补偿时 `/tl_driver/set_servo_cst_torque` 下发的是重力之外的附加扭矩；运行期可用 [设置 CST 重力补偿开关](#1511-设置-cst-重力补偿开关) 切换，关闭 CST 不会自动复位该开关。
 #### 命令示例
 ```
-ros2 service call /tl_driver/open_servo_cst std_srvs/srv/Trigger "{}"
+ros2 service call /tl_driver/open_servo_cst tl_ros2_interface/srv/OpenServoCst "{disable_gravity_compensation: false}"
+ros2 service call /tl_driver/open_servo_cst tl_ros2_interface/srv/OpenServoCst "{disable_gravity_compensation: true}"
 ```
 ### 15.9 关闭周期同步扭矩模式
 | 功能描述 | 退出周期同步扭矩模式，恢复常规轨迹规划 |
@@ -1875,8 +1878,8 @@ ros2 topic pub -r 100 /tl_driver/set_servo_cst_torque std_msgs/msg/Float64MultiA
 | success | bool | `true` = 设置成功，`false` = 设置失败 |
 | message | string | 失败时包含错误描述与 SDK 返回码 |
 
-> **注意**：可在 [打开周期同步扭矩模式](#158-打开周期同步扭矩模式) 之前或运行期间设置；驱动不缓存该状态，`close_servo_cst` 不会自动复位控制器侧开关。
-> **注意（安全）**：开启后扭矩语义变化，切换前必须确认负载与支撑状态；默认关闭时仍按纯透传处理。
+> **注意**：`open_servo_cst` 会按请求显式设置该开关（默认开启，`disable_gravity_compensation=true` 时关闭）；本服务用于运行期切换，驱动不缓存状态，`close_servo_cst` 不会自动复位控制器侧开关。
+> **注意（安全）**：关闭重力补偿后扭矩语义变为纯透传，切换前必须确认负载与支撑状态。
 #### 命令示例
 ```
 ros2 service call /tl_driver/set_servo_cst_gravity_compensation std_srvs/srv/SetBool "{data: true}"
@@ -1944,9 +1947,9 @@ ros2 service call /tl_driver/set_servo_cst_gravity_compensation std_srvs/srv/Set
 | `/tl_driver/close_servoj` | `Trigger` | motion | — | 稳定 |
 | `/tl_driver/open_servo_csv` | `Trigger` | motion | 速度透传模式开关 | 稳定 |
 | `/tl_driver/close_servo_csv` | `Trigger` | motion | 速度透传模式开关 | 稳定 |
-| `/tl_driver/open_servo_cst` | `Trigger` | motion | 扭矩透传模式开关 | 稳定 |
+| `/tl_driver/open_servo_cst` | `OpenServoCst` | motion | 扭矩透传模式开关；默认开启重力补偿 | 稳定 |
 | `/tl_driver/close_servo_cst` | `Trigger` | motion | 扭矩透传模式开关 | 稳定 |
-| `/tl_driver/set_servo_cst_gravity_compensation` | `SetBool` | motion | CST 重力补偿开关（默认关） | 稳定 |
+| `/tl_driver/set_servo_cst_gravity_compensation` | `SetBool` | motion | 运行期切换重力补偿（open_servo_cst 默认开启） | 稳定 |
 | `/tl_driver/queue_motion_set_status` | `QueueMotionSetStatus` | motion | — | 稳定 |
 | `/tl_driver/queue_motion_movej` | `QueueMotionMoveJ` | motion | 嵌套 `MoveCommand` | 稳定 |
 | `/tl_driver/queue_motion_stop` | `Trigger` | motion | — | 稳定 |
