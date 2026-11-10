@@ -35,6 +35,7 @@
 |V1.26 | 2026-11-03 | 新增 9.7 [设置示教模式类型](#97-设置示教模式类型)、9.8 [查询示教模式类型](#98-查询示教模式类型) 服务（`SetTeachType.srv` / `GetTeachType.srv`）；开启力引导拖拽需 `set_drag_mode(1)` + `set_teach_type(1)` 两步且顺序不可颠倒；服务数 39 → 41 |
 |V1.27 | 2026-11-03 | 新增 15.5–15.10：周期同步速度模式（CSV）与周期同步扭矩模式（CST）的开关服务与下发话题（服务数 41 → 45，订阅 1 → 3）；两个话题采用 `Float64MultiArray`，速度 rad/s、扭矩 ‰ 额定扭矩；力矩补偿尚未实现 |
 |V1.28 | 2026-11-03 | `fk`/`ik` 新增 `source`（0=控制器 1=本地模型）；`reference_pos` 改为必填；`CartesianPose.arm_angle` 明确为冗余臂角 ψ；启动时校验控制器机型轴数与 `arm_joints`，不一致即退出；删除 `set_axis_zero_pos` 服务（服务数 45 → 44） |
+|V1.29 | 2026-11-10 | 新增 9.9 [/tl_driver/drag_trajectory_playback](#99-回放控制器内拖动轨迹)、9.10 [/tl_driver/drag_trajectory_delete](#910-删除控制器内拖动轨迹) 与 15.11 [设置 CST 重力补偿开关](#1511-设置-cst-重力补偿开关)（服务数 44 → 47）；CST 不再声称「力矩补偿尚未实现」，重力补偿由控制器侧开关控制，默认关闭 |
 
 </div>
 
@@ -93,6 +94,8 @@
   * [9.6 拖拽轨迹回放](#96-拖拽轨迹回放)
   * [9.7 设置示教模式类型](#97-设置示教模式类型)
   * [9.8 查询示教模式类型](#98-查询示教模式类型)
+  * [9.9 回放控制器内拖动轨迹](#99-回放控制器内拖动轨迹)
+  * [9.10 删除控制器内拖动轨迹](#910-删除控制器内拖动轨迹)
 * [10 错误处理接口](#10-错误处理接口)
   * [10.1 清除错误](#101-清除错误)
 * [12 模式与IO控制接口](#12-模式与io控制接口)
@@ -118,6 +121,7 @@
   * [15.8 打开周期同步扭矩模式](#158-打开周期同步扭矩模式)
   * [15.9 关闭周期同步扭矩模式](#159-关闭周期同步扭矩模式)
   * [15.10 发送周期同步扭矩](#1510-发送周期同步扭矩)
+  * [15.11 设置 CST 重力补偿开关](#1511-设置-cst-重力补偿开关)
 * [16 接口矩阵与移除清单](#16-接口矩阵与移除清单)
   * [16.1 接口总矩阵](#161-接口总矩阵)
   * [16.2 已移除接口](#162-已移除接口)
@@ -1294,6 +1298,60 @@ ros2 service call /tl_driver/set_teach_type tl_ros2_interface/srv/SetTeachType "
 ```
 ros2 service call /tl_driver/get_teach_type tl_ros2_interface/srv/GetTeachType "{}"
 ```
+### 9.9 回放控制器内拖动轨迹
+| 功能描述 | 按文件名回放控制器内已保存的拖动轨迹（区别于 9.6：9.6 回放 `track_record_*` 记录缓冲，本接口直接回放控制器内轨迹文件） |
+| :---: | :---- |
+| 通信机制 | ROS2服务 |
+| 服务名 | `/tl_driver/drag_trajectory_playback` |
+| 服务类型 | `tl_ros2_interface/srv/DragTrajectoryPlayback` |
+
+**输入参数**
+| 参数名 | 类型 | 范围 | 说明 |
+|--------|------|------|------|
+| trajectory_name | string | — | 控制器内轨迹文件名，须以 `.json` 结尾；空名、超长（>255 字节）、含控制字符、`/`、`\` 或 `..` 直接返回失败，不下发控制器 |
+| velocity | int32 | 1～100 | 回放速度百分比（%）；越界返回 `Velocity out of range [1, 100]` |
+
+**输出/返回值**
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| success | bool | `true` = 控制器已接受回放指令，**不代表回放结束** |
+| message | string | 失败时包含错误描述；运动 action 运行中会返回 `A motion action is active` |
+
+> **注意（完成判断）**：SDK 无回放完成回调，结束状态用 [查看拖拽状态](#94-查看拖拽状态) 观察（`get_drag_thread_is_end` 是否覆盖本回放需实机确认）。
+> **注意（运动互斥）**：回放成功后驱动登记一次外部运动，紧随其后的 `move_joint` / `move_linear` / `play_track` action goal 会在宽限期内被拒绝；回放前若已有 action goal 运行则直接拒绝本服务。
+> **注意（无列表接口）**：SDK 不提供轨迹目录查询，文件名须由调用方维护。
+> **注意（阻塞）**：本服务与其他 motion 服务同组；若控制器在回放期间阻塞请求，jogging、队列运动、CSV/CST/ServoJ 开关会排队等待。
+#### 命令示例
+```
+ros2 service call /tl_driver/drag_trajectory_playback tl_ros2_interface/srv/DragTrajectoryPlayback \
+"{trajectory_name: 'traj_test.json', velocity: 20}"
+```
+### 9.10 删除控制器内拖动轨迹
+| 功能描述 | 按文件名删除控制器内已保存的拖动轨迹 |
+| :---: | :---- |
+| 通信机制 | ROS2服务 |
+| 服务名 | `/tl_driver/drag_trajectory_delete` |
+| 服务类型 | `tl_ros2_interface/srv/DragTrajectoryDelete` |
+
+**输入参数**
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| trajectory_name | string | 控制器内轨迹文件名，须以 `.json` 结尾；空名、超长（>255 字节）、含控制字符、`/`、`\` 或 `..` 直接返回失败 |
+
+**输出/返回值**
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| success | bool | `true` = 删除成功 |
+| message | string | 失败时包含错误描述 |
+
+> **注意（固件）**：需控制器固件 24.03 及以上。
+> **注意（不可恢复）**：删除后无法通过 ROS 接口找回，需重新示教或从外部备份导入（导入接口未封装）。
+> **注意（回放中）**：驱动不跟踪回放进度，回放期间不要删除同一轨迹文件，否则控制器读取行为未定义。
+#### 命令示例
+```
+ros2 service call /tl_driver/drag_trajectory_delete tl_ros2_interface/srv/DragTrajectoryDelete \
+"{trajectory_name: 'traj_test.json'}"
+```
 ## 10 错误处理接口
 ### 10.1 清除错误
 | 功能描述 | 复位控制器的当前报警状态（清除红色错误）。在机械臂发生碰撞、超限位等错误后，排除物理故障后调用 |
@@ -1753,8 +1811,8 @@ ros2 topic pub -r 100 /tl_driver/set_servo_csv_velocity std_msgs/msg/Float64Mult
 | message | string | 失败时包含错误描述；运动 action 运行中会返回 `A motion action is active` |
 
 > **注意（模式互斥）**：与 CSV / ServoJ 同样共用 7000 端口的 servoJ 会话，SDK 不做互斥检测，切换前先关闭当前模式。
-> **注意（安全）**：CST 为纯力矩透传，机械臂**不受位置/重力补偿保护**，开启后若不下发保持力矩会发生重力坠落——必须有支撑或人工扶持。
-> **注意（能力边界）**：力矩补偿（重力/摩擦/负载）尚未实现，本模式只做原始力矩透传。
+> **注意（安全）**：默认（重力补偿关闭）下 CST 为纯力矩透传，机械臂**不受位置/重力补偿保护**，开启后若不下发保持力矩会发生重力坠落——必须有支撑或人工扶持。
+> **注意（重力补偿）**：控制器侧重力补偿由 [设置 CST 重力补偿开关](#1511-设置-cst-重力补偿开关) 控制，默认关闭；开启后 `/tl_driver/set_servo_cst_torque` 下发的是重力之外的附加扭矩。
 #### 命令示例
 ```
 ros2 service call /tl_driver/open_servo_cst std_srvs/srv/Trigger "{}"
@@ -1799,6 +1857,30 @@ ros2 service call /tl_driver/close_servo_cst std_srvs/srv/Trigger "{}"
 ros2 topic pub -r 100 /tl_driver/set_servo_cst_torque std_msgs/msg/Float64MultiArray \
 "{data: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}"
 ```
+### 15.11 设置 CST 重力补偿开关
+| 功能描述 | 设置控制器在 CST 模式下是否叠加重力补偿 |
+| :---: | :---- |
+| 通信机制 | ROS2服务 |
+| 服务名 | `/tl_driver/set_servo_cst_gravity_compensation` |
+| 服务类型 | `std_srvs::srv::SetBool` |
+
+**输入参数**
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| data | bool | `true` = 控制器叠加重力补偿，`/tl_driver/set_servo_cst_torque` 只下发重力之外的附加扭矩；`false` = 纯扭矩透传（默认） |
+
+**输出/返回值**
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| success | bool | `true` = 设置成功，`false` = 设置失败 |
+| message | string | 失败时包含错误描述与 SDK 返回码 |
+
+> **注意**：可在 [打开周期同步扭矩模式](#158-打开周期同步扭矩模式) 之前或运行期间设置；驱动不缓存该状态，`close_servo_cst` 不会自动复位控制器侧开关。
+> **注意（安全）**：开启后扭矩语义变化，切换前必须确认负载与支撑状态；默认关闭时仍按纯透传处理。
+#### 命令示例
+```
+ros2 service call /tl_driver/set_servo_cst_gravity_compensation std_srvs/srv/SetBool "{data: true}"
+```
 
 ## 16 接口矩阵与移除清单
 
@@ -1827,7 +1909,7 @@ ros2 topic pub -r 100 /tl_driver/set_servo_cst_torque std_msgs/msg/Float64MultiA
 | `/tl_driver/move_linear` | `Move` | 事件驱动 | 位置 m、姿态 rad、速度 m/s | 稳定 |
 | `/tl_driver/play_track` | `PlayTrack` | 事件驱动 | 速度 % | 稳定 |
 
-**服务（44 个）**
+**服务（47 个）**
 
 | 接口 | 类型 | 领域 | 单位/说明 | 状态 |
 | :---- | :---- | :---- | :---- | :---- |
@@ -1856,12 +1938,15 @@ ros2 topic pub -r 100 /tl_driver/set_servo_cst_torque std_msgs/msg/Float64MultiA
 | `/tl_driver/start_jogging` | `Jogging` | motion | rad/s、rad/s² | 稳定 |
 | `/tl_driver/stop_jogging` | `Jogging` | motion | — | 稳定 |
 | `/tl_driver/track_save` | `TrackSave` | motion | — | 稳定 |
+| `/tl_driver/drag_trajectory_playback` | `DragTrajectoryPlayback` | motion | 文件名（`.json`）+ 速度 % | 稳定 |
+| `/tl_driver/drag_trajectory_delete` | `DragTrajectoryDelete` | motion | 文件名（`.json`） | 稳定 |
 | `/tl_driver/open_servoj` | `OpenServoJ` | motion | rad/s、rad/s²、rad/s³ | 稳定 |
 | `/tl_driver/close_servoj` | `Trigger` | motion | — | 稳定 |
 | `/tl_driver/open_servo_csv` | `Trigger` | motion | 速度透传模式开关 | 稳定 |
 | `/tl_driver/close_servo_csv` | `Trigger` | motion | 速度透传模式开关 | 稳定 |
 | `/tl_driver/open_servo_cst` | `Trigger` | motion | 扭矩透传模式开关 | 稳定 |
 | `/tl_driver/close_servo_cst` | `Trigger` | motion | 扭矩透传模式开关 | 稳定 |
+| `/tl_driver/set_servo_cst_gravity_compensation` | `SetBool` | motion | CST 重力补偿开关（默认关） | 稳定 |
 | `/tl_driver/queue_motion_set_status` | `QueueMotionSetStatus` | motion | — | 稳定 |
 | `/tl_driver/queue_motion_movej` | `QueueMotionMoveJ` | motion | 嵌套 `MoveCommand` | 稳定 |
 | `/tl_driver/queue_motion_stop` | `Trigger` | motion | — | 稳定 |

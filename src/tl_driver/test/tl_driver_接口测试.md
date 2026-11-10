@@ -297,6 +297,17 @@ ros2 service call /tl_driver/track_save tl_ros2_interface/srv/TrackSave "{traj_n
 > `ros2 action send_goal /tl_driver/play_track tl_ros2_interface/action/PlayTrack "{
 > vel: 50, timeout_sec: 600.0}" --feedback`
 
+### `/tl_driver/drag_trajectory_playback` — `DragTrajectoryPlayback`（trajectory_name + velocity）
+```bash
+ros2 service call /tl_driver/drag_trajectory_playback tl_ros2_interface/srv/DragTrajectoryPlayback "{trajectory_name: 'traj1.json', velocity: 20}"
+```
+> `success=true` 只表示指令被接受；结束状态用 `/tl_driver/get_drag_status` 观察。
+
+### `/tl_driver/drag_trajectory_delete` — `DragTrajectoryDelete`（trajectory_name）
+```bash
+ros2 service call /tl_driver/drag_trajectory_delete tl_ros2_interface/srv/DragTrajectoryDelete "{trajectory_name: 'traj1.json'}"
+```
+
 ---
 
 ## 十二、servoJ / 队列运动
@@ -310,6 +321,13 @@ ros2 service call /tl_driver/open_servoj tl_ros2_interface/srv/OpenServoJ "{vmax
 ```bash
 ros2 service call /tl_driver/close_servoj std_srvs/srv/Trigger "{}"
 ```
+
+### `/tl_driver/set_servo_cst_gravity_compensation` — `std_srvs/srv/SetBool`
+```bash
+ros2 service call /tl_driver/set_servo_cst_gravity_compensation std_srvs/srv/SetBool "{data: true}"
+ros2 service call /tl_driver/set_servo_cst_gravity_compensation std_srvs/srv/SetBool "{data: false}"
+```
+> 默认关闭（纯扭矩透传）；开启后 `set_servo_cst_torque` 只发重力之外的附加扭矩。
 
 ### `/tl_driver/queue_motion_set_status` — `QueueMotionSetStatus`（status）
 ```bash

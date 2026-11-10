@@ -63,6 +63,8 @@ TL 系列机械臂 ROS2 接口说明
 * 5.28 [查询机械臂运行状态GetArmStatus_srv](#查询机械臂运行状态getarmstatus_srv)
 * 5.29 [设置示教模式类型SetTeachType_srv](#设置示教模式类型setteachtype_srv)
 * 5.30 [查询示教模式类型GetTeachType_srv](#查询示教模式类型getteachtype_srv)
+* 5.31 [回放拖动轨迹DragTrajectoryPlayback_srv](#回放拖动轨迹dragtrajectoryplayback_srv)
+* 5.32 [删除拖动轨迹DragTrajectoryDelete_srv](#删除拖动轨迹dragtrajectorydelete_srv)
 
 ## tl_ros2_interface功能包说明
 tl_ros2_interface 功能包为 TL 系列机械臂在 ROS2 框架下提供消息（msg）和服务（srv）接口定义，供上层驱动或应用调用。该包本身没有可执行程序，主要作用为定义协议数据结构和服务接口。
@@ -125,7 +127,9 @@ tl_ros2_interface/
 │   ├── SetTeachType.srv
 │   ├── SetToolParam.srv
 │   ├── SetUserCoord.srv
-│   ├── TrackSave.srv
+│   ├── DragTrajectoryDelete.srv
+│   ├── DragTrajectoryPlayback.srv
+│   └── TrackSave.srv
 ```
 
 ## tl_ros2_interface消息（msg）说明
@@ -674,6 +678,30 @@ string message
 ```
 - 保存轨迹
 - traj_name: 轨迹名称
+- 返回: success/message
+
+### 回放拖动轨迹DragTrajectoryPlayback_srv
+```
+string trajectory_name
+int32 velocity
+---
+bool success
+string message
+```
+- 按文件名回放控制器内已保存的拖动轨迹
+- trajectory_name: 控制器内文件名，须以 `.json` 结尾；空名、超长（>255 字节）、含控制字符、`/`、`\` 或 `..` 直接返回失败
+- velocity: 回放速度百分比，范围 [1, 100]
+- 返回: success/message；`success=true` 只表示指令被接受，结束状态用 `/tl_driver/get_drag_status` 观察
+
+### 删除拖动轨迹DragTrajectoryDelete_srv
+```
+string trajectory_name
+---
+bool success
+string message
+```
+- 按文件名删除控制器内已保存的拖动轨迹（删除后不可恢复，需控制器固件 24.03+）
+- trajectory_name: 控制器内文件名，须以 `.json` 结尾；空名、超长（>255 字节）、含控制字符、`/`、`\` 或 `..` 直接返回失败
 - 返回: success/message
 
 ### 查询当前运行模式GetCurrentMode_srv
