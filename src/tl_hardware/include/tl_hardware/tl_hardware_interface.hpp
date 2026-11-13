@@ -89,14 +89,12 @@ private:
   // These vectors are exported to ros2_control state interfaces.
   std::vector<double> joint_positions_;
   std::vector<double> joint_velocities_;
-  std::vector<double> joint_efforts_;
 
   // These vectors are written by the joint_trajectory_controller.
   std::vector<double> joint_position_commands_;
 
   // These vectors are updated only by the subscription callback.
   std::vector<double> received_positions_;
-  std::vector<double> received_efforts_;
 
   // Servoj streaming parameters (one value per joint, in deg units).
   std::vector<double> servoj_vmax_;

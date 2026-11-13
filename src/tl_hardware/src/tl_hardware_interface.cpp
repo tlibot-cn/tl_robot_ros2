@@ -58,12 +58,10 @@ hardware_interface::CallbackReturn TLHardwareInterface::on_init(const hardware_i
 
   joint_positions_.assign(joint_count, 0.0);
   joint_velocities_.assign(joint_count, 0.0);
-  joint_efforts_.assign(joint_count, 0.0);
 
   joint_position_commands_.assign(joint_count, 0.0);
 
   received_positions_.assign(joint_count, 0.0);
-  received_efforts_.assign(joint_count, 0.0);
 
   last_positions_.assign(joint_count, 0.0);
 
@@ -281,7 +279,6 @@ hardware_interface::CallbackReturn TLHardwareInterface::on_activate(const rclcpp
 
     joint_positions_ = received_positions_;
     joint_velocities_.assign(joint_names_.size(), 0.0);
-    joint_efforts_ = received_efforts_;
 
     // Seed the command interfaces with the measured positions as well: the controller manager
     // activates hardware components at startup, before any controller claims the interfaces, so
@@ -358,15 +355,15 @@ hardware_interface::CallbackReturn TLHardwareInterface::on_cleanup(const rclcpp_
 std::vector<hardware_interface::StateInterface> TLHardwareInterface::export_state_interfaces()
 {
   std::vector<hardware_interface::StateInterface> state_interfaces;
-  state_interfaces.reserve(joint_names_.size() * 3);
+  // effort 不导出：/joint_states.effort 为额定扭矩千分之一（‰），控制器未提供额定扭矩参数，
+  // 无法换算为 ros2_control 约定的 N·m；导出只会让消费方按 N·m 误读。需要力矩请订阅话题。
+  state_interfaces.reserve(joint_names_.size() * 2);
 
   for (size_t i = 0; i < joint_names_.size(); ++i)
   {
     state_interfaces.emplace_back(joint_names_[i], hardware_interface::HW_IF_POSITION, &joint_positions_[i]);
 
     state_interfaces.emplace_back(joint_names_[i], hardware_interface::HW_IF_VELOCITY, &joint_velocities_[i]);
-
-    state_interfaces.emplace_back(joint_names_[i], hardware_interface::HW_IF_EFFORT, &joint_efforts_[i]);
   }
 
   RCLCPP_INFO(logger_, "Exported %zu state interfaces", state_interfaces.size());
@@ -404,7 +401,6 @@ hardware_interface::return_type TLHardwareInterface::read(const rclcpp::Time& /*
     if (has_received_state_)
     {
       joint_positions_ = received_positions_;
-      joint_efforts_ = received_efforts_;
     }
   }
 
@@ -538,11 +534,6 @@ void TLHardwareInterface::joint_state_callback(const sensor_msgs::msg::JointStat
     if (msg_i < msg->position.size())
     {
       received_positions_[i] = msg->position[msg_i];
-    }
-
-    if (msg_i < msg->effort.size())
-    {
-      received_efforts_[i] = msg->effort[msg_i];
     }
   }
 
