@@ -502,55 +502,14 @@ TL_API Result set_cartesian_params(SOCKETFD socketFd, const CartesianParam& para
  * 需要连接7000端口
   SOCKETFD fd7000 = connect_robot("192.168.1.13","7000");
  *
+ * @note 回调收到的字符串为控制器原始状态帧（JSON），SDK 不解析、不判空；帧内
+ * 字段由 get_robot_state 的查询开关决定
+ * @note 回调在控制器接收线程中执行，函数内只做轻量处理，禁止耗时操作与抛异常
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
- 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
- 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 操作不允许；
+ -5=EXCEPTION 异常；-6=TIMEOUT 超时
  */
 TL_API Result robot_state_callback(SOCKETFD socketFd, void (*function)(const char *));
-
-// ==================== 7000 端口同步状态查询 ====================
-
-/**
- * @brief 同步查询当前各关节角度（ACS，7000 端口）
- *
- * 向 7000 端口发送一次性状态订阅请求（mode=0，控制器只回复一次），阻塞等待
- * 回复帧并解析实时关节角。
- *
- * @param jointAngles [out] 实时关节角（度），元素数由控制器报文决定
- *                   （6 轴 / 7 轴含外部轴）
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；
- * -3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 回调注册槽已耗尽；
- * -5=EXCEPTION 异常；-6=TIMEOUT 等待超时或回复帧中无目标字段
- * @note 与流式订阅（robot_state_callback + get_robot_state）共用状态通道，
- * 可在同一 7000 连接上并存；同步查询的回复帧由内部消费，不会转发给用户
- * 注册的状态回调
- * @warning 与流式订阅并发使用时，若控制器正在按 interval 持续推送状态帧，
- * 同步查询返回的是等待窗口内的最近一帧实时数据
- * @note 每条连接首次调用时占用一个内部回调注册槽（全 SDK 共 8 个，按 fd
- * 分配，disconnect_robot 断开该连接后释放、供后续连接复用），仅在同时
- * 占用 8 条以上连接时才会耗尽；建议固定复用少量连接
- */
-TL_API Result get_current_joint_angle(SOCKETFD socketFd, std::vector<double>& jointAngles);
-
-/**
- * @brief 同步查询当前笛卡尔位姿（MCS，7000 端口）
- *
- * 向 7000 端口发送一次性状态订阅请求（mode=0，控制器只回复一次），阻塞等待
- * 回复帧并解析实时位姿。
- *
- * @param pose     [out] 实时位姿 [X,Y,Z,RX,RY,RZ]（X/Y/Z：mm，
- *                 RX/RY/RZ：弧度，姿态角已由 SDK 归一），元素数由控制器报文决定
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT 未连接；
- * -3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED 回调注册槽已耗尽；
- * -5=EXCEPTION 异常；-6=TIMEOUT 等待超时或回复帧中无目标字段
- * @warning 与流式订阅并发使用时，若控制器正在按 interval 持续推送状态帧，
- * 同步查询返回的是等待窗口内的最近一帧实时数据
- * @note 与流式订阅共用状态通道，可在同一 7000 连接上并存；同步查询的回复
- * 帧由内部消费，不会转发给用户注册的状态回调
- * @note 每条连接首次调用时占用一个内部回调注册槽（全 SDK 共 8 个），
- * 详见 get_current_joint_angle
- */
-TL_API Result get_current_cartesian_position(SOCKETFD socketFd, std::vector<double>& pose);
 
 // ==================== 运动 ====================
 
@@ -1244,15 +1203,6 @@ TL_API Result get_pos_reachable(SOCKETFD socketFd, std::vector<double> pos, std:
 TL_API Result get_four_point(SOCKETFD socketFd, std::vector<double>& result);
 
 /**
- * @brief 获取单圈值
- * @param single_cycle 输出：单圈值数组，长度7
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
- * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
- * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
- */
-TL_API Result get_single_cycle(SOCKETFD socketFd, std::vector<int>& single_cycle);
-
-/**
  * @brief 获取当前使用的用户坐标编号
  * @param userNum 输出：当前使用的用户坐标编号
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
@@ -1701,55 +1651,6 @@ TL_API Result get_pos_trigger_interfer(SOCKETFD socketFd, std::vector<double> po
  */
 TL_API Result get_tool_trigger_interfer(SOCKETFD socketFd, std::vector<double> pos,
                                         bool& returnVal);
-
-// ==================== 传感器 ====================
-
-/**
- * @brief 获取六维力传感器数据
- * @param sensorData 用于接收六维力传感器数据的结构体
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
- * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
- * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
- */
-TL_API Result get_sensor_6d_data(SOCKETFD socketFd, Sensor6DData& sensorData);
-
-/**
- * @brief 获取六维力传感器的基础参数（质量、质心、标零状态）
- * @param baseParam 用于接收传感器基础参数的结构体
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
- * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
- * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
- */
-TL_API Result get_sensor_base_param(SOCKETFD socketFd, SensorBaseParam& baseParam);
-
-/**
- * @brief 执行六维力传感器标定
- * @param[out] success 标定是否成功的标志
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
- * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
- * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
- */
-TL_API Result mark_base_sensor(SOCKETFD socketFd, bool& success);
-
-/**
- * @brief 设置六维力传感器通讯
- * @param params 用于设置六维力传感器通讯参数的结构体
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
- * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
- * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
- */
-TL_API Result set_six_dimensional_force_communication_params(
-    SOCKETFD socketFd, SixDimensionalForceCommunicationParams& params);
-
-/**
- * @brief 获取六维力传感器通讯参数
- * @param params 输出：用于接收六维力传感器通讯参数的结构体
- * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
- * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
- * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
- */
-TL_API Result get_six_dimensional_force_communication_params(
-    SOCKETFD socketFd, SixDimensionalForceCommunicationParams& params);
 
 } // namespace tl
 

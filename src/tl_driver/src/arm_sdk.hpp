@@ -9,7 +9,7 @@
 
 #include "tl_interface.h"
 #include "tl_io.h"
-#include "tl_kinematics.h"
+#include "tl_robot_model.h"
 #include "tl_job_operate.h"
 #include "tl_modbus.h"
 #include "tl_queue_operate.h"

@@ -12,6 +12,11 @@
 
 ## [Unreleased]
 
+### 2026-11-12
+
+- 变更：7 轴 `/tl_driver/ik`（`source=1`）未指定 `arm_angle` 时改为「连续性优先」选解（先取参考关节角臂角 ψ(ref)，解不连续时在 ±12° 内精搜，最后全周网格兜底），减少逐帧换支；显式传入 `arm_angle` 时仍为硬约束
+- 变更：`tl_driver` 预编译 SDK 库与头文件升级（`libtl_host.so` 及随包头文件）
+
 ### 2026-11-10
 
 - tl_driver：新增 `/tl_driver/set_servo_cst_gravity_compensation`（`std_srvs/srv/SetBool`）——透传控制器在 CST 模式下的重力补偿开关；`open_servo_cst` 默认开启，本服务用于运行期切换。驱动不缓存开关状态，`close_servo_cst` 不会自动复位

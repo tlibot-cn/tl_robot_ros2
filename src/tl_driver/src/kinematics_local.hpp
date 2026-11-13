@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-#include "tl_kinematics.h"
+#include "tl_robot_model.h"
 
 namespace tl_driver
 {
@@ -64,8 +64,8 @@ public:
   static const char *status_text(tl::KinematicsStatus status) noexcept;
 
 private:
-  std::optional<tl::Kinematics<6>> kin6_;
-  std::optional<tl::Kinematics<7>> kin7_;
+  std::optional<tl::RobotModel<6>> kin6_;
+  std::optional<tl::RobotModel<7>> kin7_;
   int dof_{0};
   bool available_{false};
   std::string error_;

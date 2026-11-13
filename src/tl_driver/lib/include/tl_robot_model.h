@@ -1,18 +1,18 @@
 /**
- * @file tl_kinematics.h
- * @brief 本地运动学解算接口（机器人基坐标系正逆解，支持工具手变换与按控制器参数建模）。
+ * @file tl_robot_model.h
+ * @brief 本地机器人模型接口（机器人基坐标系运动学正逆解，支持工具手变换与按控制器参数建模）。
  * @note 1) 关节角与关节限位一律为度 (deg)；位姿为 6 元素 [X, Y, Z, A, B, C]，位移 mm、姿态角
  *       rad，旋转序 R = Rx(A) * Ry(B) * Rz(C)。
- *       2) 只处理机器人基坐标系（BASE）位姿；工具手（TCP）变换见 Kinematics::set_tool，工具系 /
+ *       2) 只处理机器人基坐标系（BASE）位姿；工具手（TCP）变换见 RobotModel::set_tool，工具系 /
  *       用户系换算请用 convert_cartesian_coord / get_origin_coord_to_target_coord。
- *       3) 轴数在编译期固定：仅 6 轴与 7 轴两套实例（Kinematics<6> / Kinematics<7>）。
+ *       3) 轴数在编译期固定：仅 6 轴与 7 轴两套实例（RobotModel<6> / RobotModel<7>）。
  *       4) 外部轴（协议点位第 7 位）不参与本地解算。
  *       5) 分支选解、臂角（ψ）与限位规则详见《SDK 使用说明文档》「本地运动学接口」章节。
  * @attention 除 make_model 外均为纯本地计算：不连接控制器、不发送报文；make_model 读取控制器参数
  * （不下发指令），需要已连接的控制器。
  */
-#ifndef TL_SDK_TL_KINEMATICS_H
-#define TL_SDK_TL_KINEMATICS_H
+#ifndef TL_SDK_TL_ROBOT_MODEL_H
+#define TL_SDK_TL_ROBOT_MODEL_H
 
 #include <array>
 #include <limits>
@@ -68,7 +68,7 @@ enum class KinematicsStatus
 };
 
 /**
- * @brief 本地运动学求解模型：由 Kinematics<DOF> 持有。
+ * @brief 本地运动学求解模型：由 RobotModel<DOF> 持有。
  * @note 内部数据，用户侧无须构造；各数组长度 = 轴数。
  * @tparam DOF 轴数，取 6 或 7
  */
@@ -85,7 +85,7 @@ struct KinematicsModel
   std::array<double, DOF> sin_alpha{};
   /** 是否校验关节限位 */
   bool has_limits{false};
-  /** 是否合法（见 Kinematics::is_valid） */
+  /** 是否合法（见 RobotModel::is_valid） */
   bool valid{false};
   /** 工具手变换位姿 [X, Y, Z, A, B, C]（mm + rad）；全零 = 无工具手 */
   std::array<double, 6> tool{};
@@ -138,14 +138,14 @@ constexpr double kArmAngleNone = std::numeric_limits<double>::quiet_NaN();
 struct IKSolution
 {
   std::array<double, 7> q{}; // 关节角 (deg，前 axes 项有效)
-  int form{0};               // 形态编号（1..8，定义见 Kinematics::ik）
+  int form{0};               // 形态编号（1..8，定义见 RobotModel::ik）
   int axes{7}; // q 的有效长度（= 求解器轴数；6 轴为 6，第 7 项恒为 0）
   double arm_angle_rad{kArmAngleNone}; // 该解对应的 ψ (rad)
   bool wrist_singular{false}; // 是否处于腕奇异邻域（解仍有效，同 KinematicsStatus::SINGULAR 语义）
 };
 
 /**
- * @brief 本地运动学求解器（轴数编译期固定）。
+ * @brief 本地机器人模型（当前提供运动学求解；轴数编译期固定）。
  * @note 1) 仅 6 轴与 7 轴两套实例，其他轴数在编译期报错；
  *       2) 构造时接管连杆参数与限位；工具手由 set_tool 设置（默认恒等 = 无工具手）；
  *       3) 除 set_tool 外对象无可变状态：const 方法可并发调用、不分配堆内存、不抛异常（出参为
@@ -154,7 +154,7 @@ struct IKSolution
  * @attention 构造不校验入参合法性（不抛异常），非法模型由 is_valid() 报告、调用时返回 PARAM_ERR。
  */
 template <int DOF>
-class Kinematics
+class RobotModel
 {
 public:
   static_assert(DOF == 6 || DOF == 7, "本地运动学仅提供 6 轴与 7 轴实例");
@@ -173,20 +173,20 @@ public:
   /**
    * @brief 默认构造空模型（is_valid() 为假，正逆解一律返回 PARAM_ERR）。
    */
-  Kinematics() = default;
+  RobotModel() = default;
 
   /**
    * @brief 由连杆参数构造（不校验关节限位）。
    * @param[in] links 连杆参数（标准 DH，长度 = 轴数）
    */
-  explicit Kinematics(const Links& links) noexcept;
+  explicit RobotModel(const Links& links) noexcept;
 
   /**
    * @brief 由连杆参数与关节限位构造。
    * @param[in] links 连杆参数（标准 DH，长度 = 轴数）
    * @param[in] limits 关节限位 (deg，长度 = 轴数)
    */
-  Kinematics(const Links& links, const Limits& limits) noexcept;
+  RobotModel(const Links& links, const Limits& limits) noexcept;
 
   /**
    * @brief 模型是否合法。
@@ -249,7 +249,13 @@ public:
    *       4) 结构不在闭式覆盖内时 form ≠ 0 返回 NO_SOLUTION；「存在几何解但全部候选越限」返回
    *       LIMIT_EXCEEDED，优先于 NO_SOLUTION；
    *       5) ref_joints 可传任意 2kπ 等价表示；配置限位时参考点与解都先折到限位窗口内；
-   *       6) 失败时不改写 joints；OK / SINGULAR 均属成功，照常写出。
+   *       6) 失败时不改写 joints；OK / SINGULAR 均属成功，照常写出；
+   *       7) 7 轴不指定 arm_angle_rad 时按「连续性优先」选解：先用参考关节角自身的臂角 ψ(ref)
+   *       求解；该 ψ 无可行解、或其解不够连续（关节空间欧氏范数 > 0.25 rad，严格大于）时，在
+   *       ψ(ref) ± 12° 内按 1.5° 步长精搜；仍无足够连续的解才退回全周 16
+   * 点网格按最近解兜底。故以「上一周期关节角」 为参考点时，换支只在「ψ(ref) ± 12°
+   * 内确实找不到足够连续的解」时发生，而不是每帧都因
+   *       采样分辨率换支（末级全周网格仍可能漏掉该窗口之外的窄可行带）。
    * @param[in] pose 目标位姿，6 元素 [X, Y, Z, A, B, C]（mm + rad）；工具手语义见 set_tool
    * @param[in] ref_joints 参考关节角 (deg，长度 =
    * 轴数)，用于自动选解与等效角归一；无默认值（必填，避免
@@ -342,7 +348,7 @@ private:
  * @brief 由控制器参数构造本地运动学求解器（需要连接控制器）。
  * @note 1) 6 轴 / 7 轴均读控制器 DH（1~7 段，取前 DOF 段）与逐轴关节限位（J1~JDOF）后构造；
  *       2) 控制器机型轴数与 DOF 不符时返回 PARAM_ERR；
- *       3) 工具手为恒等变换，需要工具手时构造后调用 Kinematics::set_tool；
+ *       3) 工具手为恒等变换，需要工具手时构造后调用 RobotModel::set_tool；
  *       4) 成功时整体覆盖 out（原对象的 tool 一并重置），失败时 out 不被改写；
  *       5) Python 侧同名入口 make_model(socketFd, axes)，axes 即本模板的 DOF。
  * @tparam DOF 轴数，取 6 或 7
@@ -356,19 +362,19 @@ private:
  * @attention 实验性接口：接口与行为可能随版本调整。
  */
 template <int DOF>
-TL_API Result make_model(SOCKETFD socket_fd, Kinematics<DOF>& out);
+TL_API Result make_model(SOCKETFD socket_fd, RobotModel<DOF>& out);
 
 /** 显式实例化声明：实现由 SDK 库提供（6 / 7 轴），其他轴数无实现 */
 
-extern template class Kinematics<6>;
-extern template class Kinematics<7>;
+extern template class RobotModel<6>;
+extern template class RobotModel<7>;
 
 /** make_model 的显式实例化声明（同理由 SDK 库提供）；extern template 声明处不得再加 TL_API
  *  （MSVC C4910） */
 
-extern template Result make_model<6>(SOCKETFD socket_fd, Kinematics<6>& out);
-extern template Result make_model<7>(SOCKETFD socket_fd, Kinematics<7>& out);
+extern template Result make_model<6>(SOCKETFD socket_fd, RobotModel<6>& out);
+extern template Result make_model<7>(SOCKETFD socket_fd, RobotModel<7>& out);
 
 } // namespace tl
 
-#endif /* TL_SDK_TL_KINEMATICS_H */
+#endif /* TL_SDK_TL_ROBOT_MODEL_H */

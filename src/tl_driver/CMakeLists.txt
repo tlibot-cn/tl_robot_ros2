@@ -132,14 +132,6 @@ if(BUILD_TESTING)
   target_link_libraries(test_state_frame nlohmann_json::nlohmann_json)
 endif()
 
-# 创建 libnrc_host.so 符号链接，兼容旧版 SONAME 引用
-install(CODE "
-  execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
-    libtl_host.so
-    \"\${CMAKE_INSTALL_PREFIX}/lib/${PROJECT_NAME}/libnrc_host.so\"
-  )
-")
-
 # ARM64 额外的依赖库：新 libtl_host.so 已自包含，无需 libmath/libmodbus/libservoJ_wrapper
 # 若 SDK 后续提供额外依赖库，可在 arm/ 下放置后在此追加安装
 

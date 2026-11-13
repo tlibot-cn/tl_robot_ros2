@@ -17,7 +17,7 @@ namespace
 /// @note 编号 0 视为无工具手（恒等变换）；非 0 编号读取失败则整体失败，
 ///       避免本地模型按法兰解算却对外声称是 TCP。
 template <int DOF>
-tl::Result set_tool_from_controller(tl::SOCKETFD fd, tl::Kinematics<DOF>& kin, std::string& error)
+tl::Result set_tool_from_controller(tl::SOCKETFD fd, tl::RobotModel<DOF>& kin, std::string& error)
 {
   int tool_num = 0;
   tl::Result ret = tl::get_tool_hand_number(fd, tool_num);
@@ -39,7 +39,7 @@ tl::Result set_tool_from_controller(tl::SOCKETFD fd, tl::Kinematics<DOF>& kin, s
     return ret;
   }
 
-  typename tl::Kinematics<DOF>::Poses tool{param.X,
+  typename tl::RobotModel<DOF>::Poses tool{param.X,
                                            param.Y,
                                            param.Z,
                                            convert::deg_to_rad(param.A),
@@ -110,12 +110,12 @@ tl::KinematicsStatus LocalKinematics::fk(const std::vector<double>& joints_deg, 
 
   if (dof_ == 6)
   {
-    tl::Kinematics<6>::Joints q{};
+    tl::RobotModel<6>::Joints q{};
     std::copy_n(joints_deg.begin(), 6, q.begin());
     return kin6_->fk(q, pose);
   }
 
-  tl::Kinematics<7>::Joints q{};
+  tl::RobotModel<7>::Joints q{};
   std::copy_n(joints_deg.begin(), 7, q.begin());
   return kin7_->fk(q, pose);
 }
@@ -132,8 +132,8 @@ tl::KinematicsStatus LocalKinematics::ik(const Pose& pose, const std::vector<dou
 
   if (dof_ == 6)
   {
-    tl::Kinematics<6>::Joints q{};
-    tl::Kinematics<6>::Joints ref{};
+    tl::RobotModel<6>::Joints q{};
+    tl::RobotModel<6>::Joints ref{};
     std::copy_n(ref_joints_deg.begin(), 6, ref.begin());
     // 6 轴无冗余自由度：给有限臂角会被 SDK 判为 PARAM_ERR，必须显式传“未指定”。
     const tl::KinematicsStatus status = kin6_->ik(pose, q, ref, form, tl::kArmAngleNone);
@@ -145,8 +145,8 @@ tl::KinematicsStatus LocalKinematics::ik(const Pose& pose, const std::vector<dou
     return status;
   }
 
-  tl::Kinematics<7>::Joints q{};
-  tl::Kinematics<7>::Joints ref{};
+  tl::RobotModel<7>::Joints q{};
+  tl::RobotModel<7>::Joints ref{};
   std::copy_n(ref_joints_deg.begin(), 7, ref.begin());
   const tl::KinematicsStatus status = kin7_->ik(pose, q, ref, form, arm_angle_rad);
   if (status == tl::KinematicsStatus::OK || status == tl::KinematicsStatus::SINGULAR)
@@ -165,7 +165,7 @@ tl::KinematicsStatus LocalKinematics::arm_angle_of(const std::vector<double>& jo
     return tl::KinematicsStatus::PARAM_ERR;
   }
 
-  tl::Kinematics<7>::Joints q{};
+  tl::RobotModel<7>::Joints q{};
   std::copy_n(joints_deg.begin(), 7, q.begin());
   return kin7_->arm_angle_of(q, arm_angle_rad);
 }

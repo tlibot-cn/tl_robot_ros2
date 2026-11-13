@@ -298,6 +298,8 @@ struct RobotState
   bool operationMode = false;    // 操作模式，
   bool globalSpeed = false;      // 全局速度，
   bool syncPosition = false;     // 外部轴坐标
+  bool jointSpeed = false;       // 关节速度
+  bool jointTorque = false;      // 关节力矩
   int posSum = 1; // 当查询机械臂运动点位时，posNum为每帧数据回复的点位数目
   std::vector<std::string> ioPort; // IO端口，可查询的最大数量不可大于IO实际个数 例子:[ “DI1”,
                                    // “DI16”, “DO1”, “DO3”, “DO17”]
