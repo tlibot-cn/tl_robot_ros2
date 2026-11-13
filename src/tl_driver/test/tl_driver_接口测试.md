@@ -297,13 +297,13 @@ ros2 service call /tl_driver/track_save tl_ros2_interface/srv/TrackSave "{traj_n
 
 ### `/tl_driver/drag_trajectory_playback` — `DragTrajectoryPlayback`（trajectory_name + velocity）
 ```bash
-ros2 service call /tl_driver/drag_trajectory_playback tl_ros2_interface/srv/DragTrajectoryPlayback "{trajectory_name: 'traj1.json', velocity: 20}"
+ros2 service call /tl_driver/drag_trajectory_playback tl_ros2_interface/srv/DragTrajectoryPlayback "{trajectory_name: 'traj1.txt', velocity: 20}"
 ```
 > `success=true` 只表示指令被接受；结束状态用 `/tl_driver/get_drag_status` 观察。
 
 ### `/tl_driver/drag_trajectory_delete` — `DragTrajectoryDelete`（trajectory_name）
 ```bash
-ros2 service call /tl_driver/drag_trajectory_delete tl_ros2_interface/srv/DragTrajectoryDelete "{trajectory_name: 'traj1.json'}"
+ros2 service call /tl_driver/drag_trajectory_delete tl_ros2_interface/srv/DragTrajectoryDelete "{trajectory_name: 'traj1.txt'}"
 ```
 
 ---

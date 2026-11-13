@@ -142,8 +142,9 @@ void handle_track_save_service(DriverNode& node,
   response->message = response->success ? "Track save successfully" : "Failed to save track";
 }
 
-/// @brief 控制器内拖动轨迹文件名的后缀；SDK 要求带 `.json`。
-constexpr char kTrajectoryNameSuffix[] = ".json";
+/// @brief 控制器内拖动轨迹文件名的后缀；V3 控制器/SDK 的轨迹文件为 `.txt`
+///        （SDK 虽兼容旧 `.json`，本驱动只接受 `.txt`）。
+constexpr char kTrajectoryNameSuffix[] = ".txt";
 constexpr std::size_t kTrajectoryNameSuffixLen = sizeof(kTrajectoryNameSuffix) - 1;
 /// @brief 控制器内轨迹文件名的最大长度（字节）；与常见文件系统 NAME_MAX 对齐。
 constexpr std::size_t kMaxTrajectoryNameLength = 255;

@@ -36,6 +36,7 @@
 |V1.27 | 2026-11-03 | 新增 15.5–15.10：周期同步速度模式（CSV）与周期同步扭矩模式（CST）的开关服务与下发话题（服务数 41 → 45，订阅 1 → 3）；两个话题采用 `Float64MultiArray`，速度 rad/s、扭矩 ‰ 额定扭矩；力矩补偿尚未实现 |
 |V1.28 | 2026-11-03 | `fk`/`ik` 新增 `source`（0=控制器 1=本地模型）；`reference_pos` 改为必填；`CartesianPose.arm_angle` 明确为冗余臂角 ψ；启动时校验控制器机型轴数与 `arm_joints`，不一致即退出；删除 `set_axis_zero_pos` 服务（服务数 45 → 44） |
 |V1.29 | 2026-11-10 | 新增 9.9 [/tl_driver/drag_trajectory_playback](#99-回放控制器内拖动轨迹)、9.10 [/tl_driver/drag_trajectory_delete](#910-删除控制器内拖动轨迹) 与 15.11 [设置 CST 重力补偿开关](#1511-设置-cst-重力补偿开关)（服务数 44 → 47）；**破坏性变更**：`/tl_driver/open_servo_cst` 类型由 `Trigger` 改为 `OpenServoCst`，通过 `disable_gravity_compensation` 选择，默认开启重力补偿；CST 不再声称「力矩补偿尚未实现」 |
+|V1.30 | 2026-11-12 | **破坏性变更**：9.9/9.10 的 `trajectory_name` 由 `.json` 改为只接受 `.txt`（V3 轨迹格式，SDK 对 `.json` 仅作兼容）；`ik`（`source=1`）的 7 轴未指定 `arm_angle` 时按「连续性优先」选解；**破坏性变更**：删除 `/tl_driver/joint_speed`、`/tl_driver/joint_torque` 话题与 `JointSpeed`、`JointTorque` 消息，关节速度/力矩改由 `/joint_states.velocity`（rad/s）/ `.effort`（‰ 额定扭矩）随 ACS 状态帧发布（`jointVel` / `torque` 字段）；参数 `feedback_rate` 更名为 `line_speed_rate`（语义不变，只作用于 `/tl_driver/line_speed`） |
 
 </div>
 
@@ -1281,7 +1282,7 @@ ros2 service call /tl_driver/get_teach_type tl_ros2_interface/srv/GetTeachType "
 **输入参数**
 | 参数名 | 类型 | 范围 | 说明 |
 |--------|------|------|------|
-| trajectory_name | string | — | 控制器内轨迹文件名，须以 `.json` 结尾；空名、超长（>255 字节）、含控制字符、`/`、`\` 或 `..` 直接返回失败，不下发控制器 |
+| trajectory_name | string | — | 控制器内轨迹文件名，须以 `.txt` 结尾；空名、超长（>255 字节）、含控制字符、`/`、`\` 或 `..` 直接返回失败，不下发控制器 |
 | velocity | int32 | 1～100 | 回放速度百分比（%）；越界返回 `Velocity out of range [1, 100]` |
 
 **输出/返回值**
@@ -1297,7 +1298,7 @@ ros2 service call /tl_driver/get_teach_type tl_ros2_interface/srv/GetTeachType "
 #### 命令示例
 ```
 ros2 service call /tl_driver/drag_trajectory_playback tl_ros2_interface/srv/DragTrajectoryPlayback \
-"{trajectory_name: 'traj_test.json', velocity: 20}"
+"{trajectory_name: 'traj_test.txt', velocity: 20}"
 ```
 ### 9.10 删除控制器内拖动轨迹
 | 功能描述 | 按文件名删除控制器内已保存的拖动轨迹 |
@@ -1309,7 +1310,7 @@ ros2 service call /tl_driver/drag_trajectory_playback tl_ros2_interface/srv/Drag
 **输入参数**
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
-| trajectory_name | string | 控制器内轨迹文件名，须以 `.json` 结尾；空名、超长（>255 字节）、含控制字符、`/`、`\` 或 `..` 直接返回失败 |
+| trajectory_name | string | 控制器内轨迹文件名，须以 `.txt` 结尾；空名、超长（>255 字节）、含控制字符、`/`、`\` 或 `..` 直接返回失败 |
 
 **输出/返回值**
 | 参数名 | 类型 | 说明 |
@@ -1323,7 +1324,7 @@ ros2 service call /tl_driver/drag_trajectory_playback tl_ros2_interface/srv/Drag
 #### 命令示例
 ```
 ros2 service call /tl_driver/drag_trajectory_delete tl_ros2_interface/srv/DragTrajectoryDelete \
-"{trajectory_name: 'traj_test.json'}"
+"{trajectory_name: 'traj_test.txt'}"
 ```
 ## 10 错误处理接口
 ### 10.1 清除错误
@@ -1912,8 +1913,8 @@ ros2 service call /tl_driver/set_servo_cst_gravity_compensation std_srvs/srv/Set
 | `/tl_driver/start_jogging` | `Jogging` | motion | rad/s、rad/s² | 稳定 |
 | `/tl_driver/stop_jogging` | `Jogging` | motion | — | 稳定 |
 | `/tl_driver/track_save` | `TrackSave` | motion | — | 稳定 |
-| `/tl_driver/drag_trajectory_playback` | `DragTrajectoryPlayback` | motion | 文件名（`.json`）+ 速度 % | 稳定 |
-| `/tl_driver/drag_trajectory_delete` | `DragTrajectoryDelete` | motion | 文件名（`.json`） | 稳定 |
+| `/tl_driver/drag_trajectory_playback` | `DragTrajectoryPlayback` | motion | 文件名（`.txt`）+ 速度 % | 稳定 |
+| `/tl_driver/drag_trajectory_delete` | `DragTrajectoryDelete` | motion | 文件名（`.txt`） | 稳定 |
 | `/tl_driver/open_servoj` | `OpenServoJ` | motion | rad/s、rad/s²、rad/s³ | 稳定 |
 | `/tl_driver/close_servoj` | `Trigger` | motion | — | 稳定 |
 | `/tl_driver/open_servo_csv` | `Trigger` | motion | 速度透传模式开关 | 稳定 |
