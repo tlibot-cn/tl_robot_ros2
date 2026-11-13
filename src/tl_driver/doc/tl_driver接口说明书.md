@@ -66,8 +66,7 @@
   * [4.15 查询机械臂DH参数](#415-查询机械臂dh参数)
   * [4.17 查询目标位姿可达状态](#417-查询目标位姿可达状态)
   * [4.18 查询机械臂运行状态](#418-查询机械臂运行状态)
-  * [4.19 查询当前电机力矩](#419-查询当前电机力矩)
-  * [4.20 查询当前线速度和关节速度](#420-查询当前线速度和关节速度)
+  * [4.20 查询当前线速度](#420-查询当前线速度)
   * [4.21 正运动学](#421-正运动学)
   * [4.22 逆运动学](#422-逆运动学)
   * [4.23 控制器错误与告警](#423-控制器错误与告警)
@@ -160,10 +159,10 @@
 | 笛卡尔位置 | m | `/tcp_pose`、运动指令、工具/用户坐标系 |
 | 姿态 / 欧拉角 | rad | XYZ 外旋（scipy `xyz`） |
 | 线速度 | m/s | MOVL 指令、`/tl_driver/line_speed.line_speed` |
-| 关节速度 | rad/s | `/tl_driver/joint_speed.joint_speed`、`RobotJointParam.*_rot_speed` |
+| 关节速度 | rad/s | `/joint_states.velocity`、`RobotJointParam.*_rot_speed` |
 | 角加速度 / 加加速度 | rad/s² / rad/s³ | ServoJ 约束、`RobotJointParam.max_acc` / `max_dec` |
 | 百分比量 | % | 速度、加速度（额定值百分比，取值见各接口） |
-| 电机力矩 | ‰（额定扭矩千分之一） | `JointTorque.motor_torque`，取值 ±1000 对应 ±100% 额定扭矩；不是 N·m，也不是 % |
+| 电机力矩 | ‰（额定扭矩千分之一） | `/joint_states.effort`，取值 ±1000 对应 ±100% 额定扭矩；不是 N·m，也不是 % |
 | 温度 / 电压 / 电流 | ℃ / V / A | SDK 头未标注温度、电压；电流 SDK 头标 ‰，与本仓 A 口径不符 |
 
 - `MoveCommand.velocity`：MOVJ 为 %（0<v≤100）；MOVL 为 m/s（0<v≤1）。
@@ -178,7 +177,7 @@
 | :---- | :---- |
 | 服务与 action | `rmw_qos_profile_services_default` |
 | `/joint_states`、`/tcp_pose` | `KeepLast(10)`，reliable |
-| `/tl_driver/joint_monitor`、`/tl_driver/joint_torque`、`/tl_driver/joint_speed`、`/tl_driver/line_speed` | `KeepLast(1)`，reliable，`transient_local` |
+| `/tl_driver/joint_monitor`、`/tl_driver/line_speed` | `KeepLast(1)`，reliable，`transient_local` |
 | `/tl_driver/error_info` | `KeepLast(100)`，reliable（事件逐条发布，不用 `transient_local`） |
 
 > 服务失败统一返回 `success=false` + `message`，不抛异常；话题无帧时停止发布，不重复发送过期值。
@@ -251,9 +250,12 @@ ros2 service call /tl_driver/power_off std_srvs/srv/Trigger "{}"
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
 | position | float64[] | rad | 各关节角度（ROS标准单位），数组长度 = 关节数 |
-| velocity | float64[] | rad/s | 各关节角速度 |
-| effort | float64[] | Nm | 各关节力矩 |
+| velocity | float64[] | rad/s | 各关节角速度（状态帧字段 `jointVel`，度/秒换算而来），与 `position` 等长；字段缺失时为空数组 |
+| effort | float64[] | ‰ 额定扭矩 | 各关节力矩（状态帧字段 `torque`，±1000 对应 ±100% 额定扭矩；**不是 N·m**），与 `position` 等长；字段缺失时为空数组 |
 | name | string[] | — | 各关节名称 |
+
+> `velocity` / `effort` 需控制器支持 `RobotState.jointSpeed` / `jointTorque` 查询开关；固件不支持时驱动自动退回只订阅关节角，两个数组为空。
+> 历史：力矩与关节速度曾由独立话题 `/tl_driver/joint_torque`、`/tl_driver/joint_speed` 发布，V1.30 起并入本话题，两个话题与 `JointTorque`、`JointSpeed` 消息已删除。
 #### 命令示例
 ```
 ros2 topic echo /joint_states
@@ -462,7 +464,7 @@ ros2 topic echo /tl_driver/joint_monitor --field joint_voltage
 |--------|------|------|------|
 | motor_current | float64[7] | A | 机器人本体 7 轴电机电流；缺失元素为 NaN |
 
-> 监测话题默认 2 Hz（`joint_monitor_rate`，取 0 关闭；范围 0–2），`reliable` + `transient_local` + depth 1；电流、温度、电压在同一回调内顺序查询，不跨帧缓存。本话题只保留这三项，力矩见 [4.19](#419-查询当前电机力矩)，速度见 [4.20](#420-查询当前线速度和关节速度)。外部轴电流（`motor_current_sync`）本版本不再发布。服务 `/tl_driver/get_motor_current` 已删除；数字 IO 不发布话题，读写分别使用 `get_digital_input_output` / `set_digital_output` 服务。
+> 监测话题默认 2 Hz（`joint_monitor_rate`，取 0 关闭；范围 0–2），`reliable` + `transient_local` + depth 1；电流、温度、电压在同一回调内顺序查询，不跨帧缓存。本话题只保留这三项，力矩见 [4.1](#41-查询关节角度) 的 `/joint_states.effort`，线速度见 [4.20](#420-查询当前线速度)。外部轴电流（`motor_current_sync`）本版本不再发布。服务 `/tl_driver/get_motor_current` 已删除；数字 IO 不发布话题，读写分别使用 `get_digital_input_output` / `set_digital_output` 服务。
 #### 命令示例
 ```
 ros2 topic echo /tl_driver/joint_monitor --field motor_current --once
@@ -589,54 +591,25 @@ ros2 service call /tl_driver/get_pos_reachable tl_ros2_interface/srv/GetPosReach
 ros2 service call /tl_driver/get_arm_status tl_ros2_interface/srv/GetArmStatus "{}"
 ```
 
-### 4.19 查询当前电机力矩
-| 功能描述 | 查询机械臂当前各电机力矩（话题 `/tl_driver/joint_torque`） |
+### 4.20 查询当前线速度
+| 功能描述 | 查询机械臂当前末端线速度（话题 `/tl_driver/line_speed`）；关节速度与力矩见 [4.1](#41-查询关节角度) 的 `/joint_states.velocity` / `.effort` |
 | :---: | :---- |
 | 通信机制 | ROS2话题 |
-| 话题名 | `/tl_driver/joint_torque` |
-| 消息类型 | `tl_ros2_interface/msg/JointTorque` |
+| 话题名 | `/tl_driver/line_speed` |
+| 消息类型 | `tl_ros2_interface/msg/LineSpeed` |
 
 **输入参数**
 无（话题订阅，无需请求参数）。
 
 **输出/返回值**
-| 参数名 | 类型 | 单位 | 说明 |
-|--------|------|------|------|
-| motor_torque | float64[7] | ‰ 额定扭矩 | 机械臂本体当前各电机力矩（千分之一额定扭矩，定长 7）；缺失元素为 NaN |
-
-> **单位**：力矩是额定扭矩的千分之一（‰），±1000 对应 ±100% 额定扭矩；不是 N·m，也不是百分比。外部轴力矩（`motor_torque_sync`）本版本不再发布。默认 100 Hz（`feedback_rate`，与 4.20 的速度话题共用同一个定时器，各自独立查询与时间戳，取 0 关闭），`reliable` + `transient_local` + depth 1；查询失败时该周期不发布。服务 `/tl_driver/get_current_motor_torque` 已删除。
-#### 命令示例
-```
-ros2 topic echo /tl_driver/joint_torque --once
-```
-### 4.20 查询当前线速度和关节速度
-| 功能描述 | 查询机械臂当前末端的线速度（`/tl_driver/line_speed`）和各关节角速度（`/tl_driver/joint_speed`） |
-| :---: | :---- |
-| 通信机制 | ROS2话题 |
-| 话题名 | `/tl_driver/line_speed`、`/tl_driver/joint_speed` |
-| 消息类型 | `tl_ros2_interface/msg/LineSpeed`、`tl_ros2_interface/msg/JointSpeed` |
-
-**输入参数**
-无（话题订阅，无需请求参数）。
-
-**输出/返回值**
-`LineSpeed`：
-
 | 参数名 | 类型 | 单位 | 说明 |
 |--------|------|------|------|
 | line_speed | float64 | m/s | 当前末端线速度；查询失败为 NaN |
 
-`JointSpeed`：
-
-| 参数名 | 类型 | 单位 | 说明 |
-|--------|------|------|------|
-| joint_speed | float64[7] | rad/s | 机械臂本体当前各关节速度，定长 7；缺失元素为 NaN |
-
-> 两个话题由同一次 SDK 查询产生，共用 `feedback_rate`（默认 100 Hz，取 0 关闭；与 4.19 的力矩话题共用同一个定时器，各自独立查询与时间戳）；外部轴同步速度（`joint_speed_sync`）本版本不再发布。查询失败时该周期两个话题都不发布。服务 `/tl_driver/get_current_line_joint_speed` 已删除。
+> 数据源为 6001 端口同步查询（`get_current_line_speed_and_joint_speed`，同一次查询返回的关节速度被丢弃），按 `line_speed_rate`（默认 10 Hz，取 0 关闭）发布；查询失败时该周期不发布。外部轴同步速度与关节速度不再由本接口发布：关节速度随 `/joint_states.velocity` 发布。服务 `/tl_driver/get_current_line_joint_speed` 已删除；原 `/tl_driver/joint_speed`、`/tl_driver/joint_torque` 话题及 `JointSpeed`、`JointTorque` 消息已在 V1.30 删除。
 #### 命令示例
 ```
 ros2 topic echo /tl_driver/line_speed --once
-ros2 topic echo /tl_driver/joint_speed --once
 ```
 
 ### 4.21 正运动学
@@ -1718,7 +1691,7 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 
 | 通道 | 请求 | 数据源 | 用途 |
 | :---- | :---- | :---- | :---- |
-| 1 | `mode=1, position=0, interval=10` | `realPosACS`（度） | `/joint_states` |
+| 1 | `mode=1, position=0, interval=10`；`jointSpeed=jointTorque=true` | `realPosACS`（度）+ `jointVel`（度/秒）+ `torque`（‰） | `/joint_states`（position/velocity/effort） |
 | 2 | `mode=1, position=1, interval=10` | `realPosMCS`（位置 mm、姿态度） | `/tcp_pose`、action feedback |
 
 | 参数 | 默认 | 范围 | 说明 |
@@ -1726,11 +1699,11 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 | `state_stream_interval_ms` | 10 | 10–60000 | 连续反馈间隔 |
 | `executor_threads` | 8 | 1–64 | 执行器线程数；默认 `max(4, min(hardware_concurrency, 8))`，阻塞 I/O 场景可调到 16 |
 | `joint_monitor_rate` | 2.0 | 0–2 | `/tl_driver/joint_monitor` 发布频率（Hz），含电流/温度/电压查询，0=关闭 |
-| `feedback_rate` | 100.0 | 0–100 | `/tl_driver/joint_speed`、`/tl_driver/line_speed`、`/tl_driver/joint_torque` 共用定时器的发布频率（Hz），0=关闭；定时器回调内先后调用速度与力矩两个发布函数 |
+| `line_speed_rate` | 10.0 | 0–20 | `/tl_driver/line_speed` 同步查询的定时器频率（Hz），0=关闭；实际发布率低于设定值：每次发布含一次 6001 同步查询（约 30–40 ms），实测设定 20 Hz 约 11 Hz。关节速度与力矩已并入 `/joint_states`（随 7000 状态帧），不受该参数控制 |
 
 > 状态流没有同步查询回退路径：某通道无新帧时对应话题停止发布（保持静默而不是发布过期值）。状态流在上下电与模式切换完成后启动，任一通道请求失败则驱动启动失败；运行期控制器停止推帧后需要重启驱动恢复（不设看门狗重试）。运行状态由 10 Hz 定时器查询，查询成功即发布 `/arm_status`；查询失败时该周期不发布（节流 WARN），不会用缓存值兜底。运行速度改由 `get_speed` 服务按需查询，不再由定时器轮询。
 >
-> 话题频率参数 `joint_monitor_rate` / `feedback_rate` 见 [4.10](#410-查询电机电流)、[4.19](#419-查询当前电机力矩)、[4.20](#420-查询当前线速度和关节速度)；运动 action 超时参数见 [7.1](#71-运动-action)。
+> 话题频率参数 `joint_monitor_rate` / `line_speed_rate` 见 [4.10](#410-查询电机电流)、[4.20](#420-查询当前线速度)；运动 action 超时参数见 [7.1](#71-运动-action)。
 
 ### 15.5 打开周期同步速度模式
 | 功能描述 | 进入周期同步速度模式（CSV），之后由 `/tl_driver/set_servo_csv_velocity` 按周期下发各关节目标速度 |
@@ -1893,12 +1866,10 @@ ros2 service call /tl_driver/set_servo_cst_gravity_compensation std_srvs/srv/Set
 
 | 接口 | 类型 | 频率 | 字段单位 | 状态 |
 | :---- | :---- | :---- | :---- | :---- |
-| `/joint_states` | `sensor_msgs/msg/JointState` | 7000 帧率（默认 100 Hz） | position rad | 稳定 |
+| `/joint_states` | `sensor_msgs/msg/JointState` | 7000 帧率（默认 100 Hz） | position rad、velocity rad/s、effort ‰ 额定扭矩 | 稳定 |
 | `/tcp_pose` | `CartesianPose` | 7000 帧率（默认 100 Hz） | position m、rpy rad | 稳定 |
 | `/tl_driver/joint_monitor` | `JointMonitor` | `joint_monitor_rate`（默认 2 Hz，范围 0–2；电流/温度/电压同帧查询） | A、℃、V | 稳定 |
-| `/tl_driver/joint_torque` | `JointTorque` | `feedback_rate`（默认 100 Hz，与速度话题同一定时器） | ‰ 额定扭矩 | 稳定 |
-| `/tl_driver/joint_speed` | `JointSpeed` | `feedback_rate`（默认 100 Hz，与 line_speed 同一次查询） | rad/s | 稳定 |
-| `/tl_driver/line_speed` | `LineSpeed` | `feedback_rate`（默认 100 Hz，与 joint_speed 同一次查询） | m/s | 稳定 |
+| `/tl_driver/line_speed` | `LineSpeed` | `line_speed_rate`（默认 10 Hz） | m/s | 稳定 |
 | `/tl_driver/error_info` | `ErrorInfo` | 事件驱动（不节流） | int32 / string | 稳定 |
 | `/tl_driver/set_servoj_pos` | `std_msgs/msg/Float64MultiArray` | 事件驱动（≤250 Hz） | rad（6 或 7 元素） | 稳定 |
 | `/tl_driver/set_servo_csv_velocity` | `std_msgs/msg/Float64MultiArray` | 事件驱动（建议 ≥100 Hz） | rad/s（6 或 7 元素） | 稳定 |
@@ -1966,7 +1937,7 @@ ros2 service call /tl_driver/set_servo_cst_gravity_compensation std_srvs/srv/Set
 
 > 服务均为请求/响应式，无固定频率；返回统一为 `success` + `message`，业务失败不抛异常。
 
-**消息与 Action 类型（13 个 msg + 2 个 action）**
+**消息与 Action 类型（11 个 msg + 2 个 action）**
 
 | 消息 | 用途 | 状态 |
 | :---- | :---- | :---- |
@@ -1975,8 +1946,7 @@ ros2 service call /tl_driver/set_servo_cst_gravity_compensation std_srvs/srv/Set
 | `PlayTrack`（action） | `play_track` | 稳定 |
 | `CartesianPose` | `/tcp_pose` | 稳定 |
 | `JointMonitor` | `/tl_driver/joint_monitor` 诊断话题（电流/温度/电压同帧查询，定长数组 + NaN） | 稳定 |
-| `JointSpeed` / `LineSpeed` | `/tl_driver/joint_speed` / `/tl_driver/line_speed` | 稳定 |
-| `JointTorque` | `/tl_driver/joint_torque` | 稳定 |
+| `LineSpeed` | `/tl_driver/line_speed` | 稳定 |
 | `ErrorInfo` | `/tl_driver/error_info` 控制器错误/告警（事件驱动，不节流） | 稳定 |
 | `RobotDHParam` / `RobotJointParam` / `ToolParam` / `ModbusMasterParam` / `ModbusRTUParam` / `ModbusTCPParam` | 服务嵌套参数 | 稳定 |
 
@@ -1992,8 +1962,8 @@ ros2 service call /tl_driver/set_servo_cst_gravity_compensation std_srvs/srv/Set
 | `get_robot_state` | srv | `/joint_states`、`/tcp_pose`、`get_arm_status` | V1.16 |
 | `get_joint_temperature`、`get_joint_voltage` | srv | `/tl_driver/joint_monitor` | V1.16 |
 | `get_motor_current` | srv | `/tl_driver/joint_monitor` | V1.16 |
-| `get_current_motor_torque` | srv | `/tl_driver/joint_torque` | V1.16 |
-| `get_current_line_joint_speed` | srv | `/tl_driver/line_speed` + `/tl_driver/joint_speed` | V1.16 |
+| `get_current_motor_torque` | srv | `/joint_states.effort`（V1.30 起） | V1.16 |
+| `get_current_line_joint_speed` | srv | `/tl_driver/line_speed`（关节速度见 `/joint_states.velocity`） | V1.16 |
 | `get_joint_software_version` | srv | 启动日志逐轴打印 | V1.16 |
 | `set_robot_joint_param` | srv | 无 | V1.16 |
 | `io_state` | topic | `get_digital_input_output` / `set_digital_output` | V1.16 |

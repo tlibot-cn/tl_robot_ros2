@@ -7,11 +7,9 @@
 
 | 话题 | 字段 | ROS 单位 | 控制器 / SDK 单位 |
 | :--- | :--- | :--- | :--- |
-| `/joint_states` | `position` / `velocity` | rad / rad·s⁻¹ | ACS 流：度；同步查询：度 |
+| `/joint_states` | `position` / `velocity` / `effort` | rad / rad·s⁻¹ / ‰ 额定扭矩 | ACS 流：度 / 度·s⁻¹ / ‰ |
 | `/tcp_pose` | `position` / `rpy` | m / rad | MCS 流：mm / 度；同步查询：mm / rad |
 | `/tl_driver/joint_monitor` | 电流 / 温度 / 电压 | A / °C / V | A / °C / V |
-| `/tl_driver/joint_torque` | `motor_torque` | ‰ 额定扭矩 | ‰ |
-| `/tl_driver/joint_speed` | `joint_speed` | rad/s | 度/s |
 | `/tl_driver/line_speed` | `line_speed` | m/s | mm/s |
 | `/tl_driver/set_servoj_pos` | `data[7]` | rad（6 轴末位补 0） | 度 |
 | `/tl_driver/set_servo_csv_velocity` | `data[7]` | rad/s（6 轴末位补 0） | 度/s |

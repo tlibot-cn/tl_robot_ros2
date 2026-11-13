@@ -106,7 +106,7 @@ tl_driver:
     executor_threads: 8             # 执行器线程数，范围 1～64；默认 max(4, min(hardware_concurrency, 8))
     state_stream_interval_ms: 10    # 连续状态流间隔，范围 10～60000 ms
     joint_monitor_rate: 2.0         # /tl_driver/joint_monitor（电流/温度/电压）频率，0～2，0=关闭
-    feedback_rate: 100.0            # /tl_driver/joint_speed + line_speed + joint_torque 反馈发布频率，0～100，0=关闭
+    line_speed_rate: 10.0           # /tl_driver/line_speed 发布频率，0～20，0=关闭（关节速度/力矩随 /joint_states 发布）
     motion_action_timeout: 60.0     # move_joint/move_linear 默认超时，秒
     track_action_timeout: 600.0     # play_track 默认超时，秒
 ```
@@ -213,4 +213,4 @@ tl_driver功能包的服务、话题与 action 较多，可以通过如下指令
 ![image](doc/tl_driver4.png)  
 主要为套用API实现的一些机械臂本体的功能，其详细介绍和使用在此不详细展开，可以通过专门的文档《[tl_driver接口说明书](doc/tl_driver接口说明书.md)》进行查看。
 
-状态话题化后，`/joint_states` 与 `/tcp_pose` 默认由 7000 端口 ACS/MCS 连续流驱动；反馈与监测数据按查询拆分：`/tl_driver/joint_monitor`（电流/温度/电压同帧查询，默认 2 Hz）、`/tl_driver/joint_torque`、`/tl_driver/joint_speed` 与 `/tl_driver/line_speed`（后三个在同一个定时器内先后发布，共用 `feedback_rate`，默认 100 Hz）；控制器错误/告警由 6001 主端口异步回调驱动，事件逐条发布到 `/tl_driver/error_info`。运行速度改用 `/tl_driver/get_speed` 服务查询，运行状态改用 `/tl_driver/get_arm_status` 服务查询；数字 IO 读写统一使用 `get_digital_input_output` / `set_digital_output` 服务（不发布 `io_state` 话题）。长运动客户端使用 `/tl_driver/move_joint`、`/tl_driver/move_linear`、`/tl_driver/play_track` action（`track_playback` 服务已删除）；action 的 cancel 因 SDK 无停止接口而一律拒绝。正逆运动学使用 `/tl_driver/fk`、`/tl_driver/ik` 服务。
+状态话题化后，`/joint_states` 与 `/tcp_pose` 默认由 7000 端口 ACS/MCS 连续流驱动；反馈与监测数据按数据源拆分：`/joint_states` 同时携带关节速度（`velocity`，rad/s）与力矩（`effort`，‰ 额定扭矩），与关节角同帧；`/tl_driver/joint_monitor`（电流/温度/电压同帧查询，默认 2 Hz）；`/tl_driver/line_speed` 由 6001 同步查询按 `line_speed_rate`（默认 10 Hz）发布；控制器错误/告警由 6001 主端口异步回调驱动，事件逐条发布到 `/tl_driver/error_info`。运行速度改用 `/tl_driver/get_speed` 服务查询，运行状态改用 `/tl_driver/get_arm_status` 服务查询；数字 IO 读写统一使用 `get_digital_input_output` / `set_digital_output` 服务（不发布 `io_state` 话题）。长运动客户端使用 `/tl_driver/move_joint`、`/tl_driver/move_linear`、`/tl_driver/play_track` action（`track_playback` 服务已删除）；action 的 cancel 因 SDK 无停止接口而一律拒绝。正逆运动学使用 `/tl_driver/fk`、`/tl_driver/ik` 服务。

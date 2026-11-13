@@ -211,19 +211,17 @@ ros2 service call /tl_driver/ik tl_ros2_interface/srv/Ik "{
 |---|--------|------|----------|------|
 | 1 | `/tl_driver/get_arm_status` | `GetArmStatus` | — | `run_state` |
 | 2 | `/tl_driver/joint_monitor` | `JointMonitor` | — | 电流、温度、电压 |
-| 3 | `/tl_driver/joint_torque` | `JointTorque` | — | 力矩（‰ 额定扭矩） |
-| 4 | `/tl_driver/joint_speed` | `JointSpeed` | — | 关节速度 rad/s |
-| 5 | `/tl_driver/line_speed` | `LineSpeed` | — | 末端线速度 m/s |
-| 6 | `/tl_driver/get_speed` | `GetSpeed` | — | 全局运行速度 % |
-| 7 | `/tl_driver/get_pos_reachable` | `GetPosReachable` | `pos/move_type` | 点位是否可达 |
-| 8 | `/tl_driver/error_info` | `ErrorInfo` | — | 控制器错误/告警（事件驱动，无故障时不发消息） |
+| 3 | `/joint_states` | `sensor_msgs/JointState` | — | 关节角 rad + `velocity` rad/s + `effort` ‰ 额定扭矩 |
+| 4 | `/tl_driver/line_speed` | `LineSpeed` | — | 末端线速度 m/s |
+| 5 | `/tl_driver/get_speed` | `GetSpeed` | — | 全局运行速度 % |
+| 6 | `/tl_driver/get_pos_reachable` | `GetPosReachable` | `pos/move_type` | 点位是否可达 |
+| 7 | `/tl_driver/error_info` | `ErrorInfo` | — | 控制器错误/告警（事件驱动，无故障时不发消息） |
 
 **测试指令：**
 ```bash
 ros2 service call /tl_driver/get_arm_status tl_ros2_interface/srv/GetArmStatus "{}"
 ros2 topic echo /tl_driver/joint_monitor --once
-ros2 topic echo /tl_driver/joint_torque --once
-ros2 topic echo /tl_driver/joint_speed --once
+ros2 topic echo /joint_states --once      # 含 velocity(rad/s) 与 effort(‰ 额定扭矩)
 ros2 topic echo /tl_driver/line_speed --once
 ros2 topic echo /tl_driver/error_info   # 事件驱动：需触发控制器错误/告警后才会收到
 ros2 service call /tl_driver/get_speed tl_ros2_interface/srv/GetSpeed "{}"
@@ -377,7 +375,7 @@ ros2 interface show tl_ros2_interface/srv/SetSpeed
 ## 测试顺序建议（安全优先）
 
 1. **连接类**：`get_library_version` → `get_controller_id` → `get_current_mode` → `get_current_coord`
-2. **状态类**：`get_arm_status` 服务、`/tl_driver/joint_monitor`、`/tl_driver/joint_torque`、`/tl_driver/joint_speed`、`/tl_driver/line_speed` 话题与 `get_speed` 服务（只读，安全）
+2. **状态类**：`get_arm_status` 服务、`/joint_states`（含 velocity/effort）、`/tl_driver/joint_monitor`、`/tl_driver/line_speed` 话题与 `get_speed` 服务（只读，安全）
 3. **配置类**：`set_speed` / `set_current_mode` / `set_current_coord` / `set_drag_mode`
 4. **运动类**（⚠️ 先确认周围安全、上电后）：`power_on` → `move_joint`/`move_linear` action → `power_off`
 5. **IO/Modbus/轨迹**：按需单独测试

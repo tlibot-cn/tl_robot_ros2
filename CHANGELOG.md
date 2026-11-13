@@ -15,6 +15,8 @@
 ### 2026-11-12
 
 - 变更：7 轴 `/tl_driver/ik`（`source=1`）未指定 `arm_angle` 时改为「连续性优先」选解（先取参考关节角臂角 ψ(ref)，解不连续时在 ±12° 内精搜，最后全周网格兜底），减少逐帧换支；显式传入 `arm_angle` 时仍为硬约束
+- **破坏性变更**：删除 `/tl_driver/joint_speed`、`/tl_driver/joint_torque` 话题及 `JointSpeed`、`JointTorque` 消息；关节速度、力矩改由 `/joint_states` 的 `velocity`（rad/s）与 `effort`（‰ 额定扭矩，不是 N·m）发布，与关节角同帧同时间戳。控制器不支持对应查询开关时自动退回纯位置订阅
+- **破坏性变更**：参数 `feedback_rate` 更名为 `line_speed_rate`，默认值由 100 Hz 下调为 10 Hz（范围 0–20、0=关闭，只控制 `/tl_driver/line_speed` 发布频率；实际发布率受 6001 查询耗时限制）；使用方需同步修改 YAML / launch 覆盖；仍传旧参数名会启动即失败并提示新名称
 - 变更：`tl_driver` 预编译 SDK 库与头文件升级（`libtl_host.so` 及随包头文件）
 
 ### 2026-11-10

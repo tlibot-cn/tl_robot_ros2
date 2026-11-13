@@ -38,16 +38,31 @@ void fill_from_vector(std::array<double, N>& out, const std::vector<double>& val
   std::copy_n(values.begin(), count, out.begin());
 }
 
-/// @brief 力矩查询返回 int 向量，定长数组统一为 float64 + NaN；只保留前 valid_count 个有效关节。
-template <std::size_t N>
-void fill_from_int_vector(std::array<double, N>& out, const std::vector<int>& values, std::size_t valid_count)
+/// @brief 把状态帧辅助字段写入 `JointState.velocity` / `.effort`。
+/// @param[out] out 目标数组，长度与 `name`/`position` 对齐
+/// @param[in] values 状态帧原始值（定长，NaN 填充表示无效）
+/// @param[in] count 帧内有效元素个数；0 = 字段缺失，此时清空数组（JointState 语义：空 = 不可用）
+/// @param[in] n 目标长度（= 本帧 name/position 长度）
+/// @param[in] scale 单位换算系数（速度 deg/s→rad/s；力矩 ‰ 原样传 1）
+void fill_joint_state_aux(std::vector<double>& out, const std::array<double, convert::kMaxStateAxes>& values,
+                          std::size_t count, std::size_t n, double scale)
 {
-  fill_invalid(out);
-  const std::size_t count = std::min({values.size(), N, valid_count});
-  for (std::size_t i = 0; i < count; ++i)
+  if (count == 0 || n == 0)
   {
-    out[i] = static_cast<double>(values[i]);
+    out.clear();
+    return;
   }
+  // 稳态下长度不变，不重复分配；数据不足的部分显式置 NaN。
+  if (out.size() != n)
+  {
+    out.resize(n);
+  }
+  const std::size_t m = std::min(count, n);
+  for (std::size_t i = 0; i < m; ++i)
+  {
+    out[i] = values[i] * scale;
+  }
+  std::fill(out.begin() + static_cast<std::ptrdiff_t>(m), out.end(), std::numeric_limits<double>::quiet_NaN());
 }
 } // namespace
 
@@ -63,9 +78,7 @@ StatePublishers::StatePublishers(rclcpp::Node& node, ArmSession& session, std::v
   const auto state_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
   joint_monitor_pub_ =
       node_.create_publisher<tl_ros2_interface::msg::JointMonitor>("/tl_driver/joint_monitor", state_qos);
-  joint_speed_pub_ = node_.create_publisher<tl_ros2_interface::msg::JointSpeed>("/tl_driver/joint_speed", state_qos);
   line_speed_pub_ = node_.create_publisher<tl_ros2_interface::msg::LineSpeed>("/tl_driver/line_speed", state_qos);
-  joint_torque_pub_ = node_.create_publisher<tl_ros2_interface::msg::JointTorque>("/tl_driver/joint_torque", state_qos);
 
   // 错误/告警是离散事件：不能用 transient_local 让新订阅者收到陈旧故障，也不做节流丢帧。
   error_info_pub_ = node_.create_publisher<tl_ros2_interface::msg::ErrorInfo>(
@@ -162,7 +175,10 @@ void StatePublishers::publish_joint_stream()
   // 这里用 ROS 时钟减去 steady 时钟的帧龄；`use_sim_time` 下若时钟暂停，两者可能短暂不同步。
   const auto age = std::chrono::duration_cast<std::chrono::nanoseconds>(now - frame.received_at);
   const rclcpp::Time stamp = node_.now() - rclcpp::Duration(age);
-  publish_joint_pose(joint_pose_, frame.acs_count, stamp);
+  // 关节速度/力矩与关节角同帧同时间戳：控制器按 RobotState 的 jointSpeed/jointTorque 开关
+  // 在 ACS 帧中附带 jointVel（deg/s）与 torque（‰），直接写入 JointState.velocity/effort。
+  publish_joint_pose(joint_pose_, frame.acs_count, frame.joint_vel, frame.joint_vel_count, frame.torque,
+                     frame.torque_count, stamp);
 }
 
 void StatePublishers::publish_tcp_stream()
@@ -191,7 +207,10 @@ void StatePublishers::publish_tcp_stream()
 }
 
 void StatePublishers::publish_joint_pose(const std::array<double, convert::kMaxStateAxes>& joint_pose,
-                                         std::size_t count, const rclcpp::Time& stamp)
+                                         std::size_t count, const std::array<double, convert::kMaxStateAxes>& joint_vel,
+                                         std::size_t joint_vel_count,
+                                         const std::array<double, convert::kMaxStateAxes>& torque,
+                                         std::size_t torque_count, const rclcpp::Time& stamp)
 {
   auto& msg = joint_state_msg_;
   msg.header.stamp = stamp;
@@ -215,6 +234,20 @@ void StatePublishers::publish_joint_pose(const std::array<double, convert::kMaxS
     msg.name.assign(joint_names_.begin(), joint_names_.begin() + n);
   }
   msg.position.assign(joint_pose.begin(), joint_pose.begin() + n);
+
+  // velocity/effort 与 name/position 等长；帧内缺字段（固件不支持查询开关）时为空数组（不可用）。
+  if (joint_vel_count == 0)
+  {
+    RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000,
+                         "[Pub]: ACS frame has no jointVel field, /joint_states.velocity unavailable");
+  }
+  if (torque_count == 0)
+  {
+    RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000,
+                         "[Pub]: ACS frame has no torque field, /joint_states.effort unavailable");
+  }
+  fill_joint_state_aux(msg.velocity, joint_vel, joint_vel_count, n, convert::kDegToRad);
+  fill_joint_state_aux(msg.effort, torque, torque_count, n, 1.0);
 
   joint_state_pub_->publish(msg);
 }
@@ -321,7 +354,7 @@ void StatePublishers::publish_monitor()
   joint_monitor_pub_->publish(msg);
 }
 
-void StatePublishers::publish_speed()
+void StatePublishers::publish_line_speed()
 {
   if (!session_.is_connected())
   {
@@ -330,55 +363,22 @@ void StatePublishers::publish_speed()
 
   const int fd = session_.fd();
   double line_speed = 0.0;
-  std::vector<double> joint_speed;
-  std::vector<double> joint_speed_sync; // 外部轴同步速度不再发布，但 SDK 要求出参非空。
+  std::vector<double> joint_speed; // 关节速度已随 /joint_states.velocity 发布；SDK 出参，结果丢弃。
+  std::vector<double> joint_speed_sync; // 外部轴同步速度不发布；SDK 出参，结果丢弃。
 
   const tl::Result ret = tl::get_current_line_speed_and_joint_speed(fd, line_speed, joint_speed, joint_speed_sync);
   if (ret != tl::Result::SUCCESS)
   {
-    RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000, "[Pub]: speed query failed, result=%s",
+    RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000, "[Pub]: line speed query failed, result=%s",
                          arm_client::result_to_string(ret));
     return;
   }
 
-  // 速度查询返回 mm/s 与 deg/s，入口一次换算到 REP 103；两个话题共用同一采样时刻。
-  convert::joint_deg_to_rad(joint_speed, joint_speed.size());
-  const rclcpp::Time stamp = node_.now();
-
-  auto& joint_msg = joint_speed_msg_;
-  joint_msg.header.stamp = stamp;
-  fill_from_vector<kBodyAxes>(joint_msg.joint_speed, joint_speed, static_cast<std::size_t>(config_.ndof));
-  joint_speed_pub_->publish(joint_msg);
-
+  // 线速度查询返回 mm/s，入口换算到 REP 103。
   auto& line_msg = line_speed_msg_;
-  line_msg.header.stamp = stamp;
+  line_msg.header.stamp = node_.now();
   line_msg.line_speed = convert::mm_s_to_m_s(line_speed);
   line_speed_pub_->publish(line_msg);
-}
-
-void StatePublishers::publish_joint_torque()
-{
-  if (!session_.is_connected())
-  {
-    return;
-  }
-
-  const int fd = session_.fd();
-  std::vector<int> motor_torque;
-  std::vector<int> motor_torque_sync; // 外部轴力矩不发布，但 SDK 要求出参非空。
-
-  const tl::Result ret = tl::get_current_motor_torque(fd, motor_torque, motor_torque_sync);
-  if (ret != tl::Result::SUCCESS)
-  {
-    RCLCPP_WARN_THROTTLE(node_.get_logger(), *node_.get_clock(), 5000, "[Pub]: joint_torque query failed, result=%s",
-                         arm_client::result_to_string(ret));
-    return;
-  }
-
-  auto& msg = joint_torque_msg_;
-  msg.header.stamp = node_.now();
-  fill_from_int_vector<kBodyAxes>(msg.motor_torque, motor_torque, static_cast<std::size_t>(config_.ndof));
-  joint_torque_pub_->publish(msg);
 }
 
 void StatePublishers::publish_error(int message_type, const std::string& message, int message_code)

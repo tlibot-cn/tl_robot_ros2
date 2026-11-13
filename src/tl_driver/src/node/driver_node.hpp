@@ -175,7 +175,7 @@ private:
   /// @brief 按域注册全部服务、话题与 action。
   void register_entities();
 
-  /// @brief 按配置创建监测与反馈定时器（频率为 0 时不创建）。
+  /// @brief 按配置创建监测与 line_speed 定时器（频率为 0 时不创建）。
   void create_aux_timers();
 
   std::string arm_ip_{"192.168.1.13"};
@@ -189,7 +189,7 @@ private:
 
   int state_stream_interval_ms_{10};
   double joint_monitor_rate_{2.0};
-  double feedback_rate_{100.0};
+  double line_speed_rate_{10.0};
   double motion_action_timeout_{60.0};
   double track_action_timeout_{600.0};
 
@@ -207,7 +207,7 @@ private:
   rclcpp::CallbackGroup::SharedPtr motion_service_group_;
   rclcpp::CallbackGroup::SharedPtr topic_group_;
   rclcpp::CallbackGroup::SharedPtr monitor_group_;
-  rclcpp::CallbackGroup::SharedPtr feedback_group_;
+  rclcpp::CallbackGroup::SharedPtr line_speed_group_;
   rclcpp::CallbackGroup::SharedPtr action_group_;
 
   // 注册期当前目标组：仅作为 select_service_group() → create_service() 的传参槽位，
@@ -220,7 +220,7 @@ private:
   std::vector<rclcpp::SubscriptionBase::SharedPtr> subscriptions_;
 
   rclcpp::TimerBase::SharedPtr monitor_timer_;
-  rclcpp::TimerBase::SharedPtr feedback_timer_;
+  rclcpp::TimerBase::SharedPtr line_speed_timer_;
 };
 
 } // namespace tl_driver

@@ -21,8 +21,7 @@
  *   [4.15] get_dh_param                 查询机械臂DH参数
  *   [4.17] get_pos_reachable            查询目标位姿可达状态（关节+直角两坐标系，打印目标位姿）
  *   [4.18] get_arm_status 服务          查询机械臂运行状态（含 UNKNOWN 语义）
- *   [4.19] /tl_driver/joint_torque      电机力矩（额定扭矩千分之一）
- *   [4.20] /tl_driver/line_speed + /tl_driver/joint_speed 线速度和关节速度
+ *   [4.20] /tl_driver/line_speed        末端线速度（关节速度/力矩随 /joint_states 发布）
  *   [4.21] fk 服务                      正运动学（关节角 → TCP 位姿）
  *   [4.22] ik 服务                      逆运动学（TCP 位姿 → 关节角）
  *
@@ -51,8 +50,6 @@
 
 #include "tl_ros2_interface/msg/cartesian_pose.hpp"
 #include "tl_ros2_interface/msg/joint_monitor.hpp"
-#include "tl_ros2_interface/msg/joint_speed.hpp"
-#include "tl_ros2_interface/msg/joint_torque.hpp"
 #include "tl_ros2_interface/msg/line_speed.hpp"
 
 #include "tl_ros2_interface/srv/fk.hpp"
@@ -73,8 +70,6 @@ using Trigger = std_srvs::srv::Trigger;
 using ArmStatus = tl_ros2_interface::srv::GetArmStatus;
 using CartesianPose = tl_ros2_interface::msg::CartesianPose;
 using JointMonitor = tl_ros2_interface::msg::JointMonitor;
-using JointSpeed = tl_ros2_interface::msg::JointSpeed;
-using JointTorque = tl_ros2_interface::msg::JointTorque;
 using LineSpeed = tl_ros2_interface::msg::LineSpeed;
 using JointState = sensor_msgs::msg::JointState;
 
@@ -119,11 +114,6 @@ public:
     const auto diagnostic_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
     monitor_sub_ = this->create_subscription<JointMonitor>(
         "/tl_driver/joint_monitor", diagnostic_qos, std::bind(&InfoQueryDemo::onMonitor, this, std::placeholders::_1));
-    joint_torque_sub_ =
-        this->create_subscription<JointTorque>("/tl_driver/joint_torque", diagnostic_qos,
-                                               std::bind(&InfoQueryDemo::onJointTorque, this, std::placeholders::_1));
-    joint_speed_sub_ = this->create_subscription<JointSpeed>(
-        "/tl_driver/joint_speed", diagnostic_qos, std::bind(&InfoQueryDemo::onJointSpeed, this, std::placeholders::_1));
     line_speed_sub_ = this->create_subscription<LineSpeed>(
         "/tl_driver/line_speed", diagnostic_qos, std::bind(&InfoQueryDemo::onLineSpeed, this, std::placeholders::_1));
 
@@ -152,22 +142,16 @@ private:
   rclcpp::Subscription<JointState>::SharedPtr joint_state_sub_;
   rclcpp::Subscription<CartesianPose>::SharedPtr tcp_pose_sub_;
   rclcpp::Subscription<JointMonitor>::SharedPtr monitor_sub_;
-  rclcpp::Subscription<JointTorque>::SharedPtr joint_torque_sub_;
-  rclcpp::Subscription<JointSpeed>::SharedPtr joint_speed_sub_;
   rclcpp::Subscription<LineSpeed>::SharedPtr line_speed_sub_;
 
   // 话题最近收到的数据
   bool got_joint_state_ = false;
   bool got_tcp_pose_ = false;
   bool got_monitor_ = false;
-  bool got_joint_torque_ = false;
-  bool got_joint_speed_ = false;
   bool got_line_speed_ = false;
   JointState::SharedPtr last_joint_state_;
   CartesianPose::SharedPtr last_tcp_pose_;
   JointMonitor::SharedPtr last_monitor_;
-  JointTorque::SharedPtr last_joint_torque_;
-  JointSpeed::SharedPtr last_joint_speed_;
   LineSpeed::SharedPtr last_line_speed_;
 
   // ── 话题回调 ──
@@ -185,16 +169,6 @@ private:
   {
     last_monitor_ = msg;
     got_monitor_ = true;
-  }
-  void onJointTorque(const JointTorque::SharedPtr msg)
-  {
-    last_joint_torque_ = msg;
-    got_joint_torque_ = true;
-  }
-  void onJointSpeed(const JointSpeed::SharedPtr msg)
-  {
-    last_joint_speed_ = msg;
-    got_joint_speed_ = true;
   }
   void onLineSpeed(const LineSpeed::SharedPtr msg)
   {
@@ -375,6 +349,8 @@ void tl_example::InfoQueryDemo::testInfoQuery()
   {
     RCLCPP_INFO(this->get_logger(), "      关节数 = %zu", last_joint_state_->position.size());
     printArray(last_joint_state_->position, "      position(rad) ", 12);
+    printArray(last_joint_state_->velocity, "      velocity(rad/s) ", 12);
+    printArray(last_joint_state_->effort, "      effort(‰ 额定) ", 12);
   }
   else
   {
@@ -587,29 +563,12 @@ void tl_example::InfoQueryDemo::testInfoQuery()
       RCLCPP_INFO(this->get_logger(), "      run_state = %s", resp->run_state.c_str());
   }
 
-  // [4.19] 查询当前电机力矩（话题 /tl_driver/joint_torque，单位：额定扭矩千分之一）
-  RCLCPP_INFO(this->get_logger(), "  --- [4.19] 查询当前电机力矩 /tl_driver/joint_torque ---");
+  // [4.20] 查询当前线速度（关节速度/力矩随 /joint_states 的 velocity/effort 发布）
+  RCLCPP_INFO(this->get_logger(), "  --- [4.20] 查询当前线速度 /tl_driver/line_speed ---");
   spinWaitFor(
       [this]()
       {
-        return got_joint_torque_;
-      },
-      2.0);
-  if (last_joint_torque_ && !std::isnan(last_joint_torque_->motor_torque[0]))
-  {
-    printArray(last_joint_torque_->motor_torque, "      motor_torque(‰ 额定) ");
-  }
-  else
-  {
-    RCLCPP_WARN(this->get_logger(), "      未收到电机力矩");
-  }
-
-  // [4.20] 查询当前线速度和关节速度（两个独立话题，同一次查询）
-  RCLCPP_INFO(this->get_logger(), "  --- [4.20] 查询当前线速度/关节速度 ---");
-  spinWaitFor(
-      [this]()
-      {
-        return got_line_speed_ && got_joint_speed_;
+        return got_line_speed_;
       },
       2.0);
   if (last_line_speed_)
@@ -619,14 +578,6 @@ void tl_example::InfoQueryDemo::testInfoQuery()
   else
   {
     RCLCPP_WARN(this->get_logger(), "      未收到线速度");
-  }
-  if (last_joint_speed_)
-  {
-    printArray(last_joint_speed_->joint_speed, "      joint_speed(rad/s) ");
-  }
-  else
-  {
-    RCLCPP_WARN(this->get_logger(), "      未收到关节速度");
   }
 
   // [4.21] 正运动学（服务 /tl_driver/fk，关节角 → TCP 位姿）

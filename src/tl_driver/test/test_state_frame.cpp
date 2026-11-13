@@ -122,3 +122,44 @@ TEST(StateFrame, KeepsOnlyMatchingChannelPayload)
   EXPECT_EQ(frame.mcs_count, 3u);
   EXPECT_TRUE(std::isnan(frame.acs[0]));
 }
+
+TEST(StateFrame, ParsesJointVelAndTorque)
+{
+  const std::string message =
+      R"({"channel":1,"realPosACS":[1,2,3,4,5,6],"jointVel":[0.5,-1.25,2],"torque":[10,-20,30]})";
+
+  RobotStateFrameData frame;
+  ASSERT_TRUE(parse_robot_state_frame(message, frame));
+  EXPECT_EQ(frame.acs_count, 6u);
+  ASSERT_EQ(frame.joint_vel_count, 3u);
+  ASSERT_EQ(frame.torque_count, 3u);
+  EXPECT_DOUBLE_EQ(frame.joint_vel[0], 0.5);
+  EXPECT_DOUBLE_EQ(frame.joint_vel[1], -1.25);
+  EXPECT_DOUBLE_EQ(frame.torque[1], -20.0);
+  EXPECT_TRUE(std::isnan(frame.joint_vel[3]));
+  EXPECT_TRUE(std::isnan(frame.torque[3]));
+}
+
+TEST(StateFrame, MissingAuxiliaryFieldsLeaveCountsZero)
+{
+  RobotStateFrameData frame;
+  ASSERT_TRUE(parse_robot_state_frame(R"({"channel":2,"realPosMCS":[1,2,3,4,5,6]})", frame));
+  EXPECT_EQ(frame.joint_vel_count, 0u);
+  EXPECT_EQ(frame.torque_count, 0u);
+  EXPECT_TRUE(std::isnan(frame.joint_vel[0]));
+  EXPECT_TRUE(std::isnan(frame.torque[0]));
+}
+
+TEST(StateFrame, MalformedAuxiliaryFieldsKeepPositionFrame)
+{
+  // 辅助字段坏掉不能拖垮位置流：帧仍被接受，辅助字段按缺失处理。
+  RobotStateFrameData frame;
+  ASSERT_TRUE(
+      parse_robot_state_frame(R"({"channel":1,"realPosACS":[1,2,3],"jointVel":"oops","torque":[1,"x"]})", frame));
+  EXPECT_EQ(frame.acs_count, 3u);
+  EXPECT_EQ(frame.joint_vel_count, 0u);
+  EXPECT_EQ(frame.torque_count, 0u);
+  // count=0 时数组必须全 NaN：torque 的第 0 项合法、第 1 项非法，不能被当作有效值留下。
+  EXPECT_TRUE(std::isnan(frame.joint_vel[0]));
+  EXPECT_TRUE(std::isnan(frame.torque[0]));
+}

@@ -10,8 +10,8 @@ test_all_interfaces.py
   §4  信息查询      get_controller_id / get_library_version / get_robot_joint_param /
                     get_current_coord / get_coord_num / get_dh_param / get_pos_reachable
                     + 话题 /joint_states、/tcp_pose、
-                    /tl_driver/joint_monitor、/tl_driver/joint_torque、
-                    /tl_driver/joint_speed、/tl_driver/line_speed、
+                    /tl_driver/joint_monitor、/tl_driver/line_speed、
+                    (/joint_states 含 velocity/effort)、
                     /tl_driver/error_info（事件驱动，自检期间通常无数据）
   §4  信息查询      get_speed / get_arm_status / fk / ik
   §5  基础设置      set_speed / coord_transform
@@ -97,8 +97,6 @@ from tl_ros2_interface.msg import (
     CartesianPose,
     ErrorInfo,
     JointMonitor,
-    JointSpeed,
-    JointTorque,
     LineSpeed,
     ToolParam,
     ModbusMasterParam,
@@ -148,8 +146,6 @@ class DriverQuickTest(Node):
         self.joint_state = None
         self.tcp_pose = None
         self.joint_monitor = None
-        self.joint_torque = None
-        self.joint_speed = None
         self.line_speed = None
         self.error_info = None
 
@@ -169,23 +165,11 @@ class DriverQuickTest(Node):
         self.create_subscription(
             JointMonitor, "/tl_driver/joint_monitor", self._on_joint_monitor, reliable
         )
-        self.create_subscription(
-            JointTorque, "/tl_driver/joint_torque", self._on_joint_torque, reliable
-        )
-        self.create_subscription(
-            JointSpeed, "/tl_driver/joint_speed", self._on_joint_speed, reliable
-        )
         self.create_subscription(LineSpeed, "/tl_driver/line_speed", self._on_line_speed, reliable)
         self.create_subscription(ErrorInfo, "/tl_driver/error_info", self._on_error_info, reliable)
 
     def _on_joint_monitor(self, msg):
         self.joint_monitor = msg
-
-    def _on_joint_torque(self, msg):
-        self.joint_torque = msg
-
-    def _on_joint_speed(self, msg):
-        self.joint_speed = msg
 
     def _on_line_speed(self, msg):
         self.line_speed = msg
@@ -279,6 +263,8 @@ class DriverQuickTest(Node):
         if self.joint_state is not None:
             self.logger.info(f"      关节数 = {len(self.joint_state.position)}")
             self.print_arr("      position(rad) ", self.joint_state.position)
+            self.print_arr("      velocity(rad/s) ", self.joint_state.velocity)
+            self.print_arr("      effort(‰额定) ", self.joint_state.effort)
         else:
             self.logger.warn("      未收到 /joint_states")
 
@@ -303,19 +289,8 @@ class DriverQuickTest(Node):
         else:
             self.logger.warn("      未收到 /tl_driver/joint_monitor")
 
-        self.logger.info("  --- /tl_driver/joint_torque（关节力矩）---")
+        self.logger.info("  --- /tl_driver/line_speed ---")
         self.spin_for(2.0)
-        if self.joint_torque is not None:
-            self.print_arr("      motor_torque(‰额定) ", self.joint_torque.motor_torque)
-        else:
-            self.logger.warn("      未收到 /tl_driver/joint_torque")
-
-        self.logger.info("  --- /tl_driver/joint_speed + /tl_driver/line_speed ---")
-        self.spin_for(2.0)
-        if self.joint_speed is not None:
-            self.print_arr("      joint_speed(rad/s) ", self.joint_speed.joint_speed)
-        else:
-            self.logger.warn("      未收到 /tl_driver/joint_speed")
         if self.line_speed is not None:
             self.logger.info(f"      line_speed = {self.line_speed.line_speed:.3f} m/s")
         else:

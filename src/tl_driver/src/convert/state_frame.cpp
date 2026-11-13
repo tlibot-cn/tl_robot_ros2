@@ -149,6 +149,21 @@ bool parse_robot_state_frame(const std::string& message, RobotStateFrameData& ou
   {
     return false;
   }
+  // 关节速度（deg/s）与关节力矩（‰）是辅助字段：仅在查询开关打开时出现，
+  // 解析失败按缺失处理（count = 0），不让它们丢弃同一帧的位置数据。
+  const Json *joint_vel_field = find_field(root, "jointVel");
+  if (joint_vel_field != nullptr && !to_axes(*joint_vel_field, parsed.joint_vel, parsed.joint_vel_count))
+  {
+    // to_axes 失败前可能已写入部分真实值；count=0 时数组必须保持全 NaN。
+    parsed.joint_vel = invalid_axes();
+    parsed.joint_vel_count = 0;
+  }
+  const Json *torque_field = find_field(root, "torque");
+  if (torque_field != nullptr && !to_axes(*torque_field, parsed.torque, parsed.torque_count))
+  {
+    parsed.torque = invalid_axes();
+    parsed.torque_count = 0;
+  }
   // 通道与载荷必须一致：channel=1 只承载 ACS，channel=2 只承载 MCS。
   // 不一致的帧若被接受，对应话题会永远无数据，还会掩盖控制器协议异常。
   if (parsed.channel == 1)

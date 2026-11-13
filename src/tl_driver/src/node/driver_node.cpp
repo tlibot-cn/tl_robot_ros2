@@ -28,8 +28,8 @@ constexpr int kMinExecutorThreads = 1;
 constexpr int kMaxExecutorThreads = 64;
 // /joint_monitor 单帧含电流/温度/电压三次查询，温度单次约 150–350 ms，可持续上限按 2 Hz 限制。
 constexpr double kMaxMonitorRate = 2.0;
-// 速度/力矩为单次快查询，仍允许 0–100 Hz。
-constexpr double kMaxFeedbackRate = 100.0;
+// 线速度为单次快查询；6001 查询耗时决定实际上限（实测约 20–24 Hz 封顶），故限 20 Hz。
+constexpr double kMaxLineSpeedRate = 20.0;
 constexpr double kMaxActionTimeoutSec = 3600.0;
 
 bool is_valid_rate(double rate, double max_rate)
@@ -74,6 +74,13 @@ void DriverNode::declare_parameters()
   // 本节点声明的参数只在构造期读取（rclcpp 内建 use_sim_time 除外）；声明为 read-only，
   // 运行期 ros2 param set 由 rclcpp 在 set_parameters 入口直接拒绝，避免“设置成功但行为不生效”。
   // 启动时的 overrides 不受影响。
+  // 旧参数名迁移守卫：rclcpp 会静默忽略未声明参数的 override，旧配置否则会悄悄退回默认值。
+  const auto& overrides = this->get_node_parameters_interface()->get_parameter_overrides();
+  if (overrides.find("feedback_rate") != overrides.end())
+  {
+    throw std::invalid_argument("parameter 'feedback_rate' has been renamed to 'line_speed_rate'");
+  }
+
   rcl_interfaces::msg::ParameterDescriptor read_only;
   read_only.read_only = true;
 
@@ -89,7 +96,7 @@ void DriverNode::declare_parameters()
   this->declare_parameter<int>("executor_threads", static_cast<int>(bounded_threads), read_only);
   this->declare_parameter<int>("state_stream_interval_ms", 10, read_only);
   this->declare_parameter<double>("joint_monitor_rate", 2.0, read_only);
-  this->declare_parameter<double>("feedback_rate", 100.0, read_only);
+  this->declare_parameter<double>("line_speed_rate", 10.0, read_only);
   this->declare_parameter<double>("motion_action_timeout", 60.0, read_only);
   this->declare_parameter<double>("track_action_timeout", 600.0, read_only);
 
@@ -101,7 +108,7 @@ void DriverNode::declare_parameters()
   executor_threads_ = this->get_parameter("executor_threads").as_int();
   state_stream_interval_ms_ = this->get_parameter("state_stream_interval_ms").as_int();
   joint_monitor_rate_ = this->get_parameter("joint_monitor_rate").as_double();
-  feedback_rate_ = this->get_parameter("feedback_rate").as_double();
+  line_speed_rate_ = this->get_parameter("line_speed_rate").as_double();
   motion_action_timeout_ = this->get_parameter("motion_action_timeout").as_double();
   track_action_timeout_ = this->get_parameter("track_action_timeout").as_double();
   ndof_ = static_cast<int>(arm_joints_.size());
@@ -118,9 +125,9 @@ void DriverNode::declare_parameters()
   {
     throw std::invalid_argument("joint_monitor_rate must be in [0, 2] Hz");
   }
-  if (!is_valid_rate(feedback_rate_, kMaxFeedbackRate))
+  if (!is_valid_rate(line_speed_rate_, kMaxLineSpeedRate))
   {
-    throw std::invalid_argument("feedback_rate must be in [0, 100] Hz");
+    throw std::invalid_argument("line_speed_rate must be in [0, 20] Hz");
   }
   if (!std::isfinite(motion_action_timeout_) || motion_action_timeout_ <= 0.0 ||
       motion_action_timeout_ > kMaxActionTimeoutSec || !std::isfinite(track_action_timeout_) ||
@@ -148,9 +155,9 @@ void DriverNode::create_callback_groups()
   topic_options_.callback_group = topic_group_;
 
   // 监测组包含电流/温度/电压三次查询，其中温度/电压单次可达 150–350 ms；单独成组，
-  // 避免慢查询阻塞速度/力矩的发布。速度/力矩共用反馈组，串行访问 6001。
+  // 避免慢查询阻塞线速度发布。线速度组只做 6001 同步查询（关节速度/力矩已随 /joint_states 发布）。
   monitor_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  feedback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  line_speed_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   // action 的 execute 在独立工作线程中运行；goal/cancel 回调仍单独成组，避免占用服务组。
   action_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -223,16 +230,15 @@ void DriverNode::create_aux_timers()
         publishers_->publish_monitor();
       },
       monitor_group_);
-  // 速度/力矩是给上层算法用的反馈数据：快查询，共用同一个定时器，按顺序各发布一次；
-  // 与慢速监测组分离，避免被温度/电压查询拖慢。
-  feedback_timer_ = make_timer(
-      feedback_rate_,
+  // 关节速度/力矩随 7000 状态帧发布（见 StatePublishers::publish_joint_stream）；
+  // 本定时器只保留线速度的 6001 同步查询，与慢速监测组分离，避免被温度/电压查询拖慢。
+  line_speed_timer_ = make_timer(
+      line_speed_rate_,
       [this]()
       {
-        publishers_->publish_speed();
-        publishers_->publish_joint_torque();
+        publishers_->publish_line_speed();
       },
-      feedback_group_);
+      line_speed_group_);
 }
 
 DriverNode::~DriverNode()

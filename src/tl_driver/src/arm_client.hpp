@@ -34,8 +34,12 @@ struct StateFrame
 {
   std::array<double, convert::kMaxStateAxes> acs = convert::invalid_axes(); ///< ACS 关节角（度）
   std::array<double, convert::kMaxStateAxes> mcs = convert::invalid_axes(); ///< MCS 位姿（位置 mm、姿态度）
-  std::size_t acs_count{0};                                                 ///< ACS 有效元素个数
-  std::size_t mcs_count{0};                                                 ///< MCS 有效元素个数
+  std::array<double, convert::kMaxStateAxes> joint_vel = convert::invalid_axes(); ///< 关节速度（度/秒）
+  std::array<double, convert::kMaxStateAxes> torque = convert::invalid_axes(); ///< 关节力矩（‰ 额定扭矩）
+  std::size_t acs_count{0};                                                    ///< ACS 有效元素个数
+  std::size_t mcs_count{0};                                                    ///< MCS 有效元素个数
+  std::size_t joint_vel_count{0};                                              ///< 关节速度有效元素个数
+  std::size_t torque_count{0};                                                 ///< 关节力矩有效元素个数
   uint64_t seq{0};                                     ///< 该通道帧序号，0 表示尚未收到
   std::chrono::steady_clock::time_point received_at{}; ///< 接收时刻（单调时钟）
 };

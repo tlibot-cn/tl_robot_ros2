@@ -87,8 +87,25 @@ bool ArmClient::request_state_stream(int fd_aux, int channel, int position, int 
   param.mode = 1; // 连续反馈
   param.interval = interval_ms;
   param.stop = false;
+  // 关节速度/力矩只在 ACS（channel 1）帧中下发，最终写入 /joint_states 的 velocity/effort；
+  // MCS 通道只需位姿，避免无谓载荷。
+  param.jointSpeed = channel == 1;
+  param.jointTorque = channel == 1;
 
-  const tl::Result ret = tl::get_robot_state(fd_aux, param);
+  tl::Result ret = tl::get_robot_state(fd_aux, param);
+  if ((ret == tl::Result::PARAM_ERR || ret == tl::Result::OPERATION_NOT_ALLOWED) && param.channel == 1)
+  {
+    // jointSpeed/jointTorque 只附带诊断数据：仅在控制器明确拒绝这两个开关时退回纯位置订阅，
+    // 保证 /joint_states 照常启动（此时 velocity/effort 为空数组）。瞬时错误（超时/断链）
+    // 不重试，交给调用方按启动失败处理，避免把网络抖动误判为固件不支持。
+    RCLCPP_WARN(logger_,
+                "[SDK]: channel %d stream rejected jointSpeed/jointTorque switch, result=%s; "
+                "retrying without them",
+                channel, result_to_string(ret));
+    param.jointSpeed = false;
+    param.jointTorque = false;
+    ret = tl::get_robot_state(fd_aux, param);
+  }
   if (ret != tl::Result::SUCCESS)
   {
     RCLCPP_WARN_THROTTLE(logger_, clock_, 1000, "[SDK]: channel %d stream request failed, result=%s", channel,
@@ -238,8 +255,12 @@ void ArmClient::on_state(const char *state)
     StateFrame& frame = frames_[parsed.channel];
     frame.acs = parsed.acs;
     frame.mcs = parsed.mcs;
+    frame.joint_vel = parsed.joint_vel;
+    frame.torque = parsed.torque;
     frame.acs_count = parsed.acs_count;
     frame.mcs_count = parsed.mcs_count;
+    frame.joint_vel_count = parsed.joint_vel_count;
+    frame.torque_count = parsed.torque_count;
     frame.received_at = std::chrono::steady_clock::now();
     ++frame.seq;
     ++state_notify_seq_;

@@ -23,8 +23,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/RobotDHParam.msg"
   "msg/RobotJointParam.msg"
   "msg/JointMonitor.msg"
-  "msg/JointSpeed.msg"
-  "msg/JointTorque.msg"
   "msg/LineSpeed.msg"
   "msg/ErrorInfo.msg"
 

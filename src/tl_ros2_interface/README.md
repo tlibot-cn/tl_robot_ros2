@@ -28,10 +28,8 @@ TL 系列机械臂 ROS2 接口说明
 * 4.7 [机械臂关节参数RobotJointParam_msg](#机械臂关节参数RobotJointParam_msg)
 * 4.8 [工具参数ToolParam_msg](#工具参数toolparam_msg)
 * 4.9 [关节监测JointMonitor_msg](#关节监测jointmonitor_msg)
-* 4.10 [关节力矩JointTorque_msg](#关节力矩jointtorque_msg)
-* 4.11 [关节速度JointSpeed_msg](#关节速度jointspeed_msg)
-* 4.12 [线速度LineSpeed_msg](#线速度linespeed_msg)
-* 4.13 [错误与告警ErrorInfo_msg](#错误与告警errorinfo_msg)
+* 4.10 [线速度LineSpeed_msg](#线速度linespeed_msg)
+* 4.11 [错误与告警ErrorInfo_msg](#错误与告警errorinfo_msg)
 * 5 [tl_ros2_interface服务（srv）说明](#tl_ros2_interface服务srv说明)
 * 5.1 [坐标转换CoordTransform_srv](#坐标转换CoordTransform_srv)
 * 5.2 [坐标系编号GetCoordNum_srv](#坐标系编号GetCoordNum_srv)
@@ -91,8 +89,6 @@ tl_ros2_interface/
 │   ├── RobotJointParam.msg
 │   ├── ToolParam.msg
 │   ├── JointMonitor.msg
-│   ├── JointSpeed.msg
-│   ├── JointTorque.msg
 │   ├── LineSpeed.msg
 │   └── ErrorInfo.msg
 ├── action/               # Action 定义
@@ -135,11 +131,11 @@ tl_ros2_interface/
 ```
 
 ## tl_ros2_interface消息（msg）说明
-以下列出 msg 文件定义及字段说明。**13 个 msg 与 2 个 action，每个文件头部注释里都标了用途，读之前先看那一行：**
+以下列出 msg 文件定义及字段说明。**11 个 msg 与 2 个 action，每个文件头部注释里都标了用途，读之前先看那一行：**
 
 | 用途 | 数量 | 定义 |
 | :-- | :--: | :-- |
-| 话题载荷（在 publisher / subscriber 上出现） | 6 | `CartesianPose`、`JointMonitor`、`JointSpeed`、`JointTorque`、`LineSpeed`、`ErrorInfo` |
+| 话题载荷（在 publisher / subscriber 上出现） | 4 | `CartesianPose`、`JointMonitor`、`LineSpeed`、`ErrorInfo` |
 | Action goal 载荷 / srv 嵌套参数 | 1 | `MoveCommand` |
 | 仅作 srv 嵌套参数（不发布话题） | 6 | `ModbusMasterParam`、`ModbusRTUParam`、`ModbusTCPParam`、`RobotDHParam`、`RobotJointParam`、`ToolParam` |
 | Action | 2 | `Move`（`move_joint`/`move_linear`）、`PlayTrack`（`play_track`） |
@@ -322,32 +318,13 @@ float64[7] joint_voltage
 - 单位：电流 A、温度 °C、电压 V
 - 定长数组，缺失元素为 `quiet_NaN`
 
-### 关节力矩JointTorque_msg
-```
-std_msgs/Header header
-float64[7] motor_torque
-```
-- `/tl_driver/joint_torque` 载荷，默认 100 Hz（`feedback_rate` 可配，0=关闭；与速度话题共用同一定时器）
-- 单位：额定扭矩千分之一（‰，±1000 对应 ±100%；不是 N·m，也不是 %）
-- 定长数组，缺失元素为 `quiet_NaN`
-
-### 关节速度JointSpeed_msg
-```
-std_msgs/Header header
-float64[7] joint_speed
-```
-- `/tl_driver/joint_speed` 载荷，默认 100 Hz（`feedback_rate` 可配，0=关闭）
-- 单位：rad/s；定长数组，缺失元素为 `quiet_NaN`
-- 与 `/tl_driver/line_speed` 由同一次查询产生，共用 `feedback_rate` 和 `header.stamp`
-
 ### 线速度LineSpeed_msg
 ```
 std_msgs/Header header
 float64 line_speed
 ```
-- `/tl_driver/line_speed` 载荷，默认 100 Hz（`feedback_rate` 可配，0=关闭）
-- 单位：m/s；查询失败为 `quiet_NaN`
-- 与 `/tl_driver/joint_speed` 由同一次查询产生；与 `/tl_driver/joint_torque` 共用同一定时器
+- `/tl_driver/line_speed` 载荷，默认 10 Hz（`line_speed_rate` 可配，0=关闭）
+- 单位：m/s；6001 端口同步查询，查询失败时该周期不发布（保持上一次有效值，不会写 NaN）
 
 ### 错误与告警ErrorInfo_msg
 ```
@@ -703,7 +680,7 @@ bool success
 string message
 ```
 - 按文件名回放控制器内已保存的拖动轨迹
-- trajectory_name: 控制器内文件名，须以 `.json` 结尾；空名、超长（>255 字节）、含控制字符、`/`、`\` 或 `..` 直接返回失败
+- trajectory_name: 控制器内文件名，须以 `.txt` 结尾；空名、超长（>255 字节）、含控制字符、`/`、`\` 或 `..` 直接返回失败
 - velocity: 回放速度百分比，范围 [1, 100]
 - 返回: success/message；`success=true` 只表示指令被接受，结束状态用 `/tl_driver/get_drag_status` 观察
 
@@ -715,7 +692,7 @@ bool success
 string message
 ```
 - 按文件名删除控制器内已保存的拖动轨迹（删除后不可恢复，需控制器固件 24.03+）
-- trajectory_name: 控制器内文件名，须以 `.json` 结尾；空名、超长（>255 字节）、含控制字符、`/`、`\` 或 `..` 直接返回失败
+- trajectory_name: 控制器内文件名，须以 `.txt` 结尾；空名、超长（>255 字节）、含控制字符、`/`、`\` 或 `..` 直接返回失败
 - 返回: success/message
 
 ### 查询当前运行模式GetCurrentMode_srv
