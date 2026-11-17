@@ -43,12 +43,12 @@ void handle_set_servoj_pos_topic(DriverNode& node, const std_msgs::msg::Float64M
 {
   if (!node.session().is_connected())
   {
-    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000, "[ServoJ]: arm is not connected");
+    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 500, "[ServoJ]: arm is not connected");
     return;
   }
   if (node.motion_action_active())
   {
-    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000,
+    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 500,
                          "[ServoJ]: ignored while a motion action is active");
     return;
   }
@@ -57,8 +57,8 @@ void handle_set_servoj_pos_topic(DriverNode& node, const std_msgs::msg::Float64M
   const auto& data = msg->data;
   if (data.size() != 6 && data.size() != 7)
   {
-    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000,
-                         "[ServoJ]: data must have 6 or 7 elements, got %zu", data.size());
+    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 500, "[ServoJ]: data must have 6 or 7 elements, got %zu",
+                         data.size());
     return;
   }
   std::vector<double> pos(7, 0.0); // 一次分配；6 轴时第 7 位保持 0
@@ -66,7 +66,6 @@ void handle_set_servoj_pos_topic(DriverNode& node, const std_msgs::msg::Float64M
   convert::joint_rad_to_deg(pos, pos.size());
   // SDK 按值接收：move 掉本次缓冲，避免再拷贝一份。
   tl::Result ret = tl::set_servoJ_pos(node.session().fd_aux(), std::move(pos));
-  // 250 Hz 调用：成功降为可节流的 DEBUG，失败保留 WARN 但每秒最多一条。
   if (ret == tl::Result::SUCCESS)
   {
     RCLCPP_DEBUG_THROTTLE(node.get_logger(), *node.get_clock(), 1000, "[ServoJ]: result=%s",
@@ -74,7 +73,7 @@ void handle_set_servoj_pos_topic(DriverNode& node, const std_msgs::msg::Float64M
   }
   else
   {
-    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000, "[ServoJ]: result=%s",
+    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 500, "[ServoJ]: result=%s",
                          arm_client::result_to_string(ret));
   }
 }
@@ -87,19 +86,19 @@ void handle_set_servo_csv_velocity_topic(DriverNode& node, const std_msgs::msg::
 {
   if (!node.session().is_connected())
   {
-    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000, "[CSV]: arm is not connected");
+    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 500, "[CSV]: arm is not connected");
     return;
   }
   if (node.motion_action_active())
   {
-    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000, "[CSV]: ignored while a motion action is active");
+    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 500, "[CSV]: ignored while a motion action is active");
     return;
   }
 
   std::vector<double> velocity;
   if (!copy_to_7(msg->data, velocity))
   {
-    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000, "[CSV]: data must have 6 or 7 elements, got %zu",
+    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 500, "[CSV]: data must have 6 or 7 elements, got %zu",
                          msg->data.size());
     return;
   }
@@ -107,7 +106,7 @@ void handle_set_servo_csv_velocity_topic(DriverNode& node, const std_msgs::msg::
   {
     if (!std::isfinite(value))
     {
-      RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000, "[CSV]: data contains NaN/Inf");
+      RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 500, "[CSV]: data contains NaN/Inf");
       return;
     }
   }
@@ -120,7 +119,7 @@ void handle_set_servo_csv_velocity_topic(DriverNode& node, const std_msgs::msg::
   }
   else
   {
-    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000, "[CSV]: result=%s",
+    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 500, "[CSV]: result=%s",
                          arm_client::result_to_string(ret));
   }
 }
@@ -134,19 +133,19 @@ void handle_set_servo_cst_torque_topic(DriverNode& node, const std_msgs::msg::Fl
 {
   if (!node.session().is_connected())
   {
-    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000, "[CST]: arm is not connected");
+    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 500, "[CST]: arm is not connected");
     return;
   }
   if (node.motion_action_active())
   {
-    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000, "[CST]: ignored while a motion action is active");
+    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 500, "[CST]: ignored while a motion action is active");
     return;
   }
 
   std::vector<double> torque;
   if (!copy_to_7(msg->data, torque))
   {
-    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000, "[CST]: data must have 6 or 7 elements, got %zu",
+    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 500, "[CST]: data must have 6 or 7 elements, got %zu",
                          msg->data.size());
     return;
   }
@@ -155,7 +154,7 @@ void handle_set_servo_cst_torque_topic(DriverNode& node, const std_msgs::msg::Fl
     const double value = msg->data[i];
     if (!std::isfinite(value) || value < kCstTorqueMin || value > kCstTorqueMax)
     {
-      RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000,
+      RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 500,
                            "[CST]: torque[%zu]=%.1f out of range [-1000, 1000] (‰ rated torque), ignored", i, value);
       return;
     }
@@ -168,7 +167,7 @@ void handle_set_servo_cst_torque_topic(DriverNode& node, const std_msgs::msg::Fl
   }
   else
   {
-    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 1000, "[CST]: result=%s",
+    RCLCPP_WARN_THROTTLE(node.get_logger(), *node.get_clock(), 500, "[CST]: result=%s",
                          arm_client::result_to_string(ret));
   }
 }
