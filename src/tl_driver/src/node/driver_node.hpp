@@ -109,9 +109,9 @@ public:
     using GuardedCallback =
         std::function<void(std::shared_ptr<typename ServiceT::Request>, std::shared_ptr<typename ServiceT::Response>)>;
     GuardedCallback guarded =
-        [logger = this->get_logger(), service_name = name, cb = std::forward<CallbackT>(callback)](
-            std::shared_ptr<typename ServiceT::Request> request,
-            std::shared_ptr<typename ServiceT::Response> response) mutable
+        [logger = this->get_logger(), clock = this->get_clock(), service_name = name,
+         cb = std::forward<CallbackT>(callback)](std::shared_ptr<typename ServiceT::Request> request,
+                                                 std::shared_ptr<typename ServiceT::Response> response) mutable
     {
       try
       {
@@ -122,12 +122,27 @@ public:
         RCLCPP_ERROR(logger, "[Service %s]: callback threw exception: %s", service_name.c_str(), e.what());
         response->success = false;
         response->message = std::string("Internal error: ") + e.what();
+        return;
       }
       catch (...)
       {
         RCLCPP_ERROR(logger, "[Service %s]: callback threw unknown exception", service_name.c_str());
         response->success = false;
         response->message = "Internal error: unknown exception";
+        return;
+      }
+
+      // 回调结果在边界统一打印：成功 INFO、业务失败 WARN，均 1 s 节流。
+      // 部分服务会被高频调用（tl_teleop 每帧 coord_transform，约 100 Hz），不可逐次打印。
+      if (response->success)
+      {
+        RCLCPP_INFO_THROTTLE(logger, *clock, 1000, "[Service %s]: success, message=\"%s\"", service_name.c_str(),
+                             response->message.c_str());
+      }
+      else
+      {
+        RCLCPP_WARN_THROTTLE(logger, *clock, 1000, "[Service %s]: failed, message=\"%s\"", service_name.c_str(),
+                             response->message.c_str());
       }
     };
 
