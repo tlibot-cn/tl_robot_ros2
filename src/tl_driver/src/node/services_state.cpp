@@ -66,8 +66,8 @@ void handle_get_library_version_service(DriverNode& node,
     return;
   }
 
+  // 版本信息随 response.message 返回，由 create_service 边界日志统一输出。
   std::string version = tl::get_library_version();
-  RCLCPP_INFO(node.get_logger(), "Library version: %s", version.c_str());
   response->success = (version != "");
   response->message = response->success ? version : "Failed to get library version";
 }
