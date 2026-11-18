@@ -211,8 +211,21 @@ void ArmClient::on_error(int message_type, const char *message, int message_code
   // 日志按 1 s 节流，但转发不节流：每条错误/告警都必须发布到话题，节流只用于抑制刷屏。
   if (should_log(last_error_log_ns_, std::chrono::seconds(1)))
   {
-    RCLCPP_WARN(logger_, "[SDK]: messageType=%d, message=%s, messageCode=%d", message_type, message ? message : "",
-                message_code);
+    if (message_type == 1) // 警告
+    {
+      RCLCPP_WARN(logger_, "[SDK]: messageType=%d, message=%s, messageCode=%d", message_type, message ? message : "",
+                  message_code);
+    }
+    else if (message_type == 3) // 错误
+    {
+      RCLCPP_ERROR(logger_, "[SDK]: messageType=%d, message=%s, messageCode=%d", message_type, message ? message : "",
+                   message_code);
+    }
+    else // 消息
+    {
+      RCLCPP_INFO(logger_, "[SDK]: messageType=%d, message=%s, messageCode=%d", message_type, message ? message : "",
+                  message_code);
+    }
   }
   if (error_handler_)
   {
