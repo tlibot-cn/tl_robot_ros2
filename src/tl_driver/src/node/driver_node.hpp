@@ -29,7 +29,16 @@ class MotionActionServers;
 class DriverNode : public rclcpp::Node
 {
 public:
+  /// @brief 普通节点模式（`tl_driver` 可执行文件）构造。
+  /// @note 节点名固定为 `tl_driver`，执行器线程数取自 `executor_threads` 参数。
   DriverNode();
+
+  /// @brief 组件模式构造，由 `rclcpp_components` 组件容器注入 NodeOptions。
+  /// @param[in] options 节点选项（参数覆盖、`__node`/`__ns` 重映射等由容器提供）
+  /// @note 执行器由容器提供，`executor_threads` 参数不再生效；须使用多线程容器
+  ///       （`component_container_mt`），否则 monitor 组的长耗时查询会阻塞运动服务。
+  explicit DriverNode(const rclcpp::NodeOptions& options);
+
   ~DriverNode();
 
   /// @brief 连接控制器并完成上电流程，由构造函数末尾调用。
@@ -177,6 +186,11 @@ public:
   }
 
 private:
+  /// @brief 两种公开构造共用的实现。
+  /// @param[in] options 节点选项
+  /// @param[in] standalone true 表示由本包可执行文件启动（自带执行器），false 表示组件模式
+  DriverNode(const rclcpp::NodeOptions& options, bool standalone);
+
   /// @brief 声明并读取节点参数。
   void declare_parameters();
 
@@ -201,6 +215,7 @@ private:
   std::vector<std::string> arm_joints_;
   int executor_threads_{8};
   int ndof_{0};
+  bool standalone_{true}; ///< 独立进程模式（自带执行器）；组件模式为 false
 
   int state_stream_interval_ms_{10};
   double joint_monitor_rate_{2.0};

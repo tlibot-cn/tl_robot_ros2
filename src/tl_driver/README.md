@@ -32,7 +32,7 @@ source install/setup.bash
 
 ### 启动方式
 
-tl_driver 提供两种启动方式：
+tl_driver 提供三种启动方式：
 
 **方式一：通用启动（推荐开发调试使用）**
 
@@ -62,6 +62,31 @@ ros2 launch tl_driver tl_driver.launch.py arm_type:=<arm_type>
 | TCB705V | `ros2 launch tl_driver tl_tcb705v_driver.launch.py` |
 | TCB710 | `ros2 launch tl_driver tl_tcb710_driver.launch.py` |
 | TCB710V | `ros2 launch tl_driver tl_tcb710v_driver.launch.py` |
+
+**方式三：组件模式（与其它节点同进程运行）**
+
+tl_driver 同时是一个 `rclcpp_components` 组件（插件名 `tl_driver::DriverNode`），可加载进组件容器与其它节点共享进程：
+
+```bash
+ros2 launch tl_driver tl_driver_component.launch.py arm_type:=tcb710 arm_ip:=192.168.1.100
+```
+
+也可以手工加载进已经运行的容器（`ros2 component load` 不支持 `--params-file`，参数需逐项给出）：
+
+```bash
+ros2 run rclcpp_components component_container_mt
+ros2 component load /ComponentManager tl_driver tl_driver::DriverNode \
+  -p arm_ip:=192.168.1.100 -p arm_type:=TCB710 \
+  -p "arm_joints:=[joint1,joint2,joint3,joint4,joint5,joint6,joint7]"
+```
+
+组件模式与普通节点模式的区别仅在于「谁提供执行器」：
+
+- **必须用多线程容器**（`component_container_mt`）。monitor 组的电流/温度/电压查询单次可达数百 ms，单线程容器会让它阻塞运动服务与 ServoJ 订阅。
+- `executor_threads` 参数在组件模式下不生效，线程数由容器决定；节点会在启动日志中提示这一点。
+- 一个容器内只能加载一个 `tl_driver`：SDK 回调无 userdata，`ArmClient` 进程内唯一。多台机械臂请各用一个容器进程。
+- 连接或切入示教模式失败时节点构造抛异常：普通节点模式进程以 `EXIT_FAILURE` 退出，组件模式仅该次加载失败（`ros2 component load` 返回错误），容器继续运行。
+- 服务、话题与 action 的名称/类型与普通节点模式完全一致（均为 `/tl_driver/...` 绝对名），消费方无需改动。容器内存在订阅方时可在 `ComposableNode` 上打开 `extra_arguments=[{"use_intra_process_comms": True}]` 省去序列化。
 
 > 以下文档示例均以 **TCB710** 为例进行说明，其他臂型操作方式相同。
 
@@ -142,6 +167,7 @@ tl_driver:
 │   └── tl_driver接口说明书.md        # 服务、话题、Action 与参数逐条说明
 ├── launch                         # 启动文件
 │   ├── tl_driver.launch.py        # 通用启动（需传arm_type参数）
+│   ├── tl_driver_component.launch.py # 组件模式启动（component_container_mt）
 │   ├── tl_tcb605_driver.launch.py
 │   ├── tl_tcb605f_driver.launch.py
 │   ├── tl_tcb605l_driver.launch.py
@@ -179,13 +205,14 @@ tl_driver:
 ├── package.xml
 ├── README.md
 ├── src                        # 驱动代码源文件（按职责拆分）
-│   ├── tl_driver_main.cpp     # 进程入口：rclcpp 初始化 + 多线程执行器
+│   ├── tl_driver_main.cpp     # 普通节点模式入口：rclcpp 初始化 + 多线程执行器
 │   ├── arm_sdk.hpp            # SDK 头文件唯一入口（libtl_host.so 的 API 头）
 │   ├── arm_client.{hpp,cpp}   # SDK 薄封装：返回值文本化、错误回调、7000 口状态帧通道
 │   ├── arm_session.{hpp,cpp}  # 会话：双端口连接、上下电
 │   ├── kinematics_local.{hpp,cpp} # 本地运动学：启动建一次的正逆解模型（source=1）
 │   ├── node                     # 节点层
 │   │   ├── driver_node.{hpp,cpp}  # DriverNode：参数、回调组、实体创建与服务/话题注册
+│   │   ├── driver_node_component.cpp # 组件注册（插件名 tl_driver::DriverNode）
 │   │   ├── registrars.hpp       # 注册函数声明（服务域 + 话题）
 │   │   ├── actions_motion.cpp   # action server（move_joint/move_linear/play_track）
 │   │   ├── publishers.{hpp,cpp} # 状态流/诊断话题发布

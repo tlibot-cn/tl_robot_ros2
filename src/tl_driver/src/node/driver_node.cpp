@@ -52,8 +52,21 @@ int robot_type_axes(tl::RobotType type) noexcept
 }
 } // namespace
 
-DriverNode::DriverNode() : rclcpp::Node("tl_driver"), session_(this->get_logger())
+DriverNode::DriverNode() : DriverNode(rclcpp::NodeOptions{}, true) {}
+
+DriverNode::DriverNode(const rclcpp::NodeOptions& options) : DriverNode(options, false) {}
+
+DriverNode::DriverNode(const rclcpp::NodeOptions& options, bool standalone)
+    : rclcpp::Node("tl_driver", options), standalone_(standalone), session_(this->get_logger())
 {
+  if (!standalone_)
+  {
+    // 组件模式下执行器由容器提供：单线程容器会让 monitor 组的慢查询（单次可达数百 ms）阻塞运动服务。
+    RCLCPP_INFO(this->get_logger(),
+                "Component mode: executor is provided by the container (use component_container_mt); "
+                "parameter 'executor_threads' is ignored");
+  }
+
   declare_parameters();
 
   create_callback_groups();
