@@ -12,6 +12,11 @@
 
 ## [Unreleased]
 
+### 2026-11-20
+
+- tl_driver：`DriverNode` 改造为 `rclcpp_components` 组件（插件名 `tl_driver::DriverNode`），同时保留普通节点用法。节点实现编入 `libtl_driver_component.so`，`tl_driver` 可执行文件改为链接该库；新增 `tl_driver_component.launch.py`（`component_container_mt`）。两种模式的参数、服务、话题与 action 完全一致，仅执行器来源不同（组件模式由容器提供，`executor_threads` 不生效）
+- 工程：`tl_driver` 新增 `rclcpp_components` 依赖；组件库按 `rclcpp_components` 资源索引约定装到 `<prefix>/lib`，可执行文件与 SDK 库仍在 `<prefix>/lib/tl_driver`，CI 增加组件库的架构核对
+
 ### 2026-11-12
 
 - **破坏性变更**：`/tl_driver/drag_trajectory_playback`、`/tl_driver/drag_trajectory_delete` 的 `trajectory_name` 由 `.json` 改为只接受 `.txt`（V3 轨迹文件格式；SDK 对旧 `.json` 仅作兼容）

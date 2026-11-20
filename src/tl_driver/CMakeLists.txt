@@ -27,6 +27,7 @@ message(STATUS "tl_driver: version ${TL_DRIVER_VERSION}")
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(rcl_interfaces REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -54,8 +55,9 @@ set_target_properties(tl_host_lib PROPERTIES
   IMPORTED_LOCATION "${TL_LIB_DIR}/libtl_host.so"
 )
 
-add_executable(tl_driver
-  src/tl_driver_main.cpp
+# 节点实现编译为共享库：普通节点模式由 tl_driver 可执行文件链接，组件模式由
+# rclcpp_components 容器按插件名加载同一份代码。两种模式行为一致，只有执行器来源不同。
+add_library(tl_driver_component SHARED
   src/arm_client.cpp
   src/arm_session.cpp
   src/convert/msg_convert.cpp
@@ -63,6 +65,7 @@ add_executable(tl_driver
   src/kinematics_local.cpp
   src/node/actions_motion.cpp
   src/node/driver_node.cpp
+  src/node/driver_node_component.cpp
   src/node/publishers.cpp
   src/node/services_config.cpp
   src/node/services_io.cpp
@@ -73,15 +76,16 @@ add_executable(tl_driver
   src/node/topics.cpp
 )
 
-target_include_directories(tl_driver PRIVATE
+target_include_directories(tl_driver_component PRIVATE
   "${CMAKE_CURRENT_BINARY_DIR}/include"
   "${CMAKE_CURRENT_SOURCE_DIR}/lib/include"
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 
-ament_target_dependencies(tl_driver
+ament_target_dependencies(tl_driver_component
   rclcpp
   rclcpp_action
+  rclcpp_components
   rcl_interfaces
   std_srvs
   sensor_msgs
@@ -89,7 +93,7 @@ ament_target_dependencies(tl_driver
   std_msgs
 )
 
-target_link_libraries(tl_driver
+target_link_libraries(tl_driver_component
   tl_host_lib
   nlohmann_json::nlohmann_json
   Python3::Python
@@ -98,13 +102,42 @@ target_link_libraries(tl_driver
   rt
 )
 
+# 注册组件插件；插件名须与 driver_node_component.cpp 中的注册宏一致
+rclcpp_components_register_nodes(tl_driver_component "tl_driver::DriverNode")
+
+# 普通节点模式入口：仅含 main，自带 MultiThreadedExecutor，命令行行为与改造前一致
+add_executable(tl_driver src/tl_driver_main.cpp)
+
+# main 经 driver_node.hpp 间接包含 SDK 头（arm_sdk.hpp），因此同样需要 lib/include
+target_include_directories(tl_driver PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/lib/include"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+
+ament_target_dependencies(tl_driver rclcpp)
+
+target_link_libraries(tl_driver tl_driver_component)
+
+# rclcpp_components 的资源索引记录的是相对 <prefix> 的 `lib/<文件名>`，因此组件库必须装到
+# <prefix>/lib；SDK 库与可执行文件仍在 lib/tl_driver，两者各用一条 RUNPATH 互相找到。
+set_target_properties(tl_driver_component PROPERTIES
+  BUILD_RPATH "${TL_LIB_DIR};${CMAKE_CURRENT_BINARY_DIR}"
+  INSTALL_RPATH "$ORIGIN/tl_driver"
+)
+
 set_target_properties(tl_driver PROPERTIES
-  BUILD_RPATH "${TL_LIB_DIR}"
-  INSTALL_RPATH "$ORIGIN"
+  BUILD_RPATH "${TL_LIB_DIR};${CMAKE_CURRENT_BINARY_DIR}"
+  INSTALL_RPATH "$ORIGIN;$ORIGIN/.."
 )
 
 install(TARGETS tl_driver
   DESTINATION lib/${PROJECT_NAME}
+)
+
+install(TARGETS tl_driver_component
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
 )
 
 # 安装 TL 动态库（新库为单一 libtl_host.so，不再需要 Python 接口 tl_interface.py）

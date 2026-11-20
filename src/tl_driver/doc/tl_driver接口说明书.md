@@ -36,6 +36,7 @@
 |V1.27 | 2026-11-03 | 新增 15.5–15.10：周期同步速度模式（CSV）与周期同步扭矩模式（CST）的开关服务与下发话题（服务数 41 → 45，订阅 1 → 3）；两个话题采用 `Float64MultiArray`，速度 rad/s、扭矩 ‰ 额定扭矩；力矩补偿尚未实现 |
 |V1.28 | 2026-11-03 | `fk`/`ik` 新增 `source`（0=控制器 1=本地模型）；`reference_pos` 改为必填；`CartesianPose.arm_angle` 明确为冗余臂角 ψ；启动时校验控制器机型轴数与 `arm_joints`，不一致即退出；删除 `set_axis_zero_pos` 服务（服务数 45 → 44） |
 |V1.29 | 2026-11-10 | 新增 9.9 [/tl_driver/drag_trajectory_playback](#99-回放控制器内拖动轨迹)、9.10 [/tl_driver/drag_trajectory_delete](#910-删除控制器内拖动轨迹) 与 15.11 [设置 CST 重力补偿开关](#1511-设置-cst-重力补偿开关)（服务数 44 → 47）；**破坏性变更**：`/tl_driver/open_servo_cst` 类型由 `Trigger` 改为 `OpenServoCst`，通过 `disable_gravity_compensation` 选择，默认开启重力补偿；CST 不再声称「力矩补偿尚未实现」 |
+|V1.31 | 2026-11-20 | `DriverNode` 同时导出为 `rclcpp_components` 组件（插件名 `tl_driver::DriverNode`），接口（服务/话题/action/参数）不变；参数 `executor_threads` 仅普通节点模式生效，组件模式须用多线程容器 |
 |V1.30 | 2026-11-12 | **破坏性变更**：9.9/9.10 的 `trajectory_name` 由 `.json` 改为只接受 `.txt`（V3 轨迹格式，SDK 对 `.json` 仅作兼容）；`ik`（`source=1`）的 7 轴未指定 `arm_angle` 时按「连续性优先」选解；**破坏性变更**：删除 `/tl_driver/joint_speed`、`/tl_driver/joint_torque` 话题与 `JointSpeed`、`JointTorque` 消息，关节速度/力矩改由 `/joint_states.velocity`（rad/s）/ `.effort`（‰ 额定扭矩）随 ACS 状态帧发布（`jointVel` / `torque` 字段）；参数 `feedback_rate` 更名为 `line_speed_rate`（语义不变，只作用于 `/tl_driver/line_speed`） |
 
 </div>
@@ -1698,7 +1699,7 @@ ros2 topic pub /tl_driver/set_servoj_pos std_msgs/msg/Float64MultiArray \
 | 参数 | 默认 | 范围 | 说明 |
 | :---- | ----: | :---- | :---- |
 | `state_stream_interval_ms` | 10 | 10–60000 | 连续反馈间隔 |
-| `executor_threads` | 8 | 1–64 | 执行器线程数；默认 `max(4, min(hardware_concurrency, 8))`，阻塞 I/O 场景可调到 16 |
+| `executor_threads` | 8 | 1–64 | 执行器线程数；默认 `max(4, min(hardware_concurrency, 8))`，阻塞 I/O 场景可调到 16。**仅普通节点模式生效**：组件模式下执行器由容器提供（须为 `component_container_mt`），该参数被忽略 |
 | `joint_monitor_rate` | 2.0 | 0–2 | `/tl_driver/joint_monitor` 发布频率（Hz），含电流/温度/电压查询，0=关闭 |
 | `line_speed_rate` | 10.0 | 0–20 | `/tl_driver/line_speed` 同步查询的定时器频率（Hz），0=关闭；实际发布率低于设定值：每次发布含一次 6001 同步查询（约 30–40 ms），实测设定 20 Hz 约 11 Hz。关节速度与力矩已并入 `/joint_states`（随 7000 状态帧），不受该参数控制 |
 

@@ -35,8 +35,9 @@ flowchart LR
 - **`tl_driver` 组成**：`DriverNode` 只做参数、回调组、实体创建；服务按域拆在 `src/node/services_*.cpp`，由 `src/node/registrars.hpp` 的 `register_*` 函数注册；话题在 `topics.cpp`，action 在 `actions_motion.cpp`。当前规模：**47 个服务、3 个订阅、5 个发布、3 个 action**。`arm_client::ArmClient` 进程内只允许一个实例（SDK 回调无 userdata）；状态帧/错误日志走 rclcpp 并 1 s 节流。
 - **发布**：`/joint_states`（rad）、`/tcp_pose`（m/rad）跟随 7000 帧率；运行状态改由 `/tl_driver/get_arm_status` 服务按需查询（`STOP`/`PAUSE`/`RUNNING`），运行速度由 `/tl_driver/get_speed` 服务查询，两者均不周期发布。`/joint_states` 同时携带 `velocity`（rad/s）与 `effort`（‰ 额定扭矩）：控制器按 `jointSpeed`/`jointTorque` 开关在 ACS 帧内附带 `jointVel` / `torque`，字段缺失时对应数组为空。诊断话题：`/tl_driver/joint_monitor`（电流/温度/电压同帧查询，默认 2 Hz，`joint_monitor_rate`）、`/tl_driver/line_speed`（6001 同步查询，`line_speed_rate`，默认 10 Hz）。控制器错误/告警由 6001 主端口异步回调逐条发布到 `/tl_driver/error_info`（事件驱动，不节流；仅日志 1 s 节流）。数字 IO 不发布话题，读写统一走 `get_digital_input_output` / `set_digital_output` 服务。`/joint_states`、`/tcp_pose` 由 7000 端口 ACS/MCS 连续帧**通知独立发布线程**发布，不经过执行器；流在上下电完成后启动，启动失败即退出，运行期停推需重启驱动（无 `state_source=poll` 回退、无看门狗）。诊断话题为定长数组 + NaN 无效语义。`StatePublishers` 复用成员缓冲与消息，**勿在发布回调内新建 vector/message**；ServoJ 日志不得逐帧 INFO。
 - **订阅**：`/tl_driver/set_servoj_pos`（rad，6 或 7 元素，6 元素末尾补 0；转发 SDK 时为固定 7 元素）、`/tl_driver/set_servo_csv_velocity`（rad/s，同上补 0；SDK 侧度/秒）与 `/tl_driver/set_servo_cst_torque`（‰ 额定扭矩，范围 [-1000, 1000]，越界整帧丢弃）。一次性运动统一走 `move_joint` / `move_linear` action；完成/失败以 action result 为准，运行状态用 `get_arm_status` 服务观察。
-- **线程模型**：`MultiThreadedExecutor` 线程数由 `executor_threads` 参数决定（默认 `max(4, min(hardware_concurrency, 8))`，范围 1–64），固定 6 个 `MutuallyExclusive` 回调组：`service_group_`（session/config/io/state/transform 短服务，含 `get_arm_status`）、`motion_service_group_`（jogging/track/queue/servo）、`topic_group_`、`monitor_group_`、`line_speed_group_`、`action_group_`。`monitor_group_` 跑 2 Hz `/tl_driver/joint_monitor`（电流/温度/电压，慢查询独立组），`line_speed_group_` 用单一定时器发布 `/tl_driver/line_speed`；`/joint_states`（position/velocity/effort）与 `/tcp_pose` 的发布在独立 `std::thread`（7000 帧通知），不在执行器内。
-- **失败即退**：`DriverNode::init()` 连接失败或切入示教模式失败时抛异常，由 `tl_driver_main.cpp` 捕获后返回 `EXIT_FAILURE`（析构会断开已建立的端口），不带病运行。
+- **线程模型**：普通节点模式下 `MultiThreadedExecutor` 线程数由 `executor_threads` 参数决定（默认 `max(4, min(hardware_concurrency, 8))`，范围 1–64）；组件模式下执行器由容器提供（**必须** `component_container_mt`），`executor_threads` 不生效。固定 6 个 `MutuallyExclusive` 回调组：`service_group_`（session/config/io/state/transform 短服务，含 `get_arm_status`）、`motion_service_group_`（jogging/track/queue/servo）、`topic_group_`、`monitor_group_`、`line_speed_group_`、`action_group_`。`monitor_group_` 跑 2 Hz `/tl_driver/joint_monitor`（电流/温度/电压，慢查询独立组），`line_speed_group_` 用单一定时器发布 `/tl_driver/line_speed`；`/joint_states`（position/velocity/effort）与 `/tcp_pose` 的发布在独立 `std::thread`（7000 帧通知），不在执行器内。
+- **失败即退**：`DriverNode::init()` 连接失败或切入示教模式失败时抛异常，普通节点模式由 `tl_driver_main.cpp` 捕获后返回 `EXIT_FAILURE`（析构会断开已建立的端口），不带病运行；组件模式该次加载失败（`ros2 component load` 返回错误），容器继续运行。
+- **组件化**：`DriverNode` 同时是 `rclcpp_components` 组件（插件名 `tl_driver::DriverNode`，注册在 `src/node/driver_node_component.cpp`）。节点实现编入共享库 `tl_driver_component`，`tl_driver` 可执行文件只含 `main` 并链接该库；两种模式的参数、服务、话题与 action 完全一致。组件库必须装到 `<prefix>/lib`（资源索引记录的是相对 `<prefix>` 的 `lib/<文件名>`），SDK 库与可执行文件仍在 `<prefix>/lib/tl_driver`。容器内只允许一个实例（`ArmClient` 进程内唯一）。
 - **硬件插件**：`TLHardwareInterface` 生命周期 `on_init → on_configure → on_activate → …`；`on_activate` 用当前关节位置初始化命令，避免跳到零位；`write()` 发 `/tl_driver/set_servoj_pos`。
 
 ### 单位与长度契约（改动必查两端）
@@ -71,7 +72,7 @@ ROS 侧统一 REP 103（m / rad / rad/s），控制器/SDK 侧 mm / 度 / %，�
 | 路径 | 用途 |
 |---|---|
 | `src/tl_ros2_interface/` | 13 个 `.msg` + 2 个 `.action` + 28 个 `.srv`，**必须最先构建**。`msg/` 不等于话题清单：6 个话题载荷、1 个 action goal 载荷（`MoveCommand`）、6 个仅作 srv 嵌套参数 |
-| `src/tl_driver/` | 驱动节点。`src/tl_driver_main.cpp`（入口）、`src/node/`（参数/回调组/注册）、`src/arm_session.*`、`src/arm_client.*`、`lib/`（预编译 SDK，只读） |
+| `src/tl_driver/` | 驱动节点。`src/tl_driver_main.cpp`（普通节点模式入口）、`src/node/`（参数/回调组/注册/组件导出）、`src/arm_session.*`、`src/arm_client.*`、`lib/`（预编译 SDK，只读） |
 | `src/tl_hardware/` | ros2_control `SystemInterface` 插件 |
 | `src/tl_teleop/` | VR 遥操作，100 Hz 控制线程；`lib/` 为 PXREA SDK，只读 |
 | `src/tl_teleop_f710/` | F710 手柄遥操作 + `sim_bridge`（250 Hz ServoJ） |
@@ -102,10 +103,11 @@ black .
 colcon test --packages-select tl_driver
 colcon test-result --verbose
 
-# 运行的三种方式
+# 运行的四种方式
 ros2 launch tl_bringup tl_tcb610_bringup.launch.py          # 实机
 ros2 launch tl_tcb610_config demo.launch.py                 # MoveIt2 + RViz
 ros2 launch tl_gazebo gazebo_tcb610_demo.launch.py          # Gazebo
+ros2 launch tl_driver tl_driver_component.launch.py arm_type:=tcb610  # 组件模式（容器内）
 ```
 
 依赖顺序：`tl_ros2_interface` → `tl_driver` / `tl_hardware` / `tl_teleop` / `tl_teleop_f710` / `tl_example`；`tl_description` → `tl_gazebo` 与全部 `tl_*_config`。`tl_bringup` 运行时用 `get_package_share_directory()` 解析，不声明构建依赖，但未构建时 launch 会失败。
@@ -156,7 +158,8 @@ ros2 launch tl_gazebo gazebo_tcb610_demo.launch.py          # Gazebo
 
 | 文件 | 作用 |
 |---|---|
-| `src/tl_driver/src/tl_driver_main.cpp` | 驱动入口；`MultiThreadedExecutor` 线程数 |
+| `src/tl_driver/src/tl_driver_main.cpp` | 普通节点模式入口；`MultiThreadedExecutor` 线程数 |
+| `src/tl_driver/src/node/driver_node_component.cpp` | 组件注册（插件名 `tl_driver::DriverNode`）；须与 `CMakeLists.txt` 的 `rclcpp_components_register_nodes` 实参一致 |
 | `src/tl_driver/src/node/driver_node.{hpp,cpp}` | 参数、回调组、实体创建、`init()` 失败即退 |
 | `src/tl_driver/src/node/registrars.hpp` | 7 个注册函数声明（6 个服务域 + topics） |
 | `src/tl_driver/src/node/services_*.cpp` / `topics.cpp` / `publishers.cpp` / `actions_motion.cpp` | 服务、订阅、发布、action 实现 |
