@@ -102,7 +102,9 @@ void handle_set_drag_mode_service(DriverNode& node,
     return;
   }
 
-  if (request->mode < 0 || request->mode > 3)
+  // V3.2 SDK 删除 3D 鼠标模式：0=关闭 1=力矩 2=位置，其余值拒绝，避免静态转换出未定义枚举值。
+  constexpr int kMaxDragMode = static_cast<int>(tl::DragMode::POSITION);
+  if (request->mode < static_cast<int>(tl::DragMode::NONE) || request->mode > kMaxDragMode)
   {
     response->success = false;
     response->message = "Invalid mode";

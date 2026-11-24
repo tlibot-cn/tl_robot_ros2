@@ -585,16 +585,19 @@ void tl_example::InfoQueryDemo::testInfoQuery()
   if (last_joint_state_)
   {
     auto req = std::make_shared<tl_ros2_interface::srv::Fk::Request>();
-    req->frame = 1;  // 1=基坐标 2=工具 3=用户
-    req->source = 0; // 0=控制器 1=本地模型
+    req->frame = 1; // 仅支持 1=基坐标
     req->joints = last_joint_state_->position;
-    auto resp = callService<tl_ros2_interface::srv::Fk>(fk_cli_, req, "fk(frame=1)");
-    if (resp && resp->success)
+    auto resp = callService<tl_ros2_interface::srv::Fk>(fk_cli_, req, "fk(frame=1, local)");
+    if (resp && resp->status == 0)
     {
       RCLCPP_INFO(this->get_logger(), "      pos = [%.3f, %.3f, %.3f] m", resp->pose.position.x, resp->pose.position.y,
                   resp->pose.position.z);
       RCLCPP_INFO(this->get_logger(), "      rpy = [%.3f, %.3f, %.3f] rad", resp->pose.rpy.x, resp->pose.rpy.y,
                   resp->pose.rpy.z);
+    }
+    else if (resp)
+    {
+      RCLCPP_WARN(this->get_logger(), "      fk failed: status=%d, %s", resp->status, resp->message.c_str());
     }
   }
   else
@@ -602,21 +605,26 @@ void tl_example::InfoQueryDemo::testInfoQuery()
     RCLCPP_WARN(this->get_logger(), "      无 /joint_states，跳过 fk");
   }
 
-  // [4.22] 逆运动学（服务 /tl_driver/ik，TCP 位姿 → 关节角）
-  RCLCPP_INFO(this->get_logger(), "  --- [4.22] 逆运动学 ik ---");
+  // [4.22] 逆运动学（服务 /tl_driver/ik，本地模型，TCP 位姿 → 关节角）
+  RCLCPP_INFO(this->get_logger(), "  --- [4.22] 逆运动学 ik（本地模型） ---");
   if (last_tcp_pose_ && last_joint_state_)
   {
     auto req = std::make_shared<tl_ros2_interface::srv::Ik::Request>();
-    req->frame = 1;  // 1=基坐标 2=工具 3=用户
-    req->source = 0; // 0=控制器 1=本地模型
+    req->frame = 1; // 本地模型仅支持 1=基坐标
     req->pose = *last_tcp_pose_;
     req->form = 0;
     // reference_pos 必填，用于选择离参考点最近的形态。
     req->reference_pos = last_joint_state_->position;
-    auto resp = callService<tl_ros2_interface::srv::Ik>(ik_cli_, req, "ik(frame=1)");
-    if (resp && resp->success)
+    auto resp = callService<tl_ros2_interface::srv::Ik>(ik_cli_, req, "ik(frame=1, local)");
+    // status：0~5 为成功（OK / 各类奇异 / 换支），6~9 失败，-1 参数错误、-2 未连接。
+    if (resp && resp->status >= 0 && resp->status <= 5)
     {
+      RCLCPP_INFO(this->get_logger(), "      status = %d (%s)", resp->status, resp->message.c_str());
       printArray(resp->joints, "      joints(rad) ");
+    }
+    else if (resp)
+    {
+      RCLCPP_WARN(this->get_logger(), "      ik failed: status=%d, %s", resp->status, resp->message.c_str());
     }
   }
   else

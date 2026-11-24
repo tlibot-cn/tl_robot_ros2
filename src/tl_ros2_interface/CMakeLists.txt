@@ -43,6 +43,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/TrackSave.srv"
   "srv/DragTrajectoryPlayback.srv"
   "srv/DragTrajectoryDelete.srv"
+  "srv/DragTrajectoryList.srv"
   "srv/SetToolParam.srv"
   "srv/SetUserCoord.srv"
   "srv/SetCurrentCoord.srv"

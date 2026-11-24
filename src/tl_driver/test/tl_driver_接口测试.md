@@ -137,7 +137,7 @@ ros2 service call /tl_driver/stop_jogging tl_ros2_interface/srv/Jogging "{axis: 
 ```
 
 ### `/tl_driver/set_drag_mode` — `tl_ros2_interface/srv/SetDragMode`
-请求：`int32 mode`（0=无 1=3D鼠标 2=力矩 3=位置）
+请求：`int32 mode`（0=无 1=力矩 2=位置；V3.2 SDK 起无 3D 鼠标模式）
 ```bash
 ros2 service call /tl_driver/set_drag_mode tl_ros2_interface/srv/SetDragMode "{mode: 2}"
 ```
@@ -177,19 +177,31 @@ ros2 service call /tl_driver/coord_transform tl_ros2_interface/srv/CoordTransfor
   reference_pos: []
 }"
 ```
-
-### `/tl_driver/fk` — 正运动学（关节角 → TCP 位姿）
-请求：`frame`（1=基坐标 2=工具 3=用户）、`joints`（rad，6 或 7 元素）、`source`（0=控制器 1=本地模型，仅 frame=1）
+控制器逆解（基坐标位姿 → 关节角）：
 ```bash
-ros2 service call /tl_driver/fk tl_ros2_interface/srv/Fk "{
-  frame: 1,
-  joints: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-  source: 0
+ros2 service call /tl_driver/coord_transform tl_ros2_interface/srv/CoordTransform "{
+  origin_coord: 1,
+  target_coord: 0,
+  form: 0,
+  origin_pos: [0.28, 0.0, 0.47, 3.14, 0.0, 0.0, 0.0],
+  reference_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 }"
 ```
 
-### `/tl_driver/ik` — 逆运动学（TCP 位姿 → 关节角）
-请求：`frame`（1=基坐标 2=工具 3=用户）、`pose`（m + rad）、`form`、`reference_pos`（rad，**必填**）、`source`（0=控制器 1=本地模型，仅 frame=1）
+### `/tl_driver/fk` — 正运动学（关节角 → TCP 位姿）
+请求：`frame`（仅 1=基坐标）、`joints`（rad，6 或 7 元素）
+响应：`status`（`tl::KinematicsStatus`：0=OK、-1=参数/模型非法；驱动级 -2=未连接）、`message`、`pose`
+```bash
+ros2 service call /tl_driver/fk tl_ros2_interface/srv/Fk "{
+  frame: 1,
+  joints: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+}"
+```
+
+### `/tl_driver/ik` — 本地逆运动学（TCP 位姿 → 关节角）
+请求：`frame`（仅 1=基坐标）、`pose`（m + rad）、`form`、`reference_pos`（rad，**必填**）
+响应：`status`（0~5 成功：0=OK、1=腕/2=肘/3=肩奇异、4=臂角无定义、5=换支；6~9 失败；-1 参数/模型非法；-2 未连接）、`message`、`joints`
+> 控制器逆解改用 `/tl_driver/coord_transform`（`origin_coord=1`、`target_coord=0`）。
 ```bash
 ros2 service call /tl_driver/ik tl_ros2_interface/srv/Ik "{
   frame: 1,
@@ -197,11 +209,10 @@ ros2 service call /tl_driver/ik tl_ros2_interface/srv/Ik "{
     header: {frame_id: 'base_link'},
     position: {x: 0.28, y: 0.0, z: 0.47},
     rpy: {x: 3.14, y: 0.0, z: 0.0},
-    arm_angle: 0.0
+    arm_angle: .nan
   },
   form: 0,
-  reference_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-  source: 0
+  reference_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 }"
 ```
 
@@ -300,6 +311,12 @@ ros2 service call /tl_driver/track_save tl_ros2_interface/srv/TrackSave "{traj_n
 ros2 service call /tl_driver/drag_trajectory_playback tl_ros2_interface/srv/DragTrajectoryPlayback "{trajectory_name: 'traj1.txt', velocity: 20}"
 ```
 > `success=true` 只表示指令被接受；结束状态用 `/tl_driver/get_drag_status` 观察。
+
+### `/tl_driver/drag_trajectory_list` — `DragTrajectoryList`（空请求）
+```bash
+ros2 service call /tl_driver/drag_trajectory_list tl_ros2_interface/srv/DragTrajectoryList "{}"
+```
+> 返回 `.txt` 与 `.json` 文件名；回放/删除只接受 `.txt`。需控制器固件 24.03+。
 
 ### `/tl_driver/drag_trajectory_delete` — `DragTrajectoryDelete`（trajectory_name）
 ```bash

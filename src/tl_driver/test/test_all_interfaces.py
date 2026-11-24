@@ -105,6 +105,7 @@ from tl_ros2_interface.msg import (
 )
 from tl_ros2_interface.srv import (
     CoordTransform,
+    DragTrajectoryList,
     Fk,
     GetArmStatus,
     GetCoordNum,
@@ -351,22 +352,41 @@ class DriverQuickTest(Node):
         if resp and resp.success:
             self.logger.info(f"      speed = {resp.speed:.1f}%")
 
-        # fk/ik：用当前关节角与末端位姿做一次正逆解往返（source=0 控制器，source=1 本地模型）
+        # fk：用当前关节角做一次本地正解
         if self.joint_state is not None:
             cli = self.wait_service("/tl_driver/fk", Fk)
             req = Fk.Request()
             req.frame = 1
-            req.source = 0
             req.joints = list(self.joint_state.position)
-            resp = self.call_srv(cli, req, "fk(frame=1, source=0)")
-            if resp and resp.success:
+            resp = self.call_srv(cli, req, "fk(frame=1, local)")
+            if resp and resp.status == 0:
                 p = resp.pose.position
                 self.logger.info(f"      pos = [{p.x:.3f}, {p.y:.3f}, {p.z:.3f}] m")
-
-            req.source = 1
-            self.call_srv(cli, req, "fk(frame=1, source=1 本地模型)")
+            elif resp:
+                self.logger.warning(f"      fk failed: status={resp.status}, {resp.message}")
 
         if self.tcp_pose is not None and self.joint_state is not None:
+            # 控制器逆解：coord_transform(origin=1 基坐标 → target=0 关节)
+            cli = self.wait_service("/tl_driver/coord_transform", CoordTransform)
+            req = CoordTransform.Request()
+            req.origin_coord = 1
+            req.target_coord = 0
+            req.form = 0
+            req.origin_pos = [
+                self.tcp_pose.position.x,
+                self.tcp_pose.position.y,
+                self.tcp_pose.position.z,
+                self.tcp_pose.rpy.x,
+                self.tcp_pose.rpy.y,
+                self.tcp_pose.rpy.z,
+                0.0,
+            ]
+            req.reference_pos = list(self.joint_state.position)
+            resp = self.call_srv(cli, req, "coord_transform(1->0 控制器逆解)")
+            if resp and resp.success:
+                self.print_arr("      controller joints(rad) ", resp.target_pos)
+
+            # 本地逆解：/tl_driver/ik（本地模型，仅基坐标）
             cli = self.wait_service("/tl_driver/ik", Ik)
             req = Ik.Request()
             req.frame = 1
@@ -374,15 +394,12 @@ class DriverQuickTest(Node):
             req.form = 0
             # reference_pos 必填，用于选择离参考点最近的形态
             req.reference_pos = list(self.joint_state.position)
-            req.source = 0
-            resp = self.call_srv(cli, req, "ik(frame=1, source=0)")
-            if resp and resp.success:
-                self.print_arr("      joints(rad) ", resp.joints)
-
-            req.source = 1
-            resp = self.call_srv(cli, req, "ik(frame=1, source=1 本地模型)")
-            if resp and resp.success:
+            resp = self.call_srv(cli, req, "ik(frame=1 本地模型)")
+            # status：0~5 为成功（OK / 各类奇异 / 换支），6~9 失败，-1 参数错误、-2 未连接
+            if resp and 0 <= resp.status <= 5:
                 self.print_arr("      local joints(rad) ", resp.joints)
+            elif resp:
+                self.logger.warning(f"      local ik failed: status={resp.status}, {resp.message}")
 
     def test_basic_set(self):
         self.logger.info("\n========== §5 基础设置 ==========")
@@ -444,6 +461,9 @@ class DriverQuickTest(Node):
         req = TrackSave.Request()
         req.traj_name = "test_traj"
         self.call_srv(cli, req, "track_save")
+
+        cli = self.wait_service("/tl_driver/drag_trajectory_list", DragTrajectoryList)
+        self.call_srv(cli, DragTrajectoryList.Request(), "drag_trajectory_list")
 
         cli = self.wait_service("/tl_driver/clear_error", Trigger)
         self.call_trigger(cli, "clear_error")

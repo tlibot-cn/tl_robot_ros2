@@ -63,7 +63,8 @@ TL 系列机械臂 ROS2 接口说明
 * 5.30 [查询示教模式类型GetTeachType_srv](#查询示教模式类型getteachtype_srv)
 * 5.31 [回放拖动轨迹DragTrajectoryPlayback_srv](#回放拖动轨迹dragtrajectoryplayback_srv)
 * 5.32 [删除拖动轨迹DragTrajectoryDelete_srv](#删除拖动轨迹dragtrajectorydelete_srv)
-* 5.33 [打开周期同步扭矩模式OpenServoCst_srv](#打开周期同步扭矩模式openservocst_srv)
+* 5.33 [查询拖动轨迹列表DragTrajectoryList_srv](#查询拖动轨迹列表dragtrajectorylist_srv)
+* 5.34 [打开周期同步扭矩模式OpenServoCst_srv](#打开周期同步扭矩模式openservocst_srv)
 
 ## tl_ros2_interface功能包说明
 tl_ros2_interface 功能包为 TL 系列机械臂在 ROS2 框架下提供消息（msg）和服务（srv）接口定义，供上层驱动或应用调用。该包本身没有可执行程序，主要作用为定义协议数据结构和服务接口。
@@ -126,6 +127,7 @@ tl_ros2_interface/
 │   ├── SetToolParam.srv
 │   ├── SetUserCoord.srv
 │   ├── DragTrajectoryDelete.srv
+│   ├── DragTrajectoryList.srv
 │   ├── DragTrajectoryPlayback.srv
 │   └── TrackSave.srv
 ```
@@ -356,6 +358,7 @@ float64[] target_pos
 - form: 形态
 - origin_pos/reference_pos: 输入坐标与逆解参考点。关节坐标为 rad；直角/工具/用户坐标为位置 m + 姿态 rad
 - 返回: success/message/target_pos（转换结果，单位同上）
+- `origin_coord=1/3 → target_coord=0` 即控制器逆解；`origin_coord=2` 按控制器工具坐标语义处理，不锚定当前 TCP
 
 ### 坐标系编号GetCoordNum_srv
 ```
@@ -598,7 +601,7 @@ bool success
 string message
 ```
 - 设置拖拽（示教）模式
-- mode: 0=无 1=3D鼠标 2=力矩模式 3=位置模式
+- mode: 0=无（关闭）1=力矩模式 2=位置模式（V3.2 SDK 起无 3D 鼠标模式，原 2/3 前移为 1/2；越界值返回失败）
 - 返回: success/message
 
 ### 设置示教模式类型SetTeachType_srv
@@ -695,6 +698,18 @@ string message
 - trajectory_name: 控制器内文件名，须以 `.txt` 结尾；空名、超长（>255 字节）、含控制字符、`/`、`\` 或 `..` 直接返回失败
 - 返回: success/message
 
+### 查询拖动轨迹列表DragTrajectoryList_srv
+```
+---
+bool success
+string message
+string[] trajectory_files
+```
+- 列出控制器内已保存的拖动轨迹文件名（含后缀、不含目录；需控制器固件 24.03+）
+- 服务名：`/tl_driver/drag_trajectory_list`
+- trajectory_files: `.txt`（V3 格式）与 `.json`（历史文件）两类文件名；回放/删除只接受 `.txt`
+- 返回: success/message/trajectory_files（无轨迹时为空数组）
+
 ### 查询当前运行模式GetCurrentMode_srv
 ```
 
@@ -710,17 +725,17 @@ int32 mode
 ```
 int32 frame
 float64[] joints
-int32 source
 ---
-bool success
+int32 status
 string message
 tl_ros2_interface/CartesianPose pose
 ```
-- 正运动学：关节角 → 指定坐标系下的 TCP 位姿
+- 本地正运动学：关节角 → 基坐标系 TCP 位姿
 - 服务名：`/tl_driver/fk`
-- frame: 输出位姿坐标系，1=基坐标 2=工具 3=用户（0=关节不支持）
+- status: `tl::KinematicsStatus`：0=OK；-1=参数/模型非法；驱动级 -2=未连接
+- message: 成功/失败描述；pose: position m、rpy rad
+- frame: 输出位姿坐标系，仅 1=基坐标（2/3 返回 status=-1）
 - joints: 关节角 rad，6 或 7 元素（不少于本体轴数；6 轴第 7 位为外部轴，本地模型忽略）
-- source: 求解来源，0=控制器（默认）1=本地模型（仅 frame=1）
 - pose: position m、rpy rad；`arm_angle` 为冗余臂角 ψ rad（6 轴为 0，7 轴无定义时为 NaN）
 
 ### 逆运动学Ik_srv
@@ -729,18 +744,17 @@ int32 frame
 tl_ros2_interface/CartesianPose pose
 int32 form
 float64[] reference_pos
-int32 source
 ---
-bool success
+int32 status
 string message
 float64[7] joints
 ```
-- 逆运动学：指定坐标系下的 TCP 位姿 → 关节角
+- 本地逆运动学：基坐标系 TCP 位姿 → 关节角（控制器逆解用 `CoordTransform`：`origin_coord=1/3`、`target_coord=0`）
 - 服务名：`/tl_driver/ik`
-- frame: 输入位姿坐标系，1=基坐标 2=工具 3=用户（0=关节不支持）
-- pose: position m、rpy rad；`arm_angle` 为冗余臂角 ψ（source=1 的 7 轴作为硬约束，不指定传 NaN；source=0 透传 SDK 第 7 位；6 轴忽略）
+- frame: 输入位姿坐标系，**仅支持 1=基坐标**（2/3 返回 `status=-1`）
+- pose: position m、rpy rad；`arm_angle` 为冗余臂角 ψ（7 轴作为硬约束，不指定传 NaN；6 轴忽略）
 - form: 形态；reference_pos: 逆解参考关节角 rad（**必填**，长度 6 或 7）
-- source: 求解来源，0=控制器（默认）1=本地模型（仅 frame=1）
+- status: 0=OK、1=SINGULAR_WRIST、2=SINGULAR_ELBOW、3=SINGULAR_SHOULDER、4=SINGULAR_ARM_ANGLE、5=BRANCH_SWITCHED（0~5 均成功，判定用 `0 <= status <= 5`）；6=UNREACHABLE、7=NO_SOLUTION、8=LIMIT_EXCEEDED、9=NOT_CONVERGED；-1=参数/模型非法、-2=未连接
 - joints: 定长 7，单位 rad；失败时为 NaN；6 轴第 7 位为 0
 
 ### 查询运行速度GetSpeed_srv

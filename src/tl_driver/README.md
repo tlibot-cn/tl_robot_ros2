@@ -112,7 +112,7 @@ tl_driver:
 ```
 
 > `arm_port` / `arm_port_aux` 以字符串传给 SDK，不要写成整数。
-> `fk`/`ik` 的 `source=1` 使用本地运动学模型：启动时由控制器回读的 DH、关节限位与当前工具手构建一次，运行期改 DH/工具后不重建；模型不可用时请求直接失败，不回退控制器。
+> `/tl_driver/fk` 与 `/tl_driver/ik` 使用本地运动学模型：启动时由控制器回读的 DH、关节限位与当前工具手构建一次，运行期改 DH/工具后不重建；模型不可用时请求直接失败，不回退控制器。
 > `tl_driver` 自身声明的参数只在启动时读取：以 read-only descriptor 声明，运行期 `ros2 param set` 会被 rclcpp 拒绝；启动参数覆盖（launch/YAML）不受影响。rclcpp 内建参数（如 `use_sim_time`）保持标准可变语义。
 > `/joint_states`、`/tcp_pose` 由 7000 帧通知直接发布，频率取决于 `state_stream_interval_ms` 与控制器的实际推送率；运行状态改由 `/tl_driver/get_arm_status` 服务按需查询，不再周期发布。状态流在上下电完成后启动，启动失败则驱动启动失败；运行期若控制器停止推帧，对应话题停更，需要重启驱动恢复（无同步查询回退、无看门狗重试）。
 ## tl_driver功能包架构说明
@@ -183,7 +183,7 @@ tl_driver:
 │   ├── arm_sdk.hpp            # SDK 头文件唯一入口（libtl_host.so 的 API 头）
 │   ├── arm_client.{hpp,cpp}   # SDK 薄封装：返回值文本化、错误回调、7000 口状态帧通道
 │   ├── arm_session.{hpp,cpp}  # 会话：双端口连接、上下电
-│   ├── kinematics_local.{hpp,cpp} # 本地运动学：启动建一次的正逆解模型（source=1）
+│   ├── kinematics_local.{hpp,cpp} # 本地运动学：启动建一次的正逆解模型（fk / ik）
 │   ├── node                     # 节点层
 │   │   ├── driver_node.{hpp,cpp}  # DriverNode：参数、回调组、实体创建与服务/话题注册
 │   │   ├── registrars.hpp       # 注册函数声明（服务域 + 话题）
@@ -213,4 +213,4 @@ tl_driver功能包的服务、话题与 action 较多，可以通过如下指令
 ![image](doc/tl_driver4.png)  
 主要为套用API实现的一些机械臂本体的功能，其详细介绍和使用在此不详细展开，可以通过专门的文档《[tl_driver接口说明书](doc/tl_driver接口说明书.md)》进行查看。
 
-状态话题化后，`/joint_states` 与 `/tcp_pose` 默认由 7000 端口 ACS/MCS 连续流驱动；反馈与监测数据按数据源拆分：`/joint_states` 同时携带关节速度（`velocity`，rad/s）与力矩（`effort`，‰ 额定扭矩），与关节角同帧；`/tl_driver/joint_monitor`（电流/温度/电压同帧查询，默认 2 Hz）；`/tl_driver/line_speed` 由 6001 同步查询按 `line_speed_rate`（默认 10 Hz）发布；控制器错误/告警由 6001 主端口异步回调驱动，事件逐条发布到 `/tl_driver/error_info`。运行速度改用 `/tl_driver/get_speed` 服务查询，运行状态改用 `/tl_driver/get_arm_status` 服务查询；数字 IO 读写统一使用 `get_digital_input_output` / `set_digital_output` 服务（不发布 `io_state` 话题）。长运动客户端使用 `/tl_driver/move_joint`、`/tl_driver/move_linear`、`/tl_driver/play_track` action（`track_playback` 服务已删除）；action 的 cancel 因 SDK 无停止接口而一律拒绝。正逆运动学使用 `/tl_driver/fk`、`/tl_driver/ik` 服务。
+状态话题化后，`/joint_states` 与 `/tcp_pose` 默认由 7000 端口 ACS/MCS 连续流驱动；反馈与监测数据按数据源拆分：`/joint_states` 同时携带关节速度（`velocity`，rad/s）与力矩（`effort`，‰ 额定扭矩），与关节角同帧；`/tl_driver/joint_monitor`（电流/温度/电压同帧查询，默认 2 Hz）；`/tl_driver/line_speed` 由 6001 同步查询按 `line_speed_rate`（默认 10 Hz）发布；控制器错误/告警由 6001 主端口异步回调驱动，事件逐条发布到 `/tl_driver/error_info`。运行速度改用 `/tl_driver/get_speed` 服务查询，运行状态改用 `/tl_driver/get_arm_status` 服务查询；数字 IO 读写统一使用 `get_digital_input_output` / `set_digital_output` 服务（不发布 `io_state` 话题）。长运动客户端使用 `/tl_driver/move_joint`、`/tl_driver/move_linear`、`/tl_driver/play_track` action（`track_playback` 服务已删除）；action 的 cancel 因 SDK 无停止接口而一律拒绝。正运动学使用 `/tl_driver/fk`（`source` 选择控制器/本地模型），逆运动学使用 `/tl_driver/ik`（本地模型，`status` 返回求解状态）；控制器逆解使用 `/tl_driver/coord_transform`（`origin_coord=1`，`target_coord=0`）。

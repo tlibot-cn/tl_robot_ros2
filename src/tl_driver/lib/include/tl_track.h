@@ -6,6 +6,7 @@
 #define TL_SDK_TL_TRACK_H
 
 #include <string>
+#include <vector>
 
 #include "tl_types.h"
 
@@ -67,6 +68,18 @@ TL_API Result track_record_playback(SOCKETFD socketFd, int vel);
 TL_API Result track_record_delete(SOCKETFD socketFd);
 
 // ==================== 拖动轨迹文件管理 ====================
+
+/**
+ * @brief 查询控制器中保存的拖动轨迹文件列表。
+ * @note 需控制器固件 24.03 及以上版本支持；返回 .json 与 .txt 两种格式的文件名（含后缀、
+ * 不含目录）。
+ * @param[out] trajectoryFiles 轨迹文件名列表；查询成功时覆盖原内容，无轨迹时为空列表
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result drag_trajectory_get_list(SOCKETFD socketFd,
+                                       std::vector<std::string>& trajectoryFiles);
 
 /**
  * @brief 导出控制器中的全部拖动轨迹。
