@@ -136,8 +136,11 @@ tl::KinematicsStatus LocalKinematics::ik(const Pose& pose, const std::vector<dou
     tl::RobotModel<6>::Joints ref{};
     std::copy_n(ref_joints_deg.begin(), 6, ref.begin());
     // 6 轴无冗余自由度：给有限臂角会被 SDK 判为 PARAM_ERR，必须显式传“未指定”。
-    const tl::KinematicsStatus status = kin6_->ik(pose, q, ref, form, tl::kArmAngleNone);
-    if (status == tl::KinematicsStatus::OK || status == tl::KinematicsStatus::SINGULAR)
+    tl::IKOptions options;
+    options.form = form;
+    options.arm_angle_rad = tl::kArmAngleNone;
+    const tl::KinematicsStatus status = kin6_->ik(pose, q, ref, options);
+    if (status >= tl::KinematicsStatus::OK && status <= tl::KinematicsStatus::BRANCH_SWITCHED)
     {
       std::copy_n(q.begin(), 6, joints_deg.begin());
       axes = 6;
@@ -148,8 +151,11 @@ tl::KinematicsStatus LocalKinematics::ik(const Pose& pose, const std::vector<dou
   tl::RobotModel<7>::Joints q{};
   tl::RobotModel<7>::Joints ref{};
   std::copy_n(ref_joints_deg.begin(), 7, ref.begin());
-  const tl::KinematicsStatus status = kin7_->ik(pose, q, ref, form, arm_angle_rad);
-  if (status == tl::KinematicsStatus::OK || status == tl::KinematicsStatus::SINGULAR)
+  tl::IKOptions options;
+  options.form = form;
+  options.arm_angle_rad = arm_angle_rad;
+  const tl::KinematicsStatus status = kin7_->ik(pose, q, ref, options);
+  if (status >= tl::KinematicsStatus::OK && status <= tl::KinematicsStatus::BRANCH_SWITCHED)
   {
     std::copy_n(q.begin(), 7, joints_deg.begin());
     axes = 7;
@@ -168,29 +174,6 @@ tl::KinematicsStatus LocalKinematics::arm_angle_of(const std::vector<double>& jo
   tl::RobotModel<7>::Joints q{};
   std::copy_n(joints_deg.begin(), 7, q.begin());
   return kin7_->arm_angle_of(q, arm_angle_rad);
-}
-
-const char *LocalKinematics::status_text(tl::KinematicsStatus status) noexcept
-{
-  switch (status)
-  {
-    case tl::KinematicsStatus::OK:
-      return "OK";
-    case tl::KinematicsStatus::SINGULAR:
-      return "SINGULAR";
-    case tl::KinematicsStatus::UNREACHABLE:
-      return "UNREACHABLE";
-    case tl::KinematicsStatus::NO_SOLUTION:
-      return "NO_SOLUTION";
-    case tl::KinematicsStatus::LIMIT_EXCEEDED:
-      return "LIMIT_EXCEEDED";
-    case tl::KinematicsStatus::NOT_CONVERGED:
-      return "NOT_CONVERGED";
-    case tl::KinematicsStatus::PARAM_ERR:
-      return "PARAM_ERR";
-    default:
-      return "UNKNOWN";
-  }
 }
 
 } // namespace tl_driver

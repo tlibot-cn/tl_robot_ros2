@@ -118,10 +118,9 @@ enum class TeachType
 // 拖拽方式（对应 set_darg_mode 的 mode 参数）
 enum class DragMode
 {
-  NONE = 0,     // 无
-  MOUSE_3D = 1, // 3D鼠标
-  TORQUE = 2,   // 力矩模式
-  POSITION = 3  // 位置模式
+  NONE = 0,     // 无（关闭拖拽）
+  TORQUE = 1,   // 力矩模式
+  POSITION = 2, // 位置模式
 };
 
 // 工具手标定类型（对应 tool_hand_2_or_20_point_* 系列的 calibrationType 参数）
@@ -180,7 +179,7 @@ enum class RobotType
   FIVE_AXIS_HYBRID = 26,           // 五轴混动机器人
   FOUR_AXIS_SCARA_2 = 27,          // 四轴 SCARA 异型 2
   SIX_AXIS_SPECIAL_3 = 28,         // 六轴异型三
-  BX_SCARA_SPECIAL = 29,           // 宝信:三轴 SCARA 异型 1
+  BX_SCARA_SPECIAL = 29,           // 三轴 SCARA 异型 1
   DELTA_2D = 30,                   // delta 2D 并联机器人模型
   THREE_AXIS_SERIAL_1 = 31,        // 三轴串联异形一
   FIVE_AXIS_COLLAB = 32,           // 五轴协作机器人
@@ -575,9 +574,10 @@ struct DragParam
   double start_threshold_M{0};    // 启动阈值 M
   double dragInPosMaxVel{0};      // 笛卡尔空间线速度限制
   double dragInPosMaxAngleVel{0}; // 关节空间速度限制
-  std::vector<double> drag_change_rate = std::vector<double>(6, 0.0); // 变化率阈值[X,Y,Z,A,B,C]
+  std::vector<double> drag_change_rate =
+      std::vector<double>(6, 0.0); // 变化率比例[X,Y,Z,A,B,C]，范围 0~100
   std::vector<double> drag_sensor_coeff =
-      std::vector<double>(6, 0.0); // 传感器灵敏系数[X,Y,Z,A,B,C]
+      std::vector<double>(6, 0.0); // 拖动灵敏度[X,Y,Z,A,B,C]，范围 0~100
 };
 
 // VFD 运行参数（对应控制器协议 VFDRunParam）

@@ -407,7 +407,7 @@ TL_API Result get_axis_sdo(SOCKETFD socketFd, int axisNum, unsigned int index,
  * 17-七轴串联多关节机器人  18-四轴SCARA异型一机器人 19-四轴码垛丝杆机器人
  * 20-六轴喷涂机器人  21-四轴极坐标异形机器人  22-六轴异型二
  * 23-delta机器人（四轴并联机器人） 24-酒槽机型  25-四轴直角异型一机器人
- * 26-五轴混动机器人 27-四轴SCARA异型2  28-六轴异型三 29-宝信:三轴SCARA异型1
+ * 26-五轴混动机器人 27-四轴SCARA异型2  28-六轴异型三 29-三轴SCARA异型1
  * 30-delta2D并联机器人模型 31-三轴串联异形一  32-五轴协作机器人
  * 33-四轴SCARA异型三机器人  34-六轴串联-CBBARA 35-高椅立柱旋转四轴
  * 36-六自由度上平台Stewart并联机器人 37-四轴YZCC机型  38-六轴ZCCABC机型
@@ -738,11 +738,11 @@ TL_API Result set_current_teach_sensitivity(SOCKETFD socketFd,
 
 /**
  * @brief 设置拖拽示教的拖拽方式
- * @param mode 拖拽模式  0-无  1-3D鼠标  2-力矩模式 3-位置
+ * @param mode 拖拽模式  0-无（关闭拖拽）  1-力矩模式  2-位置模式
  * (22.07版本没有位置模式)
  * @deprecated 请使用 DragMode 枚举重载版本
- * @note 推荐使用枚举重载（DragMode::NONE / DragMode::MOUSE_3D /
- * DragMode::TORQUE / DragMode::POSITION），避免魔法数字
+ * @note 推荐使用枚举重载（DragMode::NONE / DragMode::TORQUE /
+ * DragMode::POSITION），避免魔法数字
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
  * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
  * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
@@ -752,8 +752,8 @@ TL_API Result set_darg_mode(SOCKETFD socketFd, int mode);
 
 /**
  * @brief 设置拖拽示教的拖拽方式（枚举重载）
- * @param mode DragMode::NONE（无）/ DragMode::MOUSE_3D（3D鼠标）/
- * DragMode::TORQUE（力矩模式）/ DragMode::POSITION（位置模式）
+ * @param mode DragMode::NONE（无，关闭拖拽）/ DragMode::TORQUE（力矩模式）/
+ * DragMode::POSITION（位置模式）
  * @note 推荐使用本枚举重载版本，避免魔法数字
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
  * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
@@ -1462,8 +1462,10 @@ TL_API Result get_current_motor_current(SOCKETFD socketFd, std::vector<double>& 
 
 /**
  * @brief 获取当前电机扭矩
- * @param motor_torque 输出：机器人本体电机扭矩，长度 7，单位 [%]
- * @param motor_torque_sync 输出：外部轴电机扭矩，长度 5，单位 [%]
+ * @param[out] motor_torque 输出：机器人本体电机扭矩，长度 7，单位：额定扭矩的 0.1%（‰，1000 =
+ * 100% 额定扭矩）
+ * @param[out] motor_torque_sync 输出：外部轴电机扭矩，长度 5，单位：额定扭矩的 0.1%（‰，1000 =
+ * 100% 额定扭矩）
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
  * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
  * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时

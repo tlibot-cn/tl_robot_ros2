@@ -47,13 +47,14 @@ public:
   }
 
   /// @brief 正解：关节角 (deg) → 基坐标系位姿 (mm + rad)。
-  /// @return OK / SINGULAR 成功；其余失败（见 KinematicsStatus）
+  /// @return OK 成功；PARAM_ERR 失败（见 KinematicsStatus）
   tl::KinematicsStatus fk(const std::vector<double>& joints_deg, Pose& pose) const noexcept;
 
   /// @brief 逆解：基坐标系位姿 (mm + rad) → 关节角 (deg)。
   /// @param[in] arm_angle_rad 7 轴的臂角 ψ (rad)；6 轴忽略（内部改传 kArmAngleNone）
   /// @param[out] joints_deg 长度 7，前 axes 项有效
   /// @param[out] axes 有效关节数（6 或 7）
+  /// @return OK / SINGULAR_* / BRANCH_SWITCHED 成功；其余失败（见 KinematicsStatus）
   tl::KinematicsStatus ik(const Pose& pose, const std::vector<double>& ref_joints_deg, int form, double arm_angle_rad,
                           std::array<double, 7>& joints_deg, int& axes) const noexcept;
 

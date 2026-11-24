@@ -308,7 +308,7 @@ void DriverNode::init()
     }
 
     // 本地运动学模型只在此构建一次：DH、关节限位与当前工具手取控制器回读值。
-    // 构建失败只告警，驱动照常启动；source=1（本地模型）的 fk/ik 请求会返回具体原因。
+    // 构建失败只告警，驱动照常启动；fk / ik 会返回具体原因。
     local_kinematics_.build(fd, ndof_);
     if (local_kinematics_.available())
     {

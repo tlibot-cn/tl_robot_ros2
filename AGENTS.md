@@ -32,7 +32,7 @@ flowchart LR
 核心事实：
 
 - **双端口**：`arm_port` 6001 用于请求/响应式 SDK 调用；`arm_port_aux` 7000 用于 servoJ 全系列 + 机器人状态异步推送。两个 fd 都必须连通，状态回调只在 aux 注册，错误/告警回调只在主端口 6001 注册（7000 不注册）。
-- **`tl_driver` 组成**：`DriverNode` 只做参数、回调组、实体创建；服务按域拆在 `src/node/services_*.cpp`，由 `src/node/registrars.hpp` 的 `register_*` 函数注册；话题在 `topics.cpp`，action 在 `actions_motion.cpp`。当前规模：**47 个服务、3 个订阅、5 个发布、3 个 action**。`arm_client::ArmClient` 进程内只允许一个实例（SDK 回调无 userdata）；状态帧/错误日志走 rclcpp 并 1 s 节流。
+- **`tl_driver` 组成**：`DriverNode` 只做参数、回调组、实体创建；服务按域拆在 `src/node/services_*.cpp`，由 `src/node/registrars.hpp` 的 `register_*` 函数注册；话题在 `topics.cpp`，action 在 `actions_motion.cpp`。当前规模：**48 个服务、3 个订阅、5 个发布、3 个 action**。`arm_client::ArmClient` 进程内只允许一个实例（SDK 回调无 userdata）；状态帧/错误日志走 rclcpp 并 1 s 节流。
 - **发布**：`/joint_states`（rad）、`/tcp_pose`（m/rad）跟随 7000 帧率；运行状态改由 `/tl_driver/get_arm_status` 服务按需查询（`STOP`/`PAUSE`/`RUNNING`），运行速度由 `/tl_driver/get_speed` 服务查询，两者均不周期发布。`/joint_states` 同时携带 `velocity`（rad/s）与 `effort`（‰ 额定扭矩）：控制器按 `jointSpeed`/`jointTorque` 开关在 ACS 帧内附带 `jointVel` / `torque`，字段缺失时对应数组为空。诊断话题：`/tl_driver/joint_monitor`（电流/温度/电压同帧查询，默认 2 Hz，`joint_monitor_rate`）、`/tl_driver/line_speed`（6001 同步查询，`line_speed_rate`，默认 10 Hz）。控制器错误/告警由 6001 主端口异步回调逐条发布到 `/tl_driver/error_info`（事件驱动，不节流；仅日志 1 s 节流）。数字 IO 不发布话题，读写统一走 `get_digital_input_output` / `set_digital_output` 服务。`/joint_states`、`/tcp_pose` 由 7000 端口 ACS/MCS 连续帧**通知独立发布线程**发布，不经过执行器；流在上下电完成后启动，启动失败即退出，运行期停推需重启驱动（无 `state_source=poll` 回退、无看门狗）。诊断话题为定长数组 + NaN 无效语义。`StatePublishers` 复用成员缓冲与消息，**勿在发布回调内新建 vector/message**；ServoJ 日志不得逐帧 INFO。
 - **订阅**：`/tl_driver/set_servoj_pos`（rad，6 或 7 元素，6 元素末尾补 0；转发 SDK 时为固定 7 元素）、`/tl_driver/set_servo_csv_velocity`（rad/s，同上补 0；SDK 侧度/秒）与 `/tl_driver/set_servo_cst_torque`（‰ 额定扭矩，范围 [-1000, 1000]，越界整帧丢弃）。一次性运动统一走 `move_joint` / `move_linear` action；完成/失败以 action result 为准，运行状态用 `get_arm_status` 服务观察。
 - **线程模型**：`MultiThreadedExecutor` 线程数由 `executor_threads` 参数决定（默认 `max(4, min(hardware_concurrency, 8))`，范围 1–64），固定 6 个 `MutuallyExclusive` 回调组：`service_group_`（session/config/io/state/transform 短服务，含 `get_arm_status`）、`motion_service_group_`（jogging/track/queue/servo）、`topic_group_`、`monitor_group_`、`line_speed_group_`、`action_group_`。`monitor_group_` 跑 2 Hz `/tl_driver/joint_monitor`（电流/温度/电压，慢查询独立组），`line_speed_group_` 用单一定时器发布 `/tl_driver/line_speed`；`/joint_states`（position/velocity/effort）与 `/tcp_pose` 的发布在独立 `std::thread`（7000 帧通知），不在执行器内。
@@ -132,7 +132,7 @@ ros2 launch tl_gazebo gazebo_tcb610_demo.launch.py          # Gazebo
 ### C++ 模式
 
 - **SDK 调用**：一律 `tl::` 显式限定，**禁止 `using namespace tl`**（unscoped enum 会与其他符号冲突）；SDK 返回值用其自身类型（如 `tl::Result`），失败路径统一 `result_to_string(ret)` 记录。
-- **服务响应**：每个 handler 先检查连接状态，失败返回 `{success=false, message="Arm is not connected"}`；业务失败同样返回 `{success, message}`，不抛异常。
+- **服务响应**：每个 handler 先检查连接状态，失败返回 `{success=false, message="Arm is not connected"}`；业务失败同样返回 `{success, message}`，不抛异常。例外：`/tl_driver/fk`、`/tl_driver/ik` 直接返回 `int32 status`（求解器原始值），不设 `success`。
 - **注册模式**：`DriverNode` 不内联 handler；每个域文件暴露一个 `register_*`，handler 放匿名 namespace，用 `std::bind(&Class::method, this, ...)` 绑定。
 - **实体保活**：基类 `create_service` / `create_subscription` 包装会把句柄存入 `services_` / `subscriptions_`，否则 Humble 下会被注销。
 - **话题回调**：`set_servoj_pos` 只做补 0、rad→度与转发。

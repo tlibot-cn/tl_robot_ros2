@@ -12,6 +12,21 @@
 
 ## [Unreleased]
 
+### 2026-11-24
+
+- 变更：`tl_driver` 预编译 SDK 库与头文件升级至 V3.2（`V3.2.0-0-g99a5905-20261124`）；驱动改用 `tl::IKOptions` 显式求解参数，本地逆解按新 `KinematicsStatus` 分派状态
+- **破坏性变更**：`/tl_driver/ik` 的 `status` 按新 `KinematicsStatus` 重排——0~5 均为成功（0=OK、1=SINGULAR_WRIST、2=SINGULAR_ELBOW、3=SINGULAR_SHOULDER、4=SINGULAR_ARM_ANGLE、5=BRANCH_SWITCHED），6=UNREACHABLE、7=NO_SOLUTION、8=LIMIT_EXCEEDED、9=NOT_CONVERGED，-1/-2 不变；消费方须按 `0 <= status <= 5` 判定成功（旧 `status == 0 || status == 1` 会把换支成功当成失败，`status >= 0` 会把 6~9 失败码当成成功）
+- **破坏性变更**：`/tl_driver/fk` 删除请求字段 `source`，与 `/tl_driver/ik` 一样只走本地模型（仅 `frame=1`）；响应由 `bool success` 改为 `int32 status`（`tl::KinematicsStatus`：0=OK、-1=PARAM_ERR；驱动级 -2=未连接），`message`/`pose` 保留
+- **破坏性变更**：`/tl_driver/set_drag_mode` 删除 3D 鼠标模式，取值由 0/1/2/3（无/3D鼠标/力矩/位置）改为 0/1/2（无/力矩/位置）；沿用旧值 `2`/`3` 语义改变且越界值现在直接返回失败
+- 新增：`/tl_driver/drag_trajectory_list`（`DragTrajectoryList`）查询控制器内拖动轨迹文件名（服务 47 → 48），与 `drag_trajectory_playback` / `drag_trajectory_delete` 形成闭环
+- 文档：接口说明书 V1.32（`ik` 状态码、`set_drag_mode` 取值、9.11 轨迹列表）、接口包 README、测试清单与 `ex_info_query` 示例同步
+
+### 2026-11-23
+
+- **破坏性变更**：`/tl_driver/ik` 收敛为本地模型逆解（仅 `frame=1`），删除请求字段 `source`，响应由 `bool success` 改为 `int32 status`（`tl::KinematicsStatus`：0=OK、1=SINGULAR 均成功；2=UNREACHABLE、3=NO_SOLUTION、4=LIMIT_EXCEEDED、5=NOT_CONVERGED；-1=参数/模型非法、-2=未连接）；`message`/`joints` 保留
+- 变更：控制器逆解统一走 `/tl_driver/coord_transform`（`origin_coord=1/3`，`target_coord=0`），`tl_teleop` / `tl_teleop_f710` 原有调用方式不变；工具坐标系（`origin_coord=2`）按控制器坐标转换语义处理，不锚定当前 TCP
+- 文档：接口说明书 V1.31（`ik` 状态码、控制器逆解入口）、接口包 README、测试清单与 `ex_info_query` 示例同步
+
 ### 2026-11-12
 
 - **破坏性变更**：`/tl_driver/drag_trajectory_playback`、`/tl_driver/drag_trajectory_delete` 的 `trajectory_name` 由 `.json` 改为只接受 `.txt`（V3 轨迹文件格式；SDK 对旧 `.json` 仅作兼容）

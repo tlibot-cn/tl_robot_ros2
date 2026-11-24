@@ -8,6 +8,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "arm_client.hpp"
@@ -18,6 +19,7 @@
 #include "std_srvs/srv/set_bool.hpp"
 #include "std_srvs/srv/trigger.hpp"
 #include "tl_ros2_interface/srv/drag_trajectory_delete.hpp"
+#include "tl_ros2_interface/srv/drag_trajectory_list.hpp"
 #include "tl_ros2_interface/srv/drag_trajectory_playback.hpp"
 #include "tl_ros2_interface/srv/get_speed.hpp"
 #include "tl_ros2_interface/srv/jogging.hpp"
@@ -236,6 +238,33 @@ void handle_drag_trajectory_playback_service(
   else
   {
     response->message = std::string("Failed to play drag trajectory: ") + arm_client::result_to_string(ret);
+  }
+}
+
+void handle_drag_trajectory_list_service(
+    DriverNode& node, const std::shared_ptr<tl_ros2_interface::srv::DragTrajectoryList::Request> request,
+    std::shared_ptr<tl_ros2_interface::srv::DragTrajectoryList::Response> response)
+{
+  (void)request;
+  if (!node.session().is_connected())
+  {
+    response->success = false;
+    response->message = "Arm is not connected";
+    return;
+  }
+
+  std::vector<std::string> files;
+  const tl::Result ret = tl::drag_trajectory_get_list(node.session().fd(), files);
+  response->success = (ret == tl::Result::SUCCESS);
+  if (response->success)
+  {
+    // SDK 查询成功时覆盖出参；空列表代表控制器无轨迹，不是错误。
+    response->trajectory_files = std::move(files);
+    response->message = "Drag trajectory list retrieved";
+  }
+  else
+  {
+    response->message = std::string("Failed to get drag trajectory list: ") + arm_client::result_to_string(ret);
   }
 }
 
@@ -588,6 +617,9 @@ void register_motion_services(DriverNode& node)
   node.create_service<tl_ros2_interface::srv::DragTrajectoryPlayback>(
       "/tl_driver/drag_trajectory_playback", std::bind(&handle_drag_trajectory_playback_service, std::ref(node),
                                                        std::placeholders::_1, std::placeholders::_2));
+  node.create_service<tl_ros2_interface::srv::DragTrajectoryList>(
+      "/tl_driver/drag_trajectory_list",
+      std::bind(&handle_drag_trajectory_list_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));
   node.create_service<tl_ros2_interface::srv::DragTrajectoryDelete>(
       "/tl_driver/drag_trajectory_delete",
       std::bind(&handle_drag_trajectory_delete_service, std::ref(node), std::placeholders::_1, std::placeholders::_2));

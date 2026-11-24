@@ -51,20 +51,27 @@ struct DHLink
 
 /**
  * @brief 本地运动学的求解状态（正逆解统一的返回值）。
- * @note 1) 正逆解统一以本枚举为返回值（成功 = OK / SINGULAR，失败 = 其余取值），不用 Result 码；
- *       2) SINGULAR 属成功路径：腕奇异邻域仍有合法解，此处仅标记以便调用方规避关节速率放大；
- *       3) NOT_CONVERGED 指数值精修未收敛，「位置不可达」与「不收敛」难以完全区分；
- *       4) PARAM_ERR 表示入参 / 模型非法，此时正逆解都不改写出参。
+ * @note 1) 正逆解统一以本枚举为返回值，不用 Result 码；
+ *       2) 成功状态：OK、SINGULAR_WRIST / SINGULAR_ELBOW / SINGULAR_SHOULDER /
+ *       SINGULAR_ARM_ANGLE、BRANCH_SWITCHED，均写出出参；
+ *       3) BRANCH_SWITCHED 在默认路径也可能返回；其余细化状态（SINGULAR_ELBOW /
+ *       SINGULAR_SHOULDER / SINGULAR_ARM_ANGLE）仅在显式修改对应 IKOptions 字段时返回；
+ *       4) NOT_CONVERGED 指数值精修未收敛；
+ *       5) PARAM_ERR 表示入参 / 模型非法，此时正逆解都不改写出参。
  */
 enum class KinematicsStatus
 {
-  OK = 0,   // 成功：解在限位内且非奇异邻域
-  SINGULAR, // 成功：处于腕奇异邻域（6 轴 |sin(q5)| < 1e-6；7 轴 |sin(q6)| < 1e-6），解仍有效
-  UNREACHABLE,    // 失败：目标位置超出可达范围（闭式分支不存在）
-  NO_SOLUTION,    // 失败：指定 form 的分支无解
-  LIMIT_EXCEEDED, // 失败：存在几何解但全部候选越界
-  NOT_CONVERGED,  // 失败：数值精修未收敛
-  PARAM_ERR = -1, // 失败：入参 / 模型非法
+  OK = 0,             // 成功：解在限位内且非奇异邻域
+  SINGULAR_WRIST = 1, // 成功：处于腕奇异邻域（6 轴 |sin(q5)| < 1e-6；7 轴 |sin(q6)| < 1e-6）
+  SINGULAR_ELBOW = 2,    // 成功：肘奇异（解仍有效）
+  SINGULAR_SHOULDER = 3, // 成功：肩奇异（解仍有效）
+  SINGULAR_ARM_ANGLE = 4, // 成功：7 轴 ψ 无定义（参考平面退化 / 上臂共线），解仍有效
+  BRANCH_SWITCHED = 5, // 成功：解有效但与参考构型不同支（仅 PREFER_FORM）
+  UNREACHABLE = 6,     // 失败：目标位置超出可达范围（闭式分支不存在）
+  NO_SOLUTION = 7,     // 失败：指定 form / ψ 的分支无解
+  LIMIT_EXCEEDED = 8,  // 失败：存在几何解但全部候选越界
+  NOT_CONVERGED = 9,   // 失败：数值精修未收敛
+  PARAM_ERR = -1,      // 失败：入参 / 模型非法
 };
 
 /**
@@ -131,17 +138,56 @@ constexpr int kMaxSamplePoints = 1 << 16;
 constexpr double kArmAngleNone = std::numeric_limits<double>::quiet_NaN();
 
 /**
+ * @brief 分支策略（form = 0 时控制选支；所有情况下控制 7 轴相位 2 是否启用）。
+ */
+enum class BranchPolicy
+{
+  NEAREST = 0, // 候选集内按参考点距离选最近；允许 7 轴全周网格兜底
+  PREFER_FORM, // 优先沿用参考 form；无同支解或同支解过远时改取更近候选（换支则返回
+               // BRANCH_SWITCHED）；不做全周网格
+  LOCK_FORM, // 只接受参考关节角的 form；同支无解返回底层失败状态，不写出、不换支；不做全周网格
+};
+
+/** 默认 ψ 全周兜底网格点数（也是当前实现的上限）。 */
+constexpr int kDefaultPsiSamples = 16;
+
+/**
+ * @brief per-call 求解参数；默认构造 = 连续性优先（PREFER_FORM）。
+ * @note 1) 默认路径可能返回 BRANCH_SWITCHED；SINGULAR_ELBOW / SINGULAR_SHOULDER /
+ *       SINGULAR_ARM_ANGLE 仍需显式修改对应字段才返回；
+ *       2) form != 0 时 branch_policy 不参与选支，但仍控制相位 2；
+ *       3) arm_angle_rad 为有限值时是硬约束，6 轴返回 PARAM_ERR；
+ *       4) 参考关节角的 form 无法唯一判定（处于分支重合位形）时，PREFER_FORM / LOCK_FORM
+ *       退化为 NEAREST 选支，不返回 BRANCH_SWITCHED。
+ */
+struct IKOptions
+{
+  /** 形态：0 = 自动；1..8 = 指定分支 */
+  int form{0};
+  /** 臂角 ψ (rad)，仅 7 轴有效；NaN = 不指定 */
+  double arm_angle_rad{kArmAngleNone};
+  /** 分支策略：form = 0 时控制选支；所有情况下控制相位 2 是否启用 */
+  BranchPolicy branch_policy{BranchPolicy::PREFER_FORM};
+  /** 7 轴相位 2 全周网格点数；仅 NEAREST 生效；0 = 不做全周网格；上限 kDefaultPsiSamples */
+  int psi_samples{kDefaultPsiSamples};
+};
+
+/**
  * @brief 单条候选解（6 / 7 轴的 ik_all、7 轴的 ik_arm_angle_samples 出参）。
  * @note 1) q 为规范代表：配置限位时取限位窗口内的等价表示，未配置限位时折到 (-π, π]；
- *       2) arm_angle_rad 在 6 轴无臂角概念，恒为 kArmAngleNone。
+ *       2) arm_angle_rad 在 6 轴无臂角概念，恒为 kArmAngleNone；
+ *       3) status 只表达奇异类型；限位由 limit_joint 单独表达，二者可同时出现；
+ *       4) 同一候选多个奇异条件同时满足时按优先级只取一个：腕 → 肘 → 肩。
  */
 struct IKSolution
 {
   std::array<double, 7> q{}; // 关节角 (deg，前 axes 项有效)
   int form{0};               // 形态编号（1..8，定义见 RobotModel::ik）
-  int axes{7}; // q 的有效长度（= 求解器轴数；6 轴为 6，第 7 项恒为 0）
-  double arm_angle_rad{kArmAngleNone}; // 该解对应的 ψ (rad)
-  bool wrist_singular{false}; // 是否处于腕奇异邻域（解仍有效，同 KinematicsStatus::SINGULAR 语义）
+  int axes{0}; // q 的有效长度（0 = 未填充；出参恒为求解器轴数：6 轴 6，7 轴 7）
+  double arm_angle_rad{kArmAngleNone};           // 该解对应的 ψ (rad)
+  int limit_joint{-1};                           // -1 = 限位内；1..DOF = 首个越限关节号
+  KinematicsStatus status{KinematicsStatus::OK}; // OK / SINGULAR_WRIST / SINGULAR_ELBOW /
+                                                 // SINGULAR_SHOULDER / SINGULAR_ARM_ANGLE
 };
 
 /**
@@ -239,37 +285,49 @@ public:
   KinematicsStatus fk(const Joints& joints, Poses& pose) const noexcept;
 
   /**
-   * @brief 逆运动学解算：基坐标系位姿 → 关节角（指定参考关节角）。
-   * @note 1) form = 0 为推荐路径：取限位内离 ref_joints 最近的候选；
-   *       2) form ∈ [1,8] 为分支编号 4*肩 + 2*肘 + 腕 + 1（三位各取 0/1，取值 1..8；逐值含义见
-   *       《SDK 使用说明文档》「本地运动学接口」）；
-   *       3) 6 轴标准球腕与 7 轴 S-R-S 走闭式解（不受参考点远近限制，能区分位置不可达与候选全部
-   *       越限），其余结构走参考点单种子数值路径、属局部收敛（失败返回 NOT_CONVERGED 或
-   *       LIMIT_EXCEEDED）；
-   *       4) 结构不在闭式覆盖内时 form ≠ 0 返回 NO_SOLUTION；「存在几何解但全部候选越限」返回
-   *       LIMIT_EXCEEDED，优先于 NO_SOLUTION；
-   *       5) ref_joints 可传任意 2kπ 等价表示；配置限位时参考点与解都先折到限位窗口内；
-   *       6) 失败时不改写 joints；OK / SINGULAR 均属成功，照常写出；
-   *       7) 7 轴不指定 arm_angle_rad 时按「连续性优先」选解：先用参考关节角自身的臂角 ψ(ref)
-   *       求解；该 ψ 无可行解、或其解不够连续（关节空间欧氏范数 > 0.25 rad，严格大于）时，在
-   *       ψ(ref) ± 12° 内按 1.5° 步长精搜；仍无足够连续的解才退回全周 16
-   * 点网格按最近解兜底。故以「上一周期关节角」 为参考点时，换支只在「ψ(ref) ± 12°
-   * 内确实找不到足够连续的解」时发生，而不是每帧都因
-   *       采样分辨率换支（末级全周网格仍可能漏掉该窗口之外的窄可行带）。
+   * @brief 逆运动学解算（默认参数）：等价于传入默认构造的 IKOptions。
+   * @note 1) form = 0：默认 branch_policy = PREFER_FORM，优先沿用 ref_joints 的 form；无同支解时
+   *       换支并返回 BRANCH_SWITCHED；同支解与参考点距离超过 0.25 rad 时改取更近候选（可能
+   *       同支），若换支则返回 BRANCH_SWITCHED（解仍写出）；
+   *       2) 有效解返回 OK / SINGULAR_WRIST / BRANCH_SWITCHED，不返回其他细化状态；失败时返回对应
+   *       失败状态；
+   *       3) 7 轴不指定臂角时按「连续性优先」选解：先用参考关节角自身的臂角 ψ(ref) 求解；该 ψ
+   *       无可行解、或其解不够连续（关节空间欧氏范数 > 0.25 rad，严格大于）时，在 ψ(ref) ± 12°
+   *       内按 1.5° 步长精搜；默认不做全周网格兜底（需要时显式传 branch_policy = NEAREST）。
    * @param[in] pose 目标位姿，6 元素 [X, Y, Z, A, B, C]（mm + rad）；工具手语义见 set_tool
-   * @param[in] ref_joints 参考关节角 (deg，长度 =
-   * 轴数)，用于自动选解与等效角归一；无默认值（必填，避免
-   * 选解被静默锚定在某个隐含参考点），离线一次性求解可传关节角零位
-   * @param[in] form 形态：0 = 自动（取离参考点最近者）；1~8 = 指定分支（编号定义见上）
-   * @param[in] arm_angle_rad 臂角 ψ (rad)，仅 7 轴有意义；默认 kArmAngleNone（NaN）表示不指定臂角。
-   * 给出有限值时为硬约束：7 轴按该 ψ 求解，6 轴因无冗余自由度返回 PARAM_ERR（不静默忽略）
+   * @param[in] ref_joints 参考关节角 (deg，长度 = 轴数)，用于自动选解与等效角归一；无默认值
    * @param[out] joints 关节角 (deg，长度 = 轴数)；未成功时不被改写
-   * @return OK=成功；SINGULAR=成功且处于腕奇异邻域（解有效）；其余取值为失败（区分见
-   * KinematicsStatus）；PARAM_ERR=入参 / 模型非法（模型不合法、位姿或参考角含非有限值、form
-   * 越界、6 轴指定臂角）
+   * @return OK / SINGULAR_WRIST / BRANCH_SWITCHED=成功；其余取值为失败（区分见 KinematicsStatus）
    */
-  KinematicsStatus ik(const Poses& pose, Joints& joints, const Joints& ref_joints, int form = 0,
-                      double arm_angle_rad = kArmAngleNone) const noexcept;
+  KinematicsStatus ik(const Poses& pose, Joints& joints, const Joints& ref_joints) const noexcept;
+
+  /**
+   * @brief 逆运动学解算（显式求解参数）。
+   * @note 1) opts.form ∈ [1,8] 为分支编号 4*肩 + 2*肘 + 腕 + 1（逐值含义见《SDK 使用说明文档》
+   *       「本地运动学接口」），此时 branch_policy 不参与选支，但仍控制相位 2；
+   *       2) opts.branch_policy = PREFER_FORM（默认）：优先沿用 ref_joints 的 form；无同支解时
+   *       换支并返回 BRANCH_SWITCHED；同支解与参考点距离超过 0.25 rad 时改取更近候选（可能
+   *       同支），若换支则返回 BRANCH_SWITCHED（解有效）；LOCK_FORM：同支无解时返回该次求解
+   *       的失败状态（NO_SOLUTION / LIMIT_EXCEEDED / UNREACHABLE / NOT_CONVERGED），不写出、
+   *       不换支；
+   *       3) 默认路径可能返回 BRANCH_SWITCHED；SINGULAR_ELBOW / SINGULAR_SHOULDER /
+   *       SINGULAR_ARM_ANGLE 仅在显式修改对应字段时返回，多个条件同时满足
+   *       按优先级只返回一个：腕 → ψ 无定义（自由 ψ）→ 肘 → 肩 → BRANCH_SWITCHED → OK；
+   *       4) opts.psi_samples 控制 7 轴末级全周网格点数，仅 branch_policy = NEAREST 生效
+   *       （0 = 不做全周网格），取值 [0, kDefaultPsiSamples]；
+   *       5) 6 轴指定有限 ψ 返回 PARAM_ERR；ref_joints 的 form 无法唯一判定（分支重合位形）时
+   *       PREFER_FORM / LOCK_FORM 退化为 NEAREST 选支，仍不做相位 2；
+   *       6) 本地逆解仅支持闭式结构（标准球腕 6 轴 / S-R-S 7 轴），结构不覆盖时返回
+   *       NO_SOLUTION；「存在几何解但全部候选越限」返回 LIMIT_EXCEEDED，优先于 NO_SOLUTION。
+   * @param[in] pose 目标位姿，6 元素 [X, Y, Z, A, B, C]（mm + rad）；工具手语义见 set_tool
+   * @param[in] ref_joints 参考关节角 (deg，长度 = 轴数)，用于自动选解与等效角归一
+   * @param[in] opts 求解参数；默认构造 = 默认重载行为
+   * @param[out] joints 关节角 (deg，长度 = 轴数)；未成功时不被改写
+   * @return OK / SINGULAR_* / BRANCH_SWITCHED=成功；其余取值为失败（区分见 KinematicsStatus）；
+   * PARAM_ERR=入参 / 模型非法（含 form / ψ / psi_samples 越界）
+   */
+  KinematicsStatus ik(const Poses& pose, Joints& joints, const Joints& ref_joints,
+                      const IKOptions& opts) const noexcept;
 
   /**
    * @brief 关节角 → 臂角 ψ（仅 7 轴）。
@@ -289,17 +347,24 @@ public:
    *       与本类 ik 有意不同：后者对 6 轴给有限臂角返回 PARAM_ERR；
    *       2) 7 轴：写入指定 ψ 下的 ≤ kMaxBranches 支（ψ 是硬约束）；默认 kArmAngleNone（NaN）代表
    *       未指定 → PARAM_ERR；
-   *       3) 只写入限位内且收敛的解，按 form 升序，q 为规范代表；条数可小于 8（个别分支在该位姿
-   *       不存在，如腕奇异时退化），不是错误；
-   *       4) 失败时 out 为空；本接口不标 noexcept，需要零分配可先 out.reserve(kMaxBranches)。
+   *       3) 默认只写入限位内且收敛的解，按 form 升序，q 为规范代表；条数可小于 8（个别分支在该
+   *       位姿不存在，如腕奇异时退化），不是错误；
+   *       4) include_out_of_limit = true 时越限候选也写入：limit_joint 给出首个越限关节号
+   *       （1..DOF），-1 表示限位内；status 表达该候选的奇异类型，与限位信息互不覆盖；
+   *       5) 聚合返回值：只要有任一写入候选处于限位内，即按现有语义返回 OK / SINGULAR_WRIST；
+   *       全部写入候选越限时返回 LIMIT_EXCEEDED（此时 out 仍非空，是诊断用途）；
+   *       6) 失败时 out 为空；本接口不标 noexcept，需要零分配可先 out.reserve(kMaxBranches)。
    * @param[in] pose 目标位姿，6 元素 [X, Y, Z, A, B, C]（mm + rad）；工具手语义见 set_tool
    * @param[out] out 候选解集，按 form 升序；失败时为空
    * @param[in] arm_angle_rad 臂角 ψ (rad)，仅 7 轴有意义；默认 kArmAngleNone（NaN）表示未指定
-   * @return OK=成功；SINGULAR=成功且至少一支处于腕奇异邻域；UNREACHABLE / NO_SOLUTION /
-   * LIMIT_EXCEEDED / NOT_CONVERGED=求解失败；PARAM_ERR=入参 / 模型非法、或 7 轴未指定臂角
+   * @param[in] include_out_of_limit 是否写出越限候选（默认 false，保持原行为）
+   * @return OK=成功；SINGULAR_WRIST=成功且至少一支处于腕奇异邻域；LIMIT_EXCEEDED=候选全部越限
+   * 或不存在限位内解；UNREACHABLE / NO_SOLUTION / NOT_CONVERGED=求解失败；PARAM_ERR=入参 / 模型
+   * 非法、或 7 轴未指定臂角
    */
   KinematicsStatus ik_all(const Poses& pose, std::vector<IKSolution>& out,
-                          double arm_angle_rad = kArmAngleNone) const;
+                          double arm_angle_rad = kArmAngleNone,
+                          bool include_out_of_limit = false) const;
 
   /**
    * @brief ψ ∈ [lo, hi] 内按 step 采样并逐点求分支（离散采样，非全集）。仅 7 轴。
@@ -313,7 +378,7 @@ public:
    * @param[in] lo 下界 (rad)
    * @param[in] hi 上界 (rad)
    * @param[in] step 步长 (rad)，须 > 0
-   * @return OK=成功；SINGULAR=成功且至少一支处于腕奇异邻域；UNREACHABLE / NO_SOLUTION /
+   * @return OK=成功；SINGULAR_WRIST=成功且至少一支处于腕奇异邻域；UNREACHABLE / NO_SOLUTION /
    * LIMIT_EXCEEDED / NOT_CONVERGED=求解失败；PARAM_ERR=入参 / 模型非法、或 6 轴调用
    */
   KinematicsStatus ik_arm_angle_samples(const Poses& pose, std::vector<IKSolution>& out, double lo,
