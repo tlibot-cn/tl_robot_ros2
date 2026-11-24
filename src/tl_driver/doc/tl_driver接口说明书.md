@@ -35,10 +35,7 @@
 |V1.26 | 2026-11-03 | 新增 9.7 [设置示教模式类型](#97-设置示教模式类型)、9.8 [查询示教模式类型](#98-查询示教模式类型) 服务（`SetTeachType.srv` / `GetTeachType.srv`）；开启力引导拖拽需 `set_drag_mode(1)` + `set_teach_type(1)` 两步且顺序不可颠倒；服务数 39 → 41 |
 |V1.27 | 2026-11-03 | 新增 15.5–15.10：周期同步速度模式（CSV）与周期同步扭矩模式（CST）的开关服务与下发话题（服务数 41 → 45，订阅 1 → 3）；两个话题采用 `Float64MultiArray`，速度 rad/s、扭矩 ‰ 额定扭矩；力矩补偿尚未实现 |
 |V1.28 | 2026-11-03 | `fk`/`ik` 新增 `source`（0=控制器 1=本地模型）；`reference_pos` 改为必填；`CartesianPose.arm_angle` 明确为冗余臂角 ψ；启动时校验控制器机型轴数与 `arm_joints`，不一致即退出；删除 `set_axis_zero_pos` 服务（服务数 45 → 44） |
-|V1.29 | 2026-11-10 | 新增 9.9 [/tl_driver/drag_trajectory_playback](#99-回放控制器内拖动轨迹)、9.10 [/tl_driver/drag_trajectory_delete](#910-删除控制器内拖动轨迹) 与 15.11 [设置 CST 重力补偿开关](#1511-设置-cst-重力补偿开关)（服务数 44 → 47）；**破坏性变更**：`/tl_driver/open_servo_cst` 类型由 `Trigger` 改为 `OpenServoCst`，通过 `disable_gravity_compensation` 选择，默认开启重力补偿；CST 不再声称「力矩补偿尚未实现」 |
-|V1.30 | 2026-11-12 | **破坏性变更**：9.9/9.10 的 `trajectory_name` 由 `.json` 改为只接受 `.txt`（V3 轨迹格式，SDK 对 `.json` 仅作兼容）；`ik`（`source=1`）的 7 轴未指定 `arm_angle` 时按「连续性优先」选解；**破坏性变更**：删除 `/tl_driver/joint_speed`、`/tl_driver/joint_torque` 话题与 `JointSpeed`、`JointTorque` 消息，关节速度/力矩改由 `/joint_states.velocity`（rad/s）/ `.effort`（‰ 额定扭矩）随 ACS 状态帧发布（`jointVel` / `torque` 字段）；参数 `feedback_rate` 更名为 `line_speed_rate`（语义不变，只作用于 `/tl_driver/line_speed`） |
-|V1.31 | 2026-11-23 | **破坏性变更**：`/tl_driver/ik` 收敛为本地模型（仅 `frame=1`），删除请求字段 `source`，响应 `success` 改为 `status`（`tl::KinematicsStatus`：0=OK、1=SINGULAR 均成功；2~5 失败；-1 参数/模型非法、-2 未连接）；控制器逆解改用 `/tl_driver/coord_transform`（`origin_coord=1/3`，`target_coord=0`）；5.6 补充控制器逆解与 TOOL 坐标系语义 |
-|V1.32 | 2026-11-24 | SDK 升级 V3.2（`V3.2.0-0`）：**破坏性变更** `ik` 的 `status` 按新 `KinematicsStatus` 重排（0~5 成功：OK / 腕·肘·肩奇异 / 臂角无定义 / 换支；6~9 失败），成功判定改为 `0 <= status <= 5`；**破坏性变更** `fk` 删除请求字段 `source`，收敛为本地模型（仅 `frame=1`），响应 `bool success` 改为 `int32 status`（`tl::KinematicsStatus`）；**破坏性变更** 9.3 `set_drag_mode` 删除 3D 鼠标模式（0/1/2 = 无/力矩/位置），旧值 `2`/`3` 语义改变；新增 9.11 `/tl_driver/drag_trajectory_list`（服务数 47 → 48） |
+|V1.29 | 2026-11-24 | SDK 升级 V3.2；**破坏性变更** FK/IK 收敛为本地模型并删除 `source`，IK `status` 改用 `KinematicsStatus`（0~5 成功、6~9 失败）；新增 9.9/9.10/9.11 拖动轨迹接口（`.txt`）；`set_drag_mode` 收敛为 0/1/2，`open_servo_cst` 改为 `OpenServoCst`；关节速度/力矩并入 `/joint_states`；`feedback_rate` 更名 `line_speed_rate`；7 轴 IK 连续性选解；控制器逆解走 `coord_transform` |
 
 </div>
 
@@ -260,7 +257,7 @@ ros2 service call /tl_driver/power_off std_srvs/srv/Trigger "{}"
 | name | string[] | — | 各关节名称 |
 
 > `velocity` / `effort` 需控制器支持 `RobotState.jointSpeed` / `jointTorque` 查询开关；固件不支持时驱动自动退回只订阅关节角，两个数组为空。
-> 历史：力矩与关节速度曾由独立话题 `/tl_driver/joint_torque`、`/tl_driver/joint_speed` 发布，V1.30 起并入本话题，两个话题与 `JointTorque`、`JointSpeed` 消息已删除。
+> 历史：力矩与关节速度曾由独立话题 `/tl_driver/joint_torque`、`/tl_driver/joint_speed` 发布，V1.29 起并入本话题，两个话题与 `JointTorque`、`JointSpeed` 消息已删除。
 #### 命令示例
 ```
 ros2 topic echo /joint_states
@@ -611,7 +608,7 @@ ros2 service call /tl_driver/get_arm_status tl_ros2_interface/srv/GetArmStatus "
 |--------|------|------|------|
 | line_speed | float64 | m/s | 当前末端线速度；查询失败为 NaN |
 
-> 数据源为 6001 端口同步查询（`get_current_line_speed_and_joint_speed`，同一次查询返回的关节速度被丢弃），按 `line_speed_rate`（默认 10 Hz，取 0 关闭）发布；查询失败时该周期不发布。外部轴同步速度与关节速度不再由本接口发布：关节速度随 `/joint_states.velocity` 发布。服务 `/tl_driver/get_current_line_joint_speed` 已删除；原 `/tl_driver/joint_speed`、`/tl_driver/joint_torque` 话题及 `JointSpeed`、`JointTorque` 消息已在 V1.30 删除。
+> 数据源为 6001 端口同步查询（`get_current_line_speed_and_joint_speed`，同一次查询返回的关节速度被丢弃），按 `line_speed_rate`（默认 10 Hz，取 0 关闭）发布；查询失败时该周期不发布。外部轴同步速度与关节速度不再由本接口发布：关节速度随 `/joint_states.velocity` 发布。服务 `/tl_driver/get_current_line_joint_speed` 已删除；原 `/tl_driver/joint_speed`、`/tl_driver/joint_torque` 话题及 `JointSpeed`、`JointTorque` 消息已在 V1.29 删除。
 #### 命令示例
 ```
 ros2 topic echo /tl_driver/line_speed --once
@@ -1992,7 +1989,7 @@ ros2 service call /tl_driver/set_servo_cst_gravity_compensation std_srvs/srv/Set
 | `get_robot_state` | srv | `/joint_states`、`/tcp_pose`、`get_arm_status` | V1.16 |
 | `get_joint_temperature`、`get_joint_voltage` | srv | `/tl_driver/joint_monitor` | V1.16 |
 | `get_motor_current` | srv | `/tl_driver/joint_monitor` | V1.16 |
-| `get_current_motor_torque` | srv | `/joint_states.effort`（V1.30 起） | V1.16 |
+| `get_current_motor_torque` | srv | `/joint_states.effort`（V1.29 起） | V1.16 |
 | `get_current_line_joint_speed` | srv | `/tl_driver/line_speed`（关节速度见 `/joint_states.velocity`） | V1.16 |
 | `get_joint_software_version` | srv | 启动日志逐轴打印 | V1.16 |
 | `set_robot_joint_param` | srv | 无 | V1.16 |

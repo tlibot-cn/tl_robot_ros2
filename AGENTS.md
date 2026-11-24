@@ -70,7 +70,7 @@ ROS 侧统一 REP 103（m / rad / rad/s），控制器/SDK 侧 mm / 度 / %，�
 
 | 路径 | 用途 |
 |---|---|
-| `src/tl_ros2_interface/` | 13 个 `.msg` + 2 个 `.action` + 28 个 `.srv`，**必须最先构建**。`msg/` 不等于话题清单：6 个话题载荷、1 个 action goal 载荷（`MoveCommand`）、6 个仅作 srv 嵌套参数 |
+| `src/tl_ros2_interface/` | 11 个 `.msg` + 2 个 `.action` + 34 个 `.srv`，**必须最先构建**。`msg/` 不等于话题清单：4 个话题载荷、1 个 action goal 载荷（`MoveCommand`）、6 个仅作 srv 嵌套参数 |
 | `src/tl_driver/` | 驱动节点。`src/tl_driver_main.cpp`（入口）、`src/node/`（参数/回调组/注册）、`src/arm_session.*`、`src/arm_client.*`、`lib/`（预编译 SDK，只读） |
 | `src/tl_hardware/` | ros2_control `SystemInterface` 插件 |
 | `src/tl_teleop/` | VR 遥操作，100 Hz 控制线程；`lib/` 为 PXREA SDK，只读 |
@@ -148,9 +148,11 @@ ros2 launch tl_gazebo gazebo_tcb610_demo.launch.py          # Gazebo
 | msg/srv/话题/服务/action 增删改 | `CHANGELOG.md` + `src/tl_driver/doc/tl_driver接口说明书.md` |
 | launch / 参数 / YAML | 对应包 `README.md` |
 | 增删功能包、依赖 | `CHANGELOG.md` + 包表 + 该包 `README.md` |
-| 用户可见修复、SDK 升级、新臂型、行为变更 | `CHANGELOG.md` |
+| 用户可见修复、SDK 升级、新臂型、行为变更 | `CHANGELOG.md`（SDK 升级/依赖变化归入「变更」） |
 | 构建命令、命名规范、关键话题、臂型表 | 本文件 |
 | 动到被文档引用的路径/名称/命令 | 修正所有引用处 |
+
+> `CHANGELOG.md` 的收录范围与分类以 `.omp/rules/changelog-user-visible.md` 为准：仅用 新增/修复/变更/移除，不再单列「文档」「工程」。
 
 ## Important Files
 

@@ -156,7 +156,7 @@ tl_driver:
 │   ├── tl_tcb705v_driver.launch.py
 │   ├── tl_tcb710_driver.launch.py
 │   └── tl_tcb710v_driver.launch.py
-├── lib                            # SDK 库（V3.1.0，预编译，不可修改）
+├── lib                            # SDK 库（V3.2.0，预编译，不可修改）
 │   ├── arm                        # ARM 架构
 │   │   └── libtl_host.so
 │   ├── include                    # C/C++ API 头文件（扁平结构）
