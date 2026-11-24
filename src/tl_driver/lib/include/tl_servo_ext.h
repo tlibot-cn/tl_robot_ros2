@@ -229,6 +229,18 @@ TL_API Result close_servo_csv_mode(SOCKETFD socketFd);
 TL_API Result set_servo_csv_velocity(SOCKETFD socketFd, const std::vector<double>& targetVelocity);
 
 /**
+ * @brief 设置周期同步扭矩模式的重力补偿开关。
+ * @note 默认关闭；开启后 set_servo_cst_torque 下发的是重力之外的附加扭矩；
+ * 可在打开 CST 模式前或运行期间设置
+ * @param[in] socketFd socket（7000 伺服端口）
+ * @param[in] enable true=由控制器叠加重力补偿，false=纯扭矩透传
+ * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
+ * 未连接；-3=PARAM_ERR 参数错误；-4=OPERATION_NOT_ALLOWED
+ * 操作不允许；-5=EXCEPTION 异常；-6=TIMEOUT 超时
+ */
+TL_API Result set_servo_cst_gravity_compensation_enable(SOCKETFD socketFd, bool enable);
+
+/**
  * @brief 打开周期同步扭矩模式（CST，TCP 7000 连接）
  * @param socketFd socket（7000 伺服端口）
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT

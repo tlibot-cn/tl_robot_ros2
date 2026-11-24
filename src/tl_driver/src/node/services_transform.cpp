@@ -14,6 +14,7 @@
 #include "arm_client.hpp"
 #include "arm_sdk.hpp"
 #include "convert/units.hpp"
+#include "kinematics_status.hpp"
 #include "node/registrars.hpp"
 #include "node/driver_node.hpp"
 
@@ -30,10 +31,42 @@ namespace
 constexpr int kMinPoseFrame = static_cast<int>(tl::Coord::BASE);
 constexpr int kMaxPoseFrame = static_cast<int>(tl::Coord::USER);
 constexpr std::size_t kMaxJoints = 7;
+// 驱动级失败码：-1 参数/内部错误，-2 未连接；与 SDK 返回值分开。
+constexpr int kStatusParamError = -1;
+constexpr int kStatusNotConnected = -2;
 
 bool is_valid_pose_frame(int frame)
 {
   return frame >= kMinPoseFrame && frame <= kMaxPoseFrame;
+}
+
+/// @brief 关节向量长度校验：只允许 6/7 元素，且不得少于本体轴数（7 轴机不接受 6 元素）。
+std::string joint_count_error(const DriverNode& node, std::size_t count, const char *field)
+{
+  if (count != 6 && count != 7)
+  {
+    return std::string(field) + " must contain 6 or 7 elements";
+  }
+  if (count < static_cast<std::size_t>(node.ndof()))
+  {
+    return std::string(field) + " must contain at least " + std::to_string(node.ndof()) + " elements";
+  }
+  return {};
+}
+
+/// @brief 本地后端可用性与坐标系校验；返回空串表示通过。
+std::string local_request_error(const DriverNode& node, int frame)
+{
+  const LocalKinematics& local = node.local_kinematics();
+  if (!local.available())
+  {
+    return std::string("Local kinematics is unavailable: ") + local.error();
+  }
+  if (frame != static_cast<int>(tl::Coord::BASE))
+  {
+    return "Local kinematics only supports frame 1 (base)";
+  }
+  return {};
 }
 
 const char *pose_frame_id(int frame)
@@ -163,49 +196,45 @@ void handle_coord_transform_service(DriverNode& node,
 void handle_fk_service(DriverNode& node, const std::shared_ptr<tl_ros2_interface::srv::Fk::Request> request,
                        std::shared_ptr<tl_ros2_interface::srv::Fk::Response> response)
 {
+  // 失败路径先置 -1；成功时写入本地求解器的原始返回值（0=OK）。
+  response->status = kStatusParamError;
+
   if (!node.session().is_connected())
   {
-    response->success = false;
+    response->status = kStatusNotConnected;
     response->message = "Arm is not connected";
     return;
   }
 
-  if (!is_valid_pose_frame(request->frame))
+  const std::string joints_error = joint_count_error(node, request->joints.size(), "joints");
+  if (!joints_error.empty())
   {
-    response->success = false;
-    response->message = "frame must be 1 (base), 2 (tool) or 3 (user)";
+    response->message = joints_error;
     return;
   }
 
-  if (request->joints.size() != 6 && request->joints.size() != 7)
+  // 本地模型只支持基坐标系，并会检查模型是否可用。
+  const std::string local_error = local_request_error(node, request->frame);
+  if (!local_error.empty())
   {
-    response->success = false;
-    response->message = "joints must contain 6 or 7 elements";
+    response->message = local_error;
     return;
   }
 
-  // ROS 关节角为 rad，SDK 正解要求度制。
+  // ROS 关节角为 rad，本地解算要求度制。
   std::vector<double> joints_deg = request->joints;
   convert::joint_rad_to_deg(joints_deg, joints_deg.size());
 
-  std::vector<double> pose;
-  const tl::Result ret =
-      tl::get_forward_kinematics(node.session().fd(), static_cast<tl::Coord>(request->frame), joints_deg, pose);
-  if (ret != tl::Result::SUCCESS)
+  const LocalKinematics& local = node.local_kinematics();
+  LocalKinematics::Pose pose{};
+  const tl::KinematicsStatus status = local.fk(joints_deg, pose);
+  response->status = static_cast<int>(status);
+  if (status != tl::KinematicsStatus::OK)
   {
-    response->success = false;
-    response->message = std::string("Failed to compute forward kinematics: ") + arm_client::result_to_string(ret);
+    response->message = std::string("Failed to compute forward kinematics (local): ") + status_text(status);
     return;
   }
 
-  if (pose.size() < 6)
-  {
-    response->success = false;
-    response->message = "SDK returned malformed pose";
-    return;
-  }
-
-  // SDK 输出 [x, y, z] mm + [rx, ry, rz] rad；第 7 位为外部轴关节角（度）。
   auto& out = response->pose;
   out.header.stamp = node.now();
   out.header.frame_id = pose_frame_id(request->frame);
@@ -215,10 +244,23 @@ void handle_fk_service(DriverNode& node, const std::shared_ptr<tl_ros2_interface
   out.rpy.x = pose[3];
   out.rpy.y = pose[4];
   out.rpy.z = pose[5];
-  out.arm_angle = pose.size() > 6 ? convert::deg_to_rad(pose[6]) : 0.0;
-
-  response->success = true;
-  response->message = "Forward kinematics computed successfully";
+  out.arm_angle = 0.0;
+  std::string message = "Forward kinematics computed successfully (local)";
+  if (local.dof() == 7)
+  {
+    double arm_angle_rad = 0.0;
+    if (local.arm_angle_of(joints_deg, arm_angle_rad) == tl::KinematicsStatus::OK)
+    {
+      out.arm_angle = arm_angle_rad;
+    }
+    else
+    {
+      // ψ 在奇异/退化位姿处无定义，用 NaN 明确表示不可用，避免伪造 0。
+      out.arm_angle = std::numeric_limits<double>::quiet_NaN();
+      message += "; arm angle undefined";
+    }
+  }
+  response->message = message;
 }
 
 void handle_ik_service(DriverNode& node, const std::shared_ptr<tl_ros2_interface::srv::Ik::Request> request,
@@ -226,59 +268,83 @@ void handle_ik_service(DriverNode& node, const std::shared_ptr<tl_ros2_interface
 {
   // 失败路径一律返回 NaN，避免消费方把默认 0 当成有效关节角。
   fill_invalid_joints(response->joints);
+  response->status = kStatusParamError;
 
   if (!node.session().is_connected())
   {
-    response->success = false;
+    response->status = kStatusNotConnected;
     response->message = "Arm is not connected";
     return;
   }
 
   if (!is_valid_pose_frame(request->frame))
   {
-    response->success = false;
     response->message = "frame must be 1 (base), 2 (tool) or 3 (user)";
     return;
   }
 
-  if (!request->reference_pos.empty() && request->reference_pos.size() != 6 && request->reference_pos.size() != 7)
+  if (request->reference_pos.empty())
   {
-    response->success = false;
-    response->message = "reference_pos must be empty or contain 6 or 7 elements";
+    response->message = "reference_pos is required";
     return;
   }
 
-  // SDK 位姿为 mm + rad；ROS 位姿为 m + rad，只换算前 3 个位置元素。
-  std::vector<double> pose = {
-      request->pose.position.x, request->pose.position.y, request->pose.position.z,
-      request->pose.rpy.x,      request->pose.rpy.y,      request->pose.rpy.z,
-  };
-  convert::cartesian_m_to_mm(pose);
-  // 始终补第 7 位外部轴（SDK 关节坐标，度制）；6 轴机型补 0，避免“外部轴=0”退化为无外部轴语义。
-  pose.push_back(convert::rad_to_deg(request->pose.arm_angle));
+  const std::string reference_error = joint_count_error(node, request->reference_pos.size(), "reference_pos");
+  if (!reference_error.empty())
+  {
+    response->message = reference_error;
+    return;
+  }
+
+  const std::string local_error = local_request_error(node, request->frame);
+  if (!local_error.empty())
+  {
+    response->message = local_error;
+    return;
+  }
 
   std::vector<double> reference_pos = request->reference_pos;
   convert::joint_rad_to_deg(reference_pos, reference_pos.size());
 
-  std::vector<double> joints_deg;
-  const tl::Result ret = tl::get_inverse_kinematics(node.session().fd(), static_cast<tl::Coord>(request->frame), pose,
-                                                    joints_deg, request->form, reference_pos);
-  if (ret != tl::Result::SUCCESS)
+  // 本地模型位姿为 mm + rad；ROS 位姿为 m + rad，只换算前 3 个位置元素。
+  const std::vector<double> pose = {
+      convert::m_to_mm(request->pose.position.x),
+      convert::m_to_mm(request->pose.position.y),
+      convert::m_to_mm(request->pose.position.z),
+      request->pose.rpy.x,
+      request->pose.rpy.y,
+      request->pose.rpy.z,
+  };
+
+  const LocalKinematics& local = node.local_kinematics();
+  const LocalKinematics::Pose local_pose{pose[0], pose[1], pose[2], pose[3], pose[4], pose[5]};
+  std::array<double, kMaxJoints> local_joints_deg{};
+  int axes = 0;
+  // 7 轴把 arm_angle 当 ψ 硬约束；6 轴由封装内部忽略。
+  const tl::KinematicsStatus status =
+      local.ik(local_pose, reference_pos, request->form, request->pose.arm_angle, local_joints_deg, axes);
+  response->status = static_cast<int>(status);
+  // axes=0 表示求解器未写出任何解（失败时 SDK 不改写出参）；成功状态一律写出 axes=6/7。
+  if (axes == 0)
   {
-    response->success = false;
-    response->message = std::string("Failed to compute inverse kinematics: ") + arm_client::result_to_string(ret);
+    response->message = std::string("Failed to compute inverse kinematics (local): ") + status_text(status);
     return;
   }
 
-  // SDK 输出度制；定长 7 元素，缺失元素保持 NaN。
-  const std::size_t count = std::min(joints_deg.size(), kMaxJoints);
-  for (std::size_t i = 0; i < count; ++i)
+  for (int i = 0; i < axes; ++i)
   {
-    response->joints[i] = convert::deg_to_rad(joints_deg[i]);
+    response->joints[i] = convert::deg_to_rad(local_joints_deg[i]);
   }
-
-  response->success = true;
-  response->message = "Inverse kinematics computed successfully";
+  // 与控制器输出保持一致：6 轴第 7 位为外部轴 0，而不是 NaN。
+  if (axes == 6)
+  {
+    response->joints[6] = 0.0;
+  }
+  response->message = "Inverse kinematics computed successfully (local)";
+  if (status != tl::KinematicsStatus::OK)
+  {
+    response->message += std::string(" (") + status_text(status) + ")";
+  }
 }
 
 } // namespace

@@ -23,17 +23,24 @@ inline std::array<double, kMaxStateAxes> invalid_axes()
 }
 
 /// @brief 一帧机器人状态中驱动关心的字段。
-/// @note 保留控制器原始单位：`acs` 为度；`mcs` 为 [mm, mm, mm, 度, 度, 度, ...]。
+/// @note 保留控制器原始单位：`acs` 为度；`mcs` 为 [mm, mm, mm, 度, 度, 度, ...]；
+///       `joint_vel` 为度/秒（与 ACS 同一单位制）；`torque` 为额定扭矩千分之一（‰）。
 ///       单位换算在发布边界完成，解析层不做任何假设。
 /// @note 数值承载在定长数组里，避免每帧动态分配；`*_count` 为本次帧的有效元素个数。
 ///       无帧时 count 为 0；帧中缺少该字段时 count 为 0 且数组元素为 NaN。
+/// @note `joint_vel` / `torque` 只在 `RobotState.jointSpeed` / `jointTorque` 打开后由控制器附带；
+///       字段解析失败按缺失处理，不影响同一帧的 `acs`/`mcs`（避免辅助字段拖垮位置流）。
 struct RobotStateFrameData
 {
   int channel{-1};
   std::array<double, kMaxStateAxes> acs = invalid_axes();
   std::array<double, kMaxStateAxes> mcs = invalid_axes();
+  std::array<double, kMaxStateAxes> joint_vel = invalid_axes();
+  std::array<double, kMaxStateAxes> torque = invalid_axes();
   std::size_t acs_count{0};
   std::size_t mcs_count{0};
+  std::size_t joint_vel_count{0};
+  std::size_t torque_count{0};
 };
 
 /// @brief 解析一帧连续状态报文。

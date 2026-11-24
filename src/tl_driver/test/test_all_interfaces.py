@@ -10,14 +10,14 @@ test_all_interfaces.py
   §4  信息查询      get_controller_id / get_library_version / get_robot_joint_param /
                     get_current_coord / get_coord_num / get_dh_param / get_pos_reachable
                     + 话题 /joint_states、/tcp_pose、
-                    /tl_driver/joint_monitor、/tl_driver/joint_torque、
-                    /tl_driver/joint_speed、/tl_driver/line_speed、
+                    /tl_driver/joint_monitor、/tl_driver/line_speed、
+                    (/joint_states 含 velocity/effort)、
                     /tl_driver/error_info（事件驱动，自检期间通常无数据）
   §4  信息查询      get_speed / get_arm_status / fk / ik
   §5  基础设置      set_speed / coord_transform
   §8  坐标系与工具  set_tool_param / set_user_coord / set_coord_num / set_current_coord
   §9  示教操作      stop_jogging / set_drag_mode / get_drag_status / track_save
-  §10 错误/零位    clear_error
+  §10 错误        clear_error
   §12 模式与IO     set_current_mode / get_current_mode / set_digital_output / get_digital_input_output
   §13 Modbus       modbus_write / modbus_read
   §14 队列运动      queue_motion_set_status / queue_motion_stop
@@ -25,7 +25,7 @@ test_all_interfaces.py
 
 危险接口（会触发运动、改动标定/IP、删除文件等）默认跳过，仅打印提示：
   move_joint / move_linear action / start_jogging / queue_motion_movej / open_servoj /
-  track_save / set_axis_zero_pos / set_controller_ip / set_default_cartesian_param
+  track_save / set_controller_ip / set_default_cartesian_param
 
 @usage
   方式一（推荐，需已 source install/setup.bash）:
@@ -97,8 +97,6 @@ from tl_ros2_interface.msg import (
     CartesianPose,
     ErrorInfo,
     JointMonitor,
-    JointSpeed,
-    JointTorque,
     LineSpeed,
     ToolParam,
     ModbusMasterParam,
@@ -107,6 +105,7 @@ from tl_ros2_interface.msg import (
 )
 from tl_ros2_interface.srv import (
     CoordTransform,
+    DragTrajectoryList,
     Fk,
     GetArmStatus,
     GetCoordNum,
@@ -124,7 +123,6 @@ from tl_ros2_interface.srv import (
     OpenServoJ,
     QueueMotionMoveJ,
     QueueMotionSetStatus,
-    SetAxisZeroPos,
     SetControllerIP,
     SetCoordNum,
     SetCurrentCoord,
@@ -149,8 +147,6 @@ class DriverQuickTest(Node):
         self.joint_state = None
         self.tcp_pose = None
         self.joint_monitor = None
-        self.joint_torque = None
-        self.joint_speed = None
         self.line_speed = None
         self.error_info = None
 
@@ -170,23 +166,11 @@ class DriverQuickTest(Node):
         self.create_subscription(
             JointMonitor, "/tl_driver/joint_monitor", self._on_joint_monitor, reliable
         )
-        self.create_subscription(
-            JointTorque, "/tl_driver/joint_torque", self._on_joint_torque, reliable
-        )
-        self.create_subscription(
-            JointSpeed, "/tl_driver/joint_speed", self._on_joint_speed, reliable
-        )
         self.create_subscription(LineSpeed, "/tl_driver/line_speed", self._on_line_speed, reliable)
         self.create_subscription(ErrorInfo, "/tl_driver/error_info", self._on_error_info, reliable)
 
     def _on_joint_monitor(self, msg):
         self.joint_monitor = msg
-
-    def _on_joint_torque(self, msg):
-        self.joint_torque = msg
-
-    def _on_joint_speed(self, msg):
-        self.joint_speed = msg
 
     def _on_line_speed(self, msg):
         self.line_speed = msg
@@ -280,6 +264,8 @@ class DriverQuickTest(Node):
         if self.joint_state is not None:
             self.logger.info(f"      关节数 = {len(self.joint_state.position)}")
             self.print_arr("      position(rad) ", self.joint_state.position)
+            self.print_arr("      velocity(rad/s) ", self.joint_state.velocity)
+            self.print_arr("      effort(‰额定) ", self.joint_state.effort)
         else:
             self.logger.warn("      未收到 /joint_states")
 
@@ -304,19 +290,8 @@ class DriverQuickTest(Node):
         else:
             self.logger.warn("      未收到 /tl_driver/joint_monitor")
 
-        self.logger.info("  --- /tl_driver/joint_torque（关节力矩）---")
+        self.logger.info("  --- /tl_driver/line_speed ---")
         self.spin_for(2.0)
-        if self.joint_torque is not None:
-            self.print_arr("      motor_torque(‰额定) ", self.joint_torque.motor_torque)
-        else:
-            self.logger.warn("      未收到 /tl_driver/joint_torque")
-
-        self.logger.info("  --- /tl_driver/joint_speed + /tl_driver/line_speed ---")
-        self.spin_for(2.0)
-        if self.joint_speed is not None:
-            self.print_arr("      joint_speed(rad/s) ", self.joint_speed.joint_speed)
-        else:
-            self.logger.warn("      未收到 /tl_driver/joint_speed")
         if self.line_speed is not None:
             self.logger.info(f"      line_speed = {self.line_speed.line_speed:.3f} m/s")
         else:
@@ -377,28 +352,54 @@ class DriverQuickTest(Node):
         if resp and resp.success:
             self.logger.info(f"      speed = {resp.speed:.1f}%")
 
-        # fk/ik：用当前关节角与末端位姿做一次正逆解往返
+        # fk：用当前关节角做一次本地正解
         if self.joint_state is not None:
             cli = self.wait_service("/tl_driver/fk", Fk)
             req = Fk.Request()
             req.frame = 1
             req.joints = list(self.joint_state.position)
-            resp = self.call_srv(cli, req, "fk(frame=1)")
-            if resp and resp.success:
+            resp = self.call_srv(cli, req, "fk(frame=1, local)")
+            if resp and resp.status == 0:
                 p = resp.pose.position
                 self.logger.info(f"      pos = [{p.x:.3f}, {p.y:.3f}, {p.z:.3f}] m")
+            elif resp:
+                self.logger.warning(f"      fk failed: status={resp.status}, {resp.message}")
 
-        if self.tcp_pose is not None:
+        if self.tcp_pose is not None and self.joint_state is not None:
+            # 控制器逆解：coord_transform(origin=1 基坐标 → target=0 关节)
+            cli = self.wait_service("/tl_driver/coord_transform", CoordTransform)
+            req = CoordTransform.Request()
+            req.origin_coord = 1
+            req.target_coord = 0
+            req.form = 0
+            req.origin_pos = [
+                self.tcp_pose.position.x,
+                self.tcp_pose.position.y,
+                self.tcp_pose.position.z,
+                self.tcp_pose.rpy.x,
+                self.tcp_pose.rpy.y,
+                self.tcp_pose.rpy.z,
+                0.0,
+            ]
+            req.reference_pos = list(self.joint_state.position)
+            resp = self.call_srv(cli, req, "coord_transform(1->0 控制器逆解)")
+            if resp and resp.success:
+                self.print_arr("      controller joints(rad) ", resp.target_pos)
+
+            # 本地逆解：/tl_driver/ik（本地模型，仅基坐标）
             cli = self.wait_service("/tl_driver/ik", Ik)
             req = Ik.Request()
             req.frame = 1
             req.pose = self.tcp_pose
             req.form = 0
-            if self.joint_state is not None:
-                req.reference_pos = list(self.joint_state.position)
-            resp = self.call_srv(cli, req, "ik(frame=1)")
-            if resp and resp.success:
-                self.print_arr("      joints(rad) ", resp.joints)
+            # reference_pos 必填，用于选择离参考点最近的形态
+            req.reference_pos = list(self.joint_state.position)
+            resp = self.call_srv(cli, req, "ik(frame=1 本地模型)")
+            # status：0~5 为成功（OK / 各类奇异 / 换支），6~9 失败，-1 参数错误、-2 未连接
+            if resp and 0 <= resp.status <= 5:
+                self.print_arr("      local joints(rad) ", resp.joints)
+            elif resp:
+                self.logger.warning(f"      local ik failed: status={resp.status}, {resp.message}")
 
     def test_basic_set(self):
         self.logger.info("\n========== §5 基础设置 ==========")
@@ -460,6 +461,9 @@ class DriverQuickTest(Node):
         req = TrackSave.Request()
         req.traj_name = "test_traj"
         self.call_srv(cli, req, "track_save")
+
+        cli = self.wait_service("/tl_driver/drag_trajectory_list", DragTrajectoryList)
+        self.call_srv(cli, DragTrajectoryList.Request(), "drag_trajectory_list")
 
         cli = self.wait_service("/tl_driver/clear_error", Trigger)
         self.call_trigger(cli, "clear_error")
@@ -569,7 +573,6 @@ class DriverQuickTest(Node):
         self.logger.info("\n========== 极高风险接口汇总（均跳过）==========")
         for label, reason in [
             ("move_joint/move_linear action", "会触发运动"),
-            ("set_axis_zero_pos", "改动零点标定"),
             ("set_controller_ip", "修改控制器网络"),
             ("set_default_cartesian_param", "重置笛卡尔参数"),
         ]:

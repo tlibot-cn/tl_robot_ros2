@@ -137,7 +137,7 @@ ros2 service call /tl_driver/stop_jogging tl_ros2_interface/srv/Jogging "{axis: 
 ```
 
 ### `/tl_driver/set_drag_mode` — `tl_ros2_interface/srv/SetDragMode`
-请求：`int32 mode`（0=无 1=3D鼠标 2=力矩 3=位置）
+请求：`int32 mode`（0=无 1=力矩 2=位置；V3.2 SDK 起无 3D 鼠标模式）
 ```bash
 ros2 service call /tl_driver/set_drag_mode tl_ros2_interface/srv/SetDragMode "{mode: 2}"
 ```
@@ -177,9 +177,20 @@ ros2 service call /tl_driver/coord_transform tl_ros2_interface/srv/CoordTransfor
   reference_pos: []
 }"
 ```
+控制器逆解（基坐标位姿 → 关节角）：
+```bash
+ros2 service call /tl_driver/coord_transform tl_ros2_interface/srv/CoordTransform "{
+  origin_coord: 1,
+  target_coord: 0,
+  form: 0,
+  origin_pos: [0.28, 0.0, 0.47, 3.14, 0.0, 0.0, 0.0],
+  reference_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+}"
+```
 
 ### `/tl_driver/fk` — 正运动学（关节角 → TCP 位姿）
-请求：`frame`（1=基坐标 2=工具 3=用户）、`joints`（rad，6 或 7 元素）
+请求：`frame`（仅 1=基坐标）、`joints`（rad，6 或 7 元素）
+响应：`status`（`tl::KinematicsStatus`：0=OK、-1=参数/模型非法；驱动级 -2=未连接）、`message`、`pose`
 ```bash
 ros2 service call /tl_driver/fk tl_ros2_interface/srv/Fk "{
   frame: 1,
@@ -187,8 +198,10 @@ ros2 service call /tl_driver/fk tl_ros2_interface/srv/Fk "{
 }"
 ```
 
-### `/tl_driver/ik` — 逆运动学（TCP 位姿 → 关节角）
-请求：`frame`（1=基坐标 2=工具 3=用户）、`pose`（m + rad）、`form`、`reference_pos`（rad，可选）
+### `/tl_driver/ik` — 本地逆运动学（TCP 位姿 → 关节角）
+请求：`frame`（仅 1=基坐标）、`pose`（m + rad）、`form`、`reference_pos`（rad，**必填**）
+响应：`status`（0~5 成功：0=OK、1=腕/2=肘/3=肩奇异、4=臂角无定义、5=换支；6~9 失败；-1 参数/模型非法；-2 未连接）、`message`、`joints`
+> 控制器逆解改用 `/tl_driver/coord_transform`（`origin_coord=1`、`target_coord=0`）。
 ```bash
 ros2 service call /tl_driver/ik tl_ros2_interface/srv/Ik "{
   frame: 1,
@@ -196,10 +209,10 @@ ros2 service call /tl_driver/ik tl_ros2_interface/srv/Ik "{
     header: {frame_id: 'base_link'},
     position: {x: 0.28, y: 0.0, z: 0.47},
     rpy: {x: 3.14, y: 0.0, z: 0.0},
-    arm_angle: 0.0
+    arm_angle: .nan
   },
   form: 0,
-  reference_pos: []
+  reference_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 }"
 ```
 
@@ -209,19 +222,17 @@ ros2 service call /tl_driver/ik tl_ros2_interface/srv/Ik "{
 |---|--------|------|----------|------|
 | 1 | `/tl_driver/get_arm_status` | `GetArmStatus` | — | `run_state` |
 | 2 | `/tl_driver/joint_monitor` | `JointMonitor` | — | 电流、温度、电压 |
-| 3 | `/tl_driver/joint_torque` | `JointTorque` | — | 力矩（‰ 额定扭矩） |
-| 4 | `/tl_driver/joint_speed` | `JointSpeed` | — | 关节速度 rad/s |
-| 5 | `/tl_driver/line_speed` | `LineSpeed` | — | 末端线速度 m/s |
-| 6 | `/tl_driver/get_speed` | `GetSpeed` | — | 全局运行速度 % |
-| 7 | `/tl_driver/get_pos_reachable` | `GetPosReachable` | `pos/move_type` | 点位是否可达 |
-| 8 | `/tl_driver/error_info` | `ErrorInfo` | — | 控制器错误/告警（事件驱动，无故障时不发消息） |
+| 3 | `/joint_states` | `sensor_msgs/JointState` | — | 关节角 rad + `velocity` rad/s + `effort` ‰ 额定扭矩 |
+| 4 | `/tl_driver/line_speed` | `LineSpeed` | — | 末端线速度 m/s |
+| 5 | `/tl_driver/get_speed` | `GetSpeed` | — | 全局运行速度 % |
+| 6 | `/tl_driver/get_pos_reachable` | `GetPosReachable` | `pos/move_type` | 点位是否可达 |
+| 7 | `/tl_driver/error_info` | `ErrorInfo` | — | 控制器错误/告警（事件驱动，无故障时不发消息） |
 
 **测试指令：**
 ```bash
 ros2 service call /tl_driver/get_arm_status tl_ros2_interface/srv/GetArmStatus "{}"
 ros2 topic echo /tl_driver/joint_monitor --once
-ros2 topic echo /tl_driver/joint_torque --once
-ros2 topic echo /tl_driver/joint_speed --once
+ros2 topic echo /joint_states --once      # 含 velocity(rad/s) 与 effort(‰ 额定扭矩)
 ros2 topic echo /tl_driver/line_speed --once
 ros2 topic echo /tl_driver/error_info   # 事件驱动：需触发控制器错误/告警后才会收到
 ros2 service call /tl_driver/get_speed tl_ros2_interface/srv/GetSpeed "{}"
@@ -286,15 +297,6 @@ ros2 service call /tl_driver/set_tool_param tl_ros2_interface/srv/SetToolParam "
 ros2 service call /tl_driver/set_user_coord tl_ros2_interface/srv/SetUserCoord "{user_num: 1, pos: {header: {stamp: {sec: 0, nanosec: 0}, frame_id: ''}, position: {x: 0.0, y: 0.0, z: 0.0}, rpy: {x: 0.0, y: 0.0, z: 0.0}, arm_angle: 0.0}}"
 ```
 
-### `/tl_driver/set_axis_zero_pos` — `SetAxisZeroPos`（axis）
-```bash
-ros2 service call /tl_driver/set_axis_zero_pos tl_ros2_interface/srv/SetAxisZeroPos "{axis: 1}"
-```
-
----
-
-## 十一、轨迹记录 / 回放
-
 ### `/tl_driver/track_save` — `TrackSave`（traj_name）
 ```bash
 ros2 service call /tl_driver/track_save tl_ros2_interface/srv/TrackSave "{traj_name: 'traj1'}"
@@ -303,6 +305,23 @@ ros2 service call /tl_driver/track_save tl_ros2_interface/srv/TrackSave "{traj_n
 > 轨迹回放已迁移到 `/tl_driver/play_track` action（`TrackPlayback` 服务已删除）：
 > `ros2 action send_goal /tl_driver/play_track tl_ros2_interface/action/PlayTrack "{
 > vel: 50, timeout_sec: 600.0}" --feedback`
+
+### `/tl_driver/drag_trajectory_playback` — `DragTrajectoryPlayback`（trajectory_name + velocity）
+```bash
+ros2 service call /tl_driver/drag_trajectory_playback tl_ros2_interface/srv/DragTrajectoryPlayback "{trajectory_name: 'traj1.txt', velocity: 20}"
+```
+> `success=true` 只表示指令被接受；结束状态用 `/tl_driver/get_drag_status` 观察。
+
+### `/tl_driver/drag_trajectory_list` — `DragTrajectoryList`（空请求）
+```bash
+ros2 service call /tl_driver/drag_trajectory_list tl_ros2_interface/srv/DragTrajectoryList "{}"
+```
+> 返回 `.txt` 与 `.json` 文件名；回放/删除只接受 `.txt`。需控制器固件 24.03+。
+
+### `/tl_driver/drag_trajectory_delete` — `DragTrajectoryDelete`（trajectory_name）
+```bash
+ros2 service call /tl_driver/drag_trajectory_delete tl_ros2_interface/srv/DragTrajectoryDelete "{trajectory_name: 'traj1.txt'}"
+```
 
 ---
 
@@ -317,6 +336,24 @@ ros2 service call /tl_driver/open_servoj tl_ros2_interface/srv/OpenServoJ "{vmax
 ```bash
 ros2 service call /tl_driver/close_servoj std_srvs/srv/Trigger "{}"
 ```
+
+### `/tl_driver/open_servo_cst` — `OpenServoCst`（disable_gravity_compensation）
+```bash
+ros2 service call /tl_driver/open_servo_cst tl_ros2_interface/srv/OpenServoCst "{disable_gravity_compensation: false}"
+```
+> 默认（false）开启重力补偿；true 为纯扭矩透传。打开前先关闭其他 7000 端口模式（servoJ/CSV）。
+
+### `/tl_driver/close_servo_cst` — `std_srvs/srv/Trigger`
+```bash
+ros2 service call /tl_driver/close_servo_cst std_srvs/srv/Trigger "{}"
+```
+
+### `/tl_driver/set_servo_cst_gravity_compensation` — `std_srvs/srv/SetBool`
+```bash
+ros2 service call /tl_driver/set_servo_cst_gravity_compensation std_srvs/srv/SetBool "{data: true}"
+ros2 service call /tl_driver/set_servo_cst_gravity_compensation std_srvs/srv/SetBool "{data: false}"
+```
+> `open_servo_cst` 默认开启重力补偿；本服务用于运行期切换。
 
 ### `/tl_driver/queue_motion_set_status` — `QueueMotionSetStatus`（status）
 ```bash
@@ -355,7 +392,7 @@ ros2 interface show tl_ros2_interface/srv/SetSpeed
 ## 测试顺序建议（安全优先）
 
 1. **连接类**：`get_library_version` → `get_controller_id` → `get_current_mode` → `get_current_coord`
-2. **状态类**：`get_arm_status` 服务、`/tl_driver/joint_monitor`、`/tl_driver/joint_torque`、`/tl_driver/joint_speed`、`/tl_driver/line_speed` 话题与 `get_speed` 服务（只读，安全）
+2. **状态类**：`get_arm_status` 服务、`/joint_states`（含 velocity/effort）、`/tl_driver/joint_monitor`、`/tl_driver/line_speed` 话题与 `get_speed` 服务（只读，安全）
 3. **配置类**：`set_speed` / `set_current_mode` / `set_current_coord` / `set_drag_mode`
 4. **运动类**（⚠️ 先确认周围安全、上电后）：`power_on` → `move_joint`/`move_linear` action → `power_off`
 5. **IO/Modbus/轨迹**：按需单独测试

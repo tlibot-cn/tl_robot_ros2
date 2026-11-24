@@ -60,6 +60,8 @@ add_executable(tl_driver
   src/arm_session.cpp
   src/convert/msg_convert.cpp
   src/convert/state_frame.cpp
+  src/kinematics_local.cpp
+  src/kinematics_status.cpp
   src/node/actions_motion.cpp
   src/node/driver_node.cpp
   src/node/publishers.cpp
@@ -129,15 +131,14 @@ if(BUILD_TESTING)
   ament_add_gtest(test_state_frame test/test_state_frame.cpp src/convert/state_frame.cpp)
   target_include_directories(test_state_frame PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_link_libraries(test_state_frame nlohmann_json::nlohmann_json)
-endif()
 
-# 创建 libnrc_host.so 符号链接，兼容旧版 SONAME 引用
-install(CODE "
-  execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
-    libtl_host.so
-    \"\${CMAKE_INSTALL_PREFIX}/lib/${PROJECT_NAME}/libnrc_host.so\"
+  # 只测状态分派：直接链接真实实现，不涉及 arm_client / SDK 动态库。
+  ament_add_gtest(test_kinematics_status test/test_kinematics_status.cpp src/kinematics_status.cpp)
+  target_include_directories(test_kinematics_status PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/lib/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )
-")
+endif()
 
 # ARM64 额外的依赖库：新 libtl_host.so 已自包含，无需 libmath/libmodbus/libservoJ_wrapper
 # 若 SDK 后续提供额外依赖库，可在 arm/ 下放置后在此追加安装

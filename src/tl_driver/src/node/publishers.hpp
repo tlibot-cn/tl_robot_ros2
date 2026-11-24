@@ -6,10 +6,10 @@
 /// @note `/joint_states` 与 `/tcp_pose` 由 7000 端口连续状态帧通知的独立发布线程发布，
 ///       不经过执行器；流中断时话题停更，不回退 6001 同步查询，也不自动重发订阅。
 ///       运行状态与运行速度均改为按需服务查询（get_arm_status / get_speed），不周期发布。
-///       话题按查询拆分：`/tl_driver/line_speed` + `/tl_driver/joint_speed`（同一次速度查询）、
-///       `/tl_driver/joint_torque`（力矩）、`/tl_driver/joint_monitor`（电流/温度/电压同帧查询），
-///       按查询与参数配置频率。速度与力矩由同一个定时器先后调用两个发布函数，共用
-///       `feedback_rate`；两者各自独立查询与时间戳。
+///       `/joint_states` 同时携带关节速度（`velocity`，rad/s）与力矩（`effort`，‰ 额定扭矩）：控制器按
+///       `jointSpeed`/`jointTorque` 开关在 ACS 帧内附带 `jointVel` / `torque`，字段缺失时对应数组为空。
+///       诊断话题：`/tl_driver/line_speed` 由 `line_speed_rate` 定时器做 6001 同步查询；
+///       `/tl_driver/joint_monitor`（电流/温度/电压）走独立的慢速查询定时器。
 ///       `/tl_driver/error_info` 为事件驱动：本类在构造时向会话注册 SDK 错误/告警回调，
 ///       回调线程直接发布，不经过执行器。
 
@@ -28,8 +28,6 @@
 #include "tl_ros2_interface/msg/cartesian_pose.hpp"
 #include "tl_ros2_interface/msg/error_info.hpp"
 #include "tl_ros2_interface/msg/joint_monitor.hpp"
-#include "tl_ros2_interface/msg/joint_speed.hpp"
-#include "tl_ros2_interface/msg/joint_torque.hpp"
 #include "tl_ros2_interface/msg/line_speed.hpp"
 
 namespace tl_driver
@@ -67,12 +65,10 @@ public:
   /// @note 不做缓存；任一子查询失败时对应字段整段 NaN，仍发布本帧。
   void publish_monitor();
 
-  /// @brief 发布 `/tl_driver/line_speed` 与 `/tl_driver/joint_speed`（默认 100 Hz）。
-  /// @note 两者来自同一次 6001 查询，共用 timer 与 feedback_rate，时间戳一致。
-  void publish_speed();
-
-  /// @brief 发布 `/tl_driver/joint_torque`（默认 100 Hz）：本体关节力矩（‰ 额定扭矩）。
-  void publish_joint_torque();
+  /// @brief 发布 `/tl_driver/line_speed`（`line_speed_rate`，默认 10 Hz）。
+  /// @note 一次 6001 同步查询；关节速度与力矩已改为随 7000 状态帧发布（见 `publish_joint_stream`），
+  ///       同一查询返回的关节速度结果被丢弃。
+  void publish_line_speed();
 
   /// @brief 发布 `/tl_driver/error_info`：控制器错误/告警异步推送。
   /// @param[in] message_type SDK 回调 messageType
@@ -91,11 +87,17 @@ private:
   /// @brief 按通道发布各自的新流帧（只在新 seq 时发布）。
   void publish_stream_updates();
 
-  /// @brief 发布 /joint_states（rad）。
+  /// @brief 发布 /joint_states：position（rad）、velocity（rad/s）、effort（‰ 额定扭矩）。
   /// @param[in] joint_pose 关节角（rad）
-  /// @param[in] count 有效元素个数
+  /// @param[in] count 关节角有效元素个数
+  /// @param[in] joint_vel 关节速度原始值（度/秒）
+  /// @param[in] joint_vel_count 关节速度有效元素个数；0 = 字段缺失，velocity 数组留空
+  /// @param[in] torque 关节力矩原始值（‰ 额定扭矩）
+  /// @param[in] torque_count 关节力矩有效元素个数；0 = 字段缺失，effort 数组留空
   /// @param[in] stamp 消息时间戳（帧接收时刻）
   void publish_joint_pose(const std::array<double, convert::kMaxStateAxes>& joint_pose, std::size_t count,
+                          const std::array<double, convert::kMaxStateAxes>& joint_vel, std::size_t joint_vel_count,
+                          const std::array<double, convert::kMaxStateAxes>& torque, std::size_t torque_count,
                           const rclcpp::Time& stamp);
 
   /// @brief 发布 /tcp_pose；MCS 流原始值 [mm..., deg...]。
@@ -113,9 +115,7 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   rclcpp::Publisher<tl_ros2_interface::msg::CartesianPose>::SharedPtr tcp_pose_pub_;
   rclcpp::Publisher<tl_ros2_interface::msg::JointMonitor>::SharedPtr joint_monitor_pub_;
-  rclcpp::Publisher<tl_ros2_interface::msg::JointSpeed>::SharedPtr joint_speed_pub_;
   rclcpp::Publisher<tl_ros2_interface::msg::LineSpeed>::SharedPtr line_speed_pub_;
-  rclcpp::Publisher<tl_ros2_interface::msg::JointTorque>::SharedPtr joint_torque_pub_;
   rclcpp::Publisher<tl_ros2_interface::msg::ErrorInfo>::SharedPtr error_info_pub_;
 
   // 流发布缓冲：只由状态帧发布线程访问。
@@ -124,10 +124,8 @@ private:
   tl_ros2_interface::msg::CartesianPose tcp_pose_msg_;
   // /joint_monitor 缓存：只由监测定时器线程访问，整帧覆盖电流/温度/电压，不做跨帧复用。
   tl_ros2_interface::msg::JointMonitor joint_monitor_msg_;
-  // /joint_speed、/line_speed、/joint_torque 缓存：只由反馈定时器线程访问。
-  tl_ros2_interface::msg::JointSpeed joint_speed_msg_;
+  // /line_speed 缓存：只由 line_speed 定时器线程访问。
   tl_ros2_interface::msg::LineSpeed line_speed_msg_;
-  tl_ros2_interface::msg::JointTorque joint_torque_msg_;
 
   uint64_t last_acs_seq_{0};
   uint64_t last_mcs_seq_{0};

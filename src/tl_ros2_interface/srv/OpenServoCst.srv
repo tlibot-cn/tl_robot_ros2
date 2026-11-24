@@ -1,0 +1,7 @@
+# 打开周期同步扭矩模式（CST）
+# 重力补偿默认开启：true 时关闭（纯扭矩透传）；false 为默认值，程序化客户端不赋值时即为此值。
+# 驱动先下发重力补偿开关再打开 CST；若开关已生效但打开失败，响应 message 会说明当前开关状态。
+bool disable_gravity_compensation   # false（默认值）= 开启重力补偿；true = 关闭
+---
+bool success
+string message

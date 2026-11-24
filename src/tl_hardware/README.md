@@ -49,13 +49,13 @@ TLHardwareInterface
 
 1. 调用 `/tl_driver/open_servoj` 服务，传入 `vmax`/`amax`/`jmax` 参数
 2. 等待首帧 `/joint_states` 消息（超时 5 秒）
-3. 将接收到的关节位置/力矩数据写入状态接口，初始化速度计算状态
+3. 将接收到的关节位置写入状态接口，初始化速度计算状态（`/joint_states.effort` 为 ‰ 额定扭矩，控制器无额定扭矩参数可换算为 N·m，因此不导出 effort 状态接口）
 4. 用当前关节角播种命令接口（`joint_position_commands_`）：ros2_control 在控制器接管前就激活硬件，若不播种则会先持续下发零位，把机械臂拉向零点
 5. 标记 `hardware_active_ = true`
 
 ### `read()`
 
-- 从 `/joint_states` 回调中更新位置、速度、力矩数据到状态接口
+- 从 `/joint_states` 回调中更新关节位置到状态接口（速度由位置差分计算；不导出 effort）
 - 速度由位置差分计算
 - 若超过 `state_timeout_sec` 未收到关节状态，输出告警日志（5 秒节流）
 

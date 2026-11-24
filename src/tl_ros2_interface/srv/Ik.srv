@@ -1,10 +1,16 @@
-# 逆运动学（TCP 位姿 → 关节角）
-# 单位遵循 REP 103：pose 的 position 为 m、rpy 为 rad；joints 为 rad。
-int32 frame                            # 输入位姿坐标系：1=基坐标 2=工具 3=用户（0=关节，不支持）
-tl_ros2_interface/CartesianPose pose   # 目标位姿（position m + rpy rad；arm_angle 始终为第 7 位外部轴目标，rad；0 表示命令外部轴到 0）
-int32 form                             # 形态（0=默认/自动）
-float64[] reference_pos                # 逆解参考关节角（rad，可选，用于选择离参考点最近的形态）
+# 本地逆运动学（基坐标系 TCP 位姿 → 关节角）
+# 控制器逆解请用 /tl_driver/coord_transform（origin_coord=1/3 → target_coord=0）。
+# 单位遵循 REP 103：pose 的 position 为 m、rpy 为 rad；joints 与 reference_pos 为 rad。
+int32 frame                            # 输入位姿坐标系：仅支持 1=基坐标（本地模型不支持工具/用户坐标）
+tl_ros2_interface/CartesianPose pose   # 目标位姿（position m + rpy rad；arm_angle 为冗余臂角 ψ rad，7 轴硬约束，6 轴忽略）
+int32 form                             # 形态（0=默认/自动；1~8 指定分支）
+float64[] reference_pos                # 逆解参考关节角（rad，必填；6 或 7 元素，不少于本体轴数）
+
 ---
-bool success
-string message
-float64[7] joints                      # 解算关节角（rad，定长 7；失败时为 NaN）
+int32 status                           # 求解状态：0=OK 1=SINGULAR_WRIST 2=SINGULAR_ELBOW 3=SINGULAR_SHOULDER 4=SINGULAR_ARM_ANGLE 5=BRANCH_SWITCHED（0~5 均成功）；6=UNREACHABLE 7=NO_SOLUTION 8=LIMIT_EXCEEDED 9=NOT_CONVERGED；-1=参数/模型非法 -2=未连接
+string message                         # 状态描述（含失败原因）
+float64[7] joints                      # 解算关节角（rad，定长 7；失败时为 NaN；6 轴第 7 位为 0）
+
+# status 取值与 tl::KinematicsStatus 一致（0~9、-1）；-2 为驱动级未连接。
+# 成功范围为 0~5（含 5=BRANCH_SWITCHED：解有效但与参考构型不同支）；6~9 为失败。
+# arm_angle：7 轴作为 ψ 硬约束（未指定时须显式传 NaN）；6 轴无冗余自由度，忽略该字段。

@@ -9,6 +9,7 @@
 |版本号 | 时间 | 备注 |
 | :---: | :---- | :---: |
 |V1.0 | 2026-5-22 | 拟制 |
+|V1.1 | 2026-11-24 | 同步 3.2.0：FK 本地化、IK 状态码、拖拽模式与轨迹列表 |
 
 TL 系列机械臂 ROS2 接口说明
 
@@ -28,10 +29,8 @@ TL 系列机械臂 ROS2 接口说明
 * 4.7 [机械臂关节参数RobotJointParam_msg](#机械臂关节参数RobotJointParam_msg)
 * 4.8 [工具参数ToolParam_msg](#工具参数toolparam_msg)
 * 4.9 [关节监测JointMonitor_msg](#关节监测jointmonitor_msg)
-* 4.10 [关节力矩JointTorque_msg](#关节力矩jointtorque_msg)
-* 4.11 [关节速度JointSpeed_msg](#关节速度jointspeed_msg)
-* 4.12 [线速度LineSpeed_msg](#线速度linespeed_msg)
-* 4.13 [错误与告警ErrorInfo_msg](#错误与告警errorinfo_msg)
+* 4.10 [线速度LineSpeed_msg](#线速度linespeed_msg)
+* 4.11 [错误与告警ErrorInfo_msg](#错误与告警errorinfo_msg)
 * 5 [tl_ros2_interface服务（srv）说明](#tl_ros2_interface服务srv说明)
 * 5.1 [坐标转换CoordTransform_srv](#坐标转换CoordTransform_srv)
 * 5.2 [坐标系编号GetCoordNum_srv](#坐标系编号GetCoordNum_srv)
@@ -46,24 +45,27 @@ TL 系列机械臂 ROS2 接口说明
 * 5.11 [关节跟踪OpenServoJ_srv](#关节跟踪OpenServoJ_srv)
 * 5.12 [MoveJ队列运动QueueMotionMoveJ_srv](#MoveJ队列运动QueueMotionMoveJ_srv)
 * 5.13 [MoveJ队列运动模式QueueMotionSetStatus_srv](#MoveJ队列运动模式QueueMotionSetStatus_srv)
-* 5.14 [设置关节零点SetAxisZeroPos_srv](#设置关节零点SetAxisZeroPos_srv)
-* 5.15 [控制器有线网口IP设置SetControllerIP_srv](#控制器有线网口IP设置SetControllerIP_srv)
-* 5.16 [设置坐标系编号SetCoordNum_srv](#设置坐标系编号SetCoordNum_srv)
-* 5.17 [设置当前坐标系SetCurrentCoord_srv](#设置当前坐标系SetCurrentCoord_srv)
-* 5.18 [设置当前运行模式SetCurrentMode_srv](#设置当前运行模式SetCurrentMode_srv)
-* 5.19 [设置数字输出SetDigitalOutput_srv](#设置数字输出SetDigitalOutput_srv)
-* 5.20 [设置拖拽模式SetDragMode_srv](#设置拖拽模式SetDragMode_srv)
-* 5.21 [设置运行速度SetSpeed_srv](#设置运行速度SetSpeed_srv)
-* 5.22 [设置工具手参数SetToolParam_srv](#设置工具手参数SetToolParam_srv)
-* 5.23 [设置用户坐标系SetUserCoord_srv](#设置用户坐标系SetUserCoord_srv)
-* 5.24 [拖拽轨迹保存TrackSave_srv](#拖拽轨迹保存TrackSave_srv)
-* 5.25 [查询当前运行模式GetCurrentMode_srv](#查询当前运行模式GetCurrentMode_srv)
-* 5.26 [正运动学Fk_srv](#正运动学fk_srv)
-* 5.27 [逆运动学Ik_srv](#逆运动学ik_srv)
-* 5.28 [查询运行速度GetSpeed_srv](#查询运行速度getspeed_srv)
-* 5.29 [查询机械臂运行状态GetArmStatus_srv](#查询机械臂运行状态getarmstatus_srv)
-* 5.30 [设置示教模式类型SetTeachType_srv](#设置示教模式类型setteachtype_srv)
-* 5.31 [查询示教模式类型GetTeachType_srv](#查询示教模式类型getteachtype_srv)
+* 5.14 [控制器有线网口IP设置SetControllerIP_srv](#控制器有线网口IP设置SetControllerIP_srv)
+* 5.15 [设置坐标系编号SetCoordNum_srv](#设置坐标系编号SetCoordNum_srv)
+* 5.16 [设置当前坐标系SetCurrentCoord_srv](#设置当前坐标系SetCurrentCoord_srv)
+* 5.17 [设置当前运行模式SetCurrentMode_srv](#设置当前运行模式SetCurrentMode_srv)
+* 5.18 [设置数字输出SetDigitalOutput_srv](#设置数字输出SetDigitalOutput_srv)
+* 5.19 [设置拖拽模式SetDragMode_srv](#设置拖拽模式SetDragMode_srv)
+* 5.20 [设置运行速度SetSpeed_srv](#设置运行速度SetSpeed_srv)
+* 5.21 [设置工具手参数SetToolParam_srv](#设置工具手参数SetToolParam_srv)
+* 5.22 [设置用户坐标系SetUserCoord_srv](#设置用户坐标系SetUserCoord_srv)
+* 5.23 [拖拽轨迹保存TrackSave_srv](#拖拽轨迹保存TrackSave_srv)
+* 5.24 [查询当前运行模式GetCurrentMode_srv](#查询当前运行模式GetCurrentMode_srv)
+* 5.25 [正运动学Fk_srv](#正运动学fk_srv)
+* 5.26 [逆运动学Ik_srv](#逆运动学ik_srv)
+* 5.27 [查询运行速度GetSpeed_srv](#查询运行速度getspeed_srv)
+* 5.28 [查询机械臂运行状态GetArmStatus_srv](#查询机械臂运行状态getarmstatus_srv)
+* 5.29 [设置示教模式类型SetTeachType_srv](#设置示教模式类型setteachtype_srv)
+* 5.30 [查询示教模式类型GetTeachType_srv](#查询示教模式类型getteachtype_srv)
+* 5.31 [回放拖动轨迹DragTrajectoryPlayback_srv](#回放拖动轨迹dragtrajectoryplayback_srv)
+* 5.32 [删除拖动轨迹DragTrajectoryDelete_srv](#删除拖动轨迹dragtrajectorydelete_srv)
+* 5.33 [查询拖动轨迹列表DragTrajectoryList_srv](#查询拖动轨迹列表dragtrajectorylist_srv)
+* 5.34 [打开周期同步扭矩模式OpenServoCst_srv](#打开周期同步扭矩模式openservocst_srv)
 
 ## tl_ros2_interface功能包说明
 tl_ros2_interface 功能包为 TL 系列机械臂在 ROS2 框架下提供消息（msg）和服务（srv）接口定义，供上层驱动或应用调用。该包本身没有可执行程序，主要作用为定义协议数据结构和服务接口。
@@ -89,8 +91,6 @@ tl_ros2_interface/
 │   ├── RobotJointParam.msg
 │   ├── ToolParam.msg
 │   ├── JointMonitor.msg
-│   ├── JointSpeed.msg
-│   ├── JointTorque.msg
 │   ├── LineSpeed.msg
 │   └── ErrorInfo.msg
 ├── action/               # Action 定义
@@ -113,10 +113,10 @@ tl_ros2_interface/
 │   ├── Jogging.srv
 │   ├── ModbusRead.srv
 │   ├── ModbusWrite.srv
+│   ├── OpenServoCst.srv
 │   ├── OpenServoJ.srv
 │   ├── QueueMotionMoveJ.srv
 │   ├── QueueMotionSetStatus.srv
-│   ├── SetAxisZeroPos.srv
 │   ├── SetControllerIP.srv
 │   ├── SetCoordNum.srv
 │   ├── SetCurrentCoord.srv
@@ -127,15 +127,18 @@ tl_ros2_interface/
 │   ├── SetTeachType.srv
 │   ├── SetToolParam.srv
 │   ├── SetUserCoord.srv
-│   ├── TrackSave.srv
+│   ├── DragTrajectoryDelete.srv
+│   ├── DragTrajectoryList.srv
+│   ├── DragTrajectoryPlayback.srv
+│   └── TrackSave.srv
 ```
 
 ## tl_ros2_interface消息（msg）说明
-以下列出 msg 文件定义及字段说明。**13 个 msg 与 2 个 action，每个文件头部注释里都标了用途，读之前先看那一行：**
+以下列出 msg 文件定义及字段说明。**11 个 msg 与 2 个 action，每个文件头部注释里都标了用途，读之前先看那一行：**
 
 | 用途 | 数量 | 定义 |
 | :-- | :--: | :-- |
-| 话题载荷（在 publisher / subscriber 上出现） | 6 | `CartesianPose`、`JointMonitor`、`JointSpeed`、`JointTorque`、`LineSpeed`、`ErrorInfo` |
+| 话题载荷（在 publisher / subscriber 上出现） | 4 | `CartesianPose`、`JointMonitor`、`LineSpeed`、`ErrorInfo` |
 | Action goal 载荷 / srv 嵌套参数 | 1 | `MoveCommand` |
 | 仅作 srv 嵌套参数（不发布话题） | 6 | `ModbusMasterParam`、`ModbusRTUParam`、`ModbusTCPParam`、`RobotDHParam`、`RobotJointParam`、`ToolParam` |
 | Action | 2 | `Move`（`move_joint`/`move_linear`）、`PlayTrack`（`play_track`） |
@@ -154,7 +157,7 @@ float64 arm_angle
 __msg成员__
 - header: 标准消息头
 - position: x,y,z 位置，单位 **m**（`/tcp_pose` 与 `SetUserCoord.pos` 一致）
-- rpy: 姿态欧拉角（弧度，XYZ 内旋）
+- rpy: 姿态欧拉角（弧度，XYZ 外旋）
 - arm_angle: 冗余臂角（弧度；6 轴为 0，`SetUserCoord` 未使用）
 
 ### ModbusMaster参数ModbusMasterParam_msg
@@ -318,32 +321,13 @@ float64[7] joint_voltage
 - 单位：电流 A、温度 °C、电压 V
 - 定长数组，缺失元素为 `quiet_NaN`
 
-### 关节力矩JointTorque_msg
-```
-std_msgs/Header header
-float64[7] motor_torque
-```
-- `/tl_driver/joint_torque` 载荷，默认 100 Hz（`feedback_rate` 可配，0=关闭；与速度话题共用同一定时器）
-- 单位：额定扭矩千分之一（‰，±1000 对应 ±100%；不是 N·m，也不是 %）
-- 定长数组，缺失元素为 `quiet_NaN`
-
-### 关节速度JointSpeed_msg
-```
-std_msgs/Header header
-float64[7] joint_speed
-```
-- `/tl_driver/joint_speed` 载荷，默认 100 Hz（`feedback_rate` 可配，0=关闭）
-- 单位：rad/s；定长数组，缺失元素为 `quiet_NaN`
-- 与 `/tl_driver/line_speed` 由同一次查询产生，共用 `feedback_rate` 和 `header.stamp`
-
 ### 线速度LineSpeed_msg
 ```
 std_msgs/Header header
 float64 line_speed
 ```
-- `/tl_driver/line_speed` 载荷，默认 100 Hz（`feedback_rate` 可配，0=关闭）
-- 单位：m/s；查询失败为 `quiet_NaN`
-- 与 `/tl_driver/joint_speed` 由同一次查询产生；与 `/tl_driver/joint_torque` 共用同一定时器
+- `/tl_driver/line_speed` 载荷，默认 10 Hz（`line_speed_rate` 可配，0=关闭）
+- 单位：m/s；6001 端口同步查询，查询失败时该周期不发布（保持上一次有效值，不会写 NaN）
 
 ### 错误与告警ErrorInfo_msg
 ```
@@ -375,6 +359,7 @@ float64[] target_pos
 - form: 形态
 - origin_pos/reference_pos: 输入坐标与逆解参考点。关节坐标为 rad；直角/工具/用户坐标为位置 m + 姿态 rad
 - 返回: success/message/target_pos（转换结果，单位同上）
+- `origin_coord=1/3 → target_coord=0` 即控制器逆解；`origin_coord=2` 按控制器工具坐标语义处理，不锚定当前 TCP
 
 ### 坐标系编号GetCoordNum_srv
 ```
@@ -508,6 +493,18 @@ string message
 - 注意：传 6 元素会导致控制器协议解析错乱并断开 7000 端口连接（SDK 警告）
 - 返回: success/message
 
+### 打开周期同步扭矩模式OpenServoCst_srv
+```
+bool disable_gravity_compensation
+---
+bool success
+string message
+```
+- 打开 CST（周期同步扭矩）模式，可选择是否开启控制器重力补偿
+- disable_gravity_compensation: `false`（默认）= 开启重力补偿；`true` = 关闭，`set_servo_cst_torque` 为纯扭矩透传
+- 驱动先下发重力补偿开关再打开 CST；开关失败直接返回失败且不进入 CST
+- 返回: success/message
+
 ### MoveJ队列运动QueueMotionMoveJ_srv
 ```
 bool is_continue
@@ -530,17 +527,6 @@ string message
 ```
 - 设置队列运动模式开关
 - status: true 开启队列运动，false 关闭队列运动
-- 返回: success/message
-
-### 设置关节零点SetAxisZeroPos_srv
-```
-int32 axis
----
-bool success
-string message
-```
-- 设置轴零位
-- axis: 轴编号
 - 返回: success/message
 
 ### 控制器有线网口IP设置SetControllerIP_srv
@@ -616,7 +602,7 @@ bool success
 string message
 ```
 - 设置拖拽（示教）模式
-- mode: 0=无 1=3D鼠标 2=力矩模式 3=位置模式
+- mode: 0=无（关闭）1=力矩模式 2=位置模式（V3.2 SDK 起无 3D 鼠标模式，原 2/3 前移为 1/2；越界值返回失败）
 - 返回: success/message
 
 ### 设置示教模式类型SetTeachType_srv
@@ -689,6 +675,42 @@ string message
 - traj_name: 轨迹名称
 - 返回: success/message
 
+### 回放拖动轨迹DragTrajectoryPlayback_srv
+```
+string trajectory_name
+int32 velocity
+---
+bool success
+string message
+```
+- 按文件名回放控制器内已保存的拖动轨迹
+- trajectory_name: 控制器内文件名，须以 `.txt` 结尾；空名、超长（>255 字节）、含控制字符、`/`、`\` 或 `..` 直接返回失败
+- velocity: 回放速度百分比，范围 [1, 100]
+- 返回: success/message；`success=true` 只表示指令被接受，结束状态用 `/tl_driver/get_drag_status` 观察
+
+### 删除拖动轨迹DragTrajectoryDelete_srv
+```
+string trajectory_name
+---
+bool success
+string message
+```
+- 按文件名删除控制器内已保存的拖动轨迹（删除后不可恢复，需控制器固件 24.03+）
+- trajectory_name: 控制器内文件名，须以 `.txt` 结尾；空名、超长（>255 字节）、含控制字符、`/`、`\` 或 `..` 直接返回失败
+- 返回: success/message
+
+### 查询拖动轨迹列表DragTrajectoryList_srv
+```
+---
+bool success
+string message
+string[] trajectory_files
+```
+- 列出控制器内已保存的拖动轨迹文件名（含后缀、不含目录；需控制器固件 24.03+）
+- 服务名：`/tl_driver/drag_trajectory_list`
+- trajectory_files: `.txt`（V3 格式）与 `.json`（历史文件）两类文件名；回放/删除只接受 `.txt`
+- 返回: success/message/trajectory_files（无轨迹时为空数组）
+
 ### 查询当前运行模式GetCurrentMode_srv
 ```
 
@@ -705,15 +727,17 @@ int32 mode
 int32 frame
 float64[] joints
 ---
-bool success
+int32 status
 string message
 tl_ros2_interface/CartesianPose pose
 ```
-- 正运动学：关节角 → 指定坐标系下的 TCP 位姿
+- 本地正运动学：关节角 → 基坐标系 TCP 位姿
 - 服务名：`/tl_driver/fk`
-- frame: 输出位姿坐标系，1=基坐标 2=工具 3=用户（0=关节不支持）
-- joints: 关节角 rad，6 或 7 元素（7 元素时第 7 位为外部轴）
-- pose: position m、rpy rad；`arm_angle` 为 SDK 第 7 位外部轴角（度→rad）
+- status: `tl::KinematicsStatus`：0=OK；-1=参数/模型非法；驱动级 -2=未连接
+- message: 成功/失败描述；pose: position m、rpy rad
+- frame: 输出位姿坐标系，仅 1=基坐标（2/3 返回 status=-1）
+- joints: 关节角 rad，6 或 7 元素（不少于本体轴数；6 轴第 7 位为外部轴，本地模型忽略）
+- pose: position m、rpy rad；`arm_angle` 为冗余臂角 ψ rad（6 轴为 0，7 轴无定义时为 NaN）
 
 ### 逆运动学Ik_srv
 ```
@@ -722,16 +746,17 @@ tl_ros2_interface/CartesianPose pose
 int32 form
 float64[] reference_pos
 ---
-bool success
+int32 status
 string message
 float64[7] joints
 ```
-- 逆运动学：指定坐标系下的 TCP 位姿 → 关节角
+- 本地逆运动学：基坐标系 TCP 位姿 → 关节角（控制器逆解用 `CoordTransform`：`origin_coord=1/3`、`target_coord=0`）
 - 服务名：`/tl_driver/ik`
-- frame: 输入位姿坐标系，1=基坐标 2=工具 3=用户（0=关节不支持）
-- pose: position m、rpy rad；`arm_angle` 始终作为第 7 位外部轴（rad→度）
-- form: 形态；reference_pos: 逆解参考关节角 rad（可选）
-- joints: 定长 7，单位 rad；失败时为 NaN
+- frame: 输入位姿坐标系，**仅支持 1=基坐标**（2/3 返回 `status=-1`）
+- pose: position m、rpy rad；`arm_angle` 为冗余臂角 ψ（7 轴作为硬约束，不指定传 NaN；6 轴忽略）
+- form: 形态；reference_pos: 逆解参考关节角 rad（**必填**，长度 6 或 7）
+- status: 0=OK、1=SINGULAR_WRIST、2=SINGULAR_ELBOW、3=SINGULAR_SHOULDER、4=SINGULAR_ARM_ANGLE、5=BRANCH_SWITCHED（0~5 均成功，判定用 `0 <= status <= 5`）；6=UNREACHABLE、7=NO_SOLUTION、8=LIMIT_EXCEEDED、9=NOT_CONVERGED；-1=参数/模型非法、-2=未连接
+- joints: 定长 7，单位 rad；失败时为 NaN；6 轴第 7 位为 0
 
 ### 查询运行速度GetSpeed_srv
 ```

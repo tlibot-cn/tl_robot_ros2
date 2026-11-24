@@ -4,8 +4,8 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)：
 
-- 最新发布版本：`[3.1.0]`（2026-11-09，git tag `V3.1.0`）
-- 已发布的版本章节按变更类型整理（新增/修复/变更/移除/文档/工程），不再按日期分组
+- 最新发布版本：`[3.2.0]`（2026-11-24，git tag `V3.2.0`）
+- 自 3.2.0 起，已发布的版本章节按变更类型整理（新增/修复/变更/移除），不再按日期分组；历史版本保留原有分类
 - 未发布的变更记录在 `[Unreleased]` 下，按日期（新 → 旧）分组整理
 - 正式发布时，将 `[Unreleased]` 内容合并进版本号章节（`## [x.y.z] - YYYY-MM-DD`），并重置 `[Unreleased]`
 - 条目末尾括号内为提交短哈希，便于溯源
@@ -13,6 +13,37 @@
 ## [Unreleased]
 
 （暂无）
+
+## [3.2.0] - 2026-11-24
+
+### 新增
+
+- tl_driver：新增本地运动学后端 `kinematics_local.{hpp,cpp}`，启动时由控制器回读 DH、关节限位与当前工具手构建一次；运行期修改不重建，模型不可用时不回退控制器。
+- tl_driver：新增 `/tl_driver/set_servo_cst_gravity_compensation`（`std_srvs/srv/SetBool`），透传控制器在 CST 模式下的重力补偿开关；`open_servo_cst` 默认开启，本服务用于运行期切换，驱动不缓存开关状态，`close_servo_cst` 不会自动复位。
+- tl_ros2_interface：新增 `DragTrajectoryPlayback.srv`（`trajectory_name` + `velocity`）、`DragTrajectoryDelete.srv`、`DragTrajectoryList.srv`；tl_driver 新增 `/tl_driver/drag_trajectory_playback`、`/tl_driver/drag_trajectory_delete`、`/tl_driver/drag_trajectory_list`。回放/删除驱动侧拒绝空名、超长（>255 字节）、控制字符、路径分隔符与 `..`，回放速度限制 [1,100]；删除需控制器固件 24.03+；服务数 44 → 48。
+
+### 修复
+
+- 修复：`real_hardware_demo.launch.py`（14 个臂型）不再启动 `joint_state_broadcaster`。`/joint_states` 由 `tl_driver` 发布且同时是 `tl_hardware` 的状态输入，broadcaster 会把状态接口回播到同一话题，形成双发布者与自反馈，MoveIt2 侧看到的 `/joint_states` 在关节顺序、时间戳与字段集合间交错（表现为跳变）；虚拟 `demo.launch.py` 仍由 broadcaster 发布，不受影响。
+
+### 变更
+
+- 变更：`tl_driver` 预编译 SDK 库与头文件升级至 V3.2（`V3.2.0-0-g99a5905-20261124`）；驱动改用 `tl::IKOptions` 显式求解参数，本地逆解按新 `KinematicsStatus` 分派状态。
+- **破坏性变更**：`/tl_driver/fk` 与 `/tl_driver/ik` 收敛为本地模型（仅 `frame=1`），删除请求字段 `source`；FK 响应由 `bool success` 改为 `int32 status`。两者 `status` 统一使用 `tl::KinematicsStatus`：FK 0=OK、-1=参数/模型非法；IK 0~5 成功（0=OK、1=SINGULAR_WRIST、2=SINGULAR_ELBOW、3=SINGULAR_SHOULDER、4=SINGULAR_ARM_ANGLE、5=BRANCH_SWITCHED），6=UNREACHABLE、7=NO_SOLUTION、8=LIMIT_EXCEEDED、9=NOT_CONVERGED，-1=参数/模型非法；驱动级 -2=未连接。**IK 消费方须按 `0 <= status <= 5` 判定成功**（旧 `status == 0 || status == 1` 会把换支成功当成失败，`status >= 0` 会把 6~9 失败码当成成功）。
+- **破坏性变更**：`/tl_driver/set_drag_mode` 删除 3D 鼠标模式，取值由 0/1/2/3（无/3D鼠标/力矩/位置）改为 0/1/2（无/力矩/位置）；沿用旧值 `2`/`3` 语义改变且越界值现在直接返回失败。
+- **破坏性变更**：`/tl_driver/open_servo_cst` 服务类型由 `std_srvs/srv/Trigger` 改为 `tl_ros2_interface/srv/OpenServoCst`（`bool disable_gravity_compensation`），打开 CST 时选择重力补偿且**默认开启**；驱动先下发重力补偿开关，失败则不进入 CST；运行期仍可用 `/tl_driver/set_servo_cst_gravity_compensation` 切换。
+- **破坏性变更**：`/tl_driver/drag_trajectory_playback`、`/tl_driver/drag_trajectory_delete` 的 `trajectory_name` 只接受 `.txt`（V3 轨迹文件格式；SDK 对旧 `.json` 仅作兼容）。
+- **破坏性变更**：参数 `feedback_rate` 更名为 `line_speed_rate`，默认值由 100 Hz 下调为 10 Hz（范围 0–20、0=关闭，只控制 `/tl_driver/line_speed` 发布频率；实际发布率受 6001 查询耗时限制）；使用方需同步修改 YAML / launch 覆盖；仍传旧名会在启动时报错并提示改用新名。
+- 变更：7 轴 `/tl_driver/ik` 未指定 `arm_angle` 时改为「连续性优先」选解（先取参考关节角臂角 ψ(ref)，解不连续时在 ±12° 内精搜，最后全周网格兜底），减少逐帧换支；显式传入 `arm_angle` 时仍为硬约束。
+- 变更：控制器逆解统一走 `/tl_driver/coord_transform`（`origin_coord=1/3`，`target_coord=0`），`tl_teleop` / `tl_teleop_f710` 原有调用方式不变；工具坐标系（`origin_coord=2`）按控制器坐标转换语义处理，不锚定当前 TCP。
+- 变更：`tl_hardware` 不再导出 `effort` 状态接口。`/joint_states.effort` 为额定扭矩千分之一（‰），控制器未提供额定扭矩参数，无法换算为 ros2_control 约定的 N·m；需要力矩时请直接订阅 `/joint_states`。
+- 变更：`CartesianPose.arm_angle` 明确为冗余臂角 ψ（rad）；`/tl_driver/fk` 的本地路径由 `arm_angle_of` 输出，`/tl_driver/ik` 对 7 轴作为 ψ 硬约束、6 轴忽略。
+- 变更：`tl_driver` 启动时校验控制器机型轴数与 `arm_joints`，不一致即抛异常退出；`get_robot_type` 查询失败或机型不是串联系列 6/7 轴时仅告警。
+
+### 移除
+
+- **破坏性变更**：删除 `/tl_driver/joint_speed`、`/tl_driver/joint_torque` 话题及 `JointSpeed`、`JointTorque` 消息；关节速度、力矩改由 `/joint_states` 的 `velocity`（rad/s）与 `effort`（‰ 额定扭矩，不是 N·m）发布，与关节角同帧同时间戳，控制器版本 24.10.0-20261112150423 及以上支持。控制器不支持 `jointSpeed`/`jointTorque` 查询开关时驱动自动退回只订阅关节角，`velocity`/`effort` 为空数组。
+- **破坏性变更**：删除 `/tl_driver/set_axis_zero_pos` 服务与 `SetAxisZeroPos.srv`（服务数 45 → 44）。
 
 ## [3.1.0] - 2026-11-09
 

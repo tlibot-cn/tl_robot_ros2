@@ -123,7 +123,8 @@ TL_API Result log_download_by_quantity(SOCKETFD socketFd, int counts,
 /**
  * @brief 向作业文件插入一条moveJ关节运动
  * @param line 插入的行号
- * @param moveCmd 运动指令参数，详见 MoveCmd
+ * @param moveCmd 运动指令参数，详见 MoveCmd；关节插补（moveJ）的 velocity
+ * 为速度百分比，范围 (1,100]，单位 %
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
  * 未连接；-3=PARAM_ERR
  * 参数错误（如行号越界或参数非法）；-4=OPERATION_NOT_ALLOWED
@@ -134,7 +135,8 @@ TL_API Result job_insert_moveJ(SOCKETFD socketFd, int line, MoveCmd moveCmd);
 /**
  * @brief 向作业文件插入一条moveL
  * @param line 插入的行号
- * @param moveCmd 运动指令参数，详见 MoveCmd
+ * @param moveCmd 运动指令参数，详见 MoveCmd；直线插补（moveL）的 velocity
+ * 为末端线速度，范围 (1,1000]，单位 mm/s
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
  * 未连接；-3=PARAM_ERR
  * 参数错误（如行号越界或参数非法）；-4=OPERATION_NOT_ALLOWED
@@ -145,7 +147,8 @@ TL_API Result job_insert_moveL(SOCKETFD socketFd, int line, MoveCmd moveCmd);
 /**
  * @brief 向作业文件插入一条moveC
  * @param line 插入的行号
- * @param moveCmd 运动指令参数，详见 MoveCmd
+ * @param moveCmd 运动指令参数，详见 MoveCmd；圆弧插补（moveC）的 velocity
+ * 为末端线速度，范围 (1,1000]，单位 mm/s
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
  * 未连接；-3=PARAM_ERR
  * 参数错误（如行号越界或参数非法）；-4=OPERATION_NOT_ALLOWED
@@ -156,7 +159,8 @@ TL_API Result job_insert_moveC(SOCKETFD socketFd, int line, MoveCmd moveCmd);
 /**
  * @brief 向作业文件插入一条 moveS 样条运动
  * @param line 插入的行号
- * @param moveCmd 运动指令参数，详见 MoveCmd
+ * @param moveCmd 运动指令参数，详见 MoveCmd；样条插补（moveS）的 velocity
+ * 为末端线速度，范围 (1,1000]，单位 mm/s
  * @return 0=SUCCESS 成功；-1=RECEIVE_FAILED 接收失败；-2=DISCONNECT
  * 未连接；-3=PARAM_ERR
  * 参数错误（如行号越界或参数非法）；-4=OPERATION_NOT_ALLOWED

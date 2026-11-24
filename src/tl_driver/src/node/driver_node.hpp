@@ -8,6 +8,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -16,11 +17,90 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "arm_session.hpp"
+#include "kinematics_local.hpp"
 #include "node/publishers.hpp"
 
 namespace tl_driver
 {
+namespace detail
+{
+/// @brief 响应是否带 `success` 字段（大多数自定义服务与 std_srvs；Fk / Ik 例外，用 status）。
+template <typename ResponseT, typename = void>
+struct has_success : std::false_type
+{
+};
+
+template <typename ResponseT>
+struct has_success<ResponseT, std::void_t<decltype(std::declval<ResponseT&>().success)>> : std::true_type
+{
+};
+
+/// @brief 响应是否带 `message` 字段。
+template <typename ResponseT, typename = void>
+struct has_message : std::false_type
+{
+};
+
+template <typename ResponseT>
+struct has_message<ResponseT, std::void_t<decltype(std::declval<ResponseT&>().message)>> : std::true_type
+{
+};
+
+/// @brief 响应是否带 `status` 字段（Fk / Ik 直接暴露 SDK 返回值）。
+template <typename ResponseT, typename = void>
+struct has_status : std::false_type
+{
+};
+
+template <typename ResponseT>
+struct has_status<ResponseT, std::void_t<decltype(std::declval<ResponseT&>().status)>> : std::true_type
+{
+};
+
+/// @brief 置业务失败结果：有 `success` 写 false，否则写原始 status 失败码。
+template <typename ResponseT>
+void mark_service_failure(ResponseT& response, int failure_code)
+{
+  if constexpr (has_success<ResponseT>::value)
+  {
+    response.success = false;
+  }
+  else if constexpr (has_status<ResponseT>::value)
+  {
+    response.status = failure_code;
+  }
+}
+
+/// @brief 写失败说明文本。
+template <typename ResponseT>
+void set_service_message(ResponseT& response, const std::string& text)
+{
+  if constexpr (has_message<ResponseT>::value)
+  {
+    response.message = text;
+  }
+}
+
+/// @brief 取日志用文本：有 `message` 用它，否则为空串。
+template <typename ResponseT>
+const std::string& service_message(const ResponseT& response)
+{
+  if constexpr (has_message<ResponseT>::value)
+  {
+    return response.message;
+  }
+  else
+  {
+    static const std::string empty;
+    return empty;
+  }
+}
+} // namespace detail
+
 class MotionActionServers;
+
+/// @brief 服务回调抛异常时写入的 status（Fk / Ik 无 success 字段，用 -1 表示参数/内部错误）。
+inline constexpr int kInternalErrorStatus = -1;
 
 /// @brief 机械臂驱动节点：参数、回调组、实体创建与服务/话题/action 注册。
 /// @note 回调实现按域分布：服务在 src/node/services_*.cpp，话题在 src/node/topics.cpp，
@@ -53,6 +133,13 @@ public:
   int ndof() const noexcept
   {
     return ndof_;
+  }
+
+  /// @brief 启动时构建的本地运动学模型（只读）。
+  /// @return 本地模型引用；`available()` 为 false 时解算一律失败
+  const LocalKinematics& local_kinematics() const noexcept
+  {
+    return local_kinematics_;
   }
 
   /// @brief 连续状态流间隔（ms），用于帧龄判定。
@@ -98,12 +185,13 @@ public:
   typename rclcpp::Service<ServiceT>::SharedPtr create_service(const std::string& name, CallbackT&& callback)
   {
     // 异常绝不允许越过回调边界：rclcpp 不捕获服务回调异常，逃逸会终止整个进程。
+    using ResponseT = typename ServiceT::Response;
     using GuardedCallback =
-        std::function<void(std::shared_ptr<typename ServiceT::Request>, std::shared_ptr<typename ServiceT::Response>)>;
+        std::function<void(std::shared_ptr<typename ServiceT::Request>, std::shared_ptr<ResponseT>)>;
     GuardedCallback guarded =
-        [logger = this->get_logger(), service_name = name, cb = std::forward<CallbackT>(callback)](
-            std::shared_ptr<typename ServiceT::Request> request,
-            std::shared_ptr<typename ServiceT::Response> response) mutable
+        [logger = this->get_logger(), clock = this->get_clock(), service_name = name,
+         cb = std::forward<CallbackT>(callback)](std::shared_ptr<typename ServiceT::Request> request,
+                                                 std::shared_ptr<typename ServiceT::Response> response) mutable
     {
       try
       {
@@ -112,14 +200,43 @@ public:
       catch (const std::exception& e)
       {
         RCLCPP_ERROR(logger, "[Service %s]: callback threw exception: %s", service_name.c_str(), e.what());
-        response->success = false;
-        response->message = std::string("Internal error: ") + e.what();
+        detail::mark_service_failure(*response, kInternalErrorStatus);
+        detail::set_service_message(*response, std::string("Internal error: ") + e.what());
+        return;
       }
       catch (...)
       {
         RCLCPP_ERROR(logger, "[Service %s]: callback threw unknown exception", service_name.c_str());
-        response->success = false;
-        response->message = "Internal error: unknown exception";
+        detail::mark_service_failure(*response, kInternalErrorStatus);
+        detail::set_service_message(*response, "Internal error: unknown exception");
+        return;
+      }
+
+      // 回调结果在边界统一打印：成功 INFO、业务失败 WARN，均 1 s 节流。
+      // 部分服务会被高频调用（tl_teleop 每帧 coord_transform，约 100 Hz），不可逐次打印。
+      const std::string& message = detail::service_message(*response);
+      if constexpr (detail::has_success<ResponseT>::value)
+      {
+        if (response->success)
+        {
+          RCLCPP_INFO_THROTTLE(logger, *clock, 1000, "[Service %s]: success, message=\"%s\"", service_name.c_str(),
+                               message.c_str());
+        }
+        else
+        {
+          RCLCPP_WARN_THROTTLE(logger, *clock, 1000, "[Service %s]: failed, message=\"%s\"", service_name.c_str(),
+                               message.c_str());
+        }
+      }
+      else if constexpr (detail::has_status<ResponseT>::value)
+      {
+        // Fk / Ik 直接返回 SDK 状态码，边界不替调用方解释成功/失败。
+        RCLCPP_INFO_THROTTLE(logger, *clock, 1000, "[Service %s]: status=%d, message=\"%s\"", service_name.c_str(),
+                             response->status, message.c_str());
+      }
+      else
+      {
+        RCLCPP_INFO_THROTTLE(logger, *clock, 1000, "[Service %s]: completed", service_name.c_str());
       }
     };
 
@@ -167,7 +284,7 @@ private:
   /// @brief 按域注册全部服务、话题与 action。
   void register_entities();
 
-  /// @brief 按配置创建监测与反馈定时器（频率为 0 时不创建）。
+  /// @brief 按配置创建监测与 line_speed 定时器（频率为 0 时不创建）。
   void create_aux_timers();
 
   std::string arm_ip_{"192.168.1.13"};
@@ -181,11 +298,13 @@ private:
 
   int state_stream_interval_ms_{10};
   double joint_monitor_rate_{2.0};
-  double feedback_rate_{100.0};
+  double line_speed_rate_{10.0};
   double motion_action_timeout_{60.0};
   double track_action_timeout_{600.0};
 
   ArmSession session_;
+  // 启动时由控制器参数构建一次，之后只读；不随运行期改 DH/工具而更新。
+  LocalKinematics local_kinematics_;
 
   std::unique_ptr<tl_driver::StatePublishers> publishers_;
   std::unique_ptr<tl_driver::MotionActionServers> actions_;
@@ -197,7 +316,7 @@ private:
   rclcpp::CallbackGroup::SharedPtr motion_service_group_;
   rclcpp::CallbackGroup::SharedPtr topic_group_;
   rclcpp::CallbackGroup::SharedPtr monitor_group_;
-  rclcpp::CallbackGroup::SharedPtr feedback_group_;
+  rclcpp::CallbackGroup::SharedPtr line_speed_group_;
   rclcpp::CallbackGroup::SharedPtr action_group_;
 
   // 注册期当前目标组：仅作为 select_service_group() → create_service() 的传参槽位，
@@ -210,7 +329,7 @@ private:
   std::vector<rclcpp::SubscriptionBase::SharedPtr> subscriptions_;
 
   rclcpp::TimerBase::SharedPtr monitor_timer_;
-  rclcpp::TimerBase::SharedPtr feedback_timer_;
+  rclcpp::TimerBase::SharedPtr line_speed_timer_;
 };
 
 } // namespace tl_driver
