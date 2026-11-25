@@ -1,0 +1,28 @@
+{
+  "version": "6.3.1",
+  "flags": {},
+  "shapes": [
+    {
+      "label": "Button",
+      "points": [
+        [
+          431.45299145299145,
+          376.2393162393162
+        ],
+        [
+          660.5128205128206,
+          606.1538461538462
+        ]
+      ],
+      "group_id": 16,
+      "description": "",
+      "shape_type": "rectangle",
+      "flags": {},
+      "mask": null
+    }
+  ],
+  "imagePath": "img_0016.jpg",
+  "imageData": null,
+  "imageHeight": 720,
+  "imageWidth": 1280
+}

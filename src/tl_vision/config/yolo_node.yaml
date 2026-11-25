@@ -1,0 +1,15 @@
+yolo_node:
+  ros__parameters:
+    model_path: "best_block.pt"
+    confidence_threshold: 0.3
+    device: "cuda"
+    rgb_topic: "/camera/camera/color/image_raw"
+    camera:
+      fx: 610.0
+      fy: 610.0
+      cx: 320.0
+      cy: 240.0
+    # depth_topic: "/camera/camera/depth/image_rect_raw"   # 取消注释启用真实深度
+    fixed_depth: 0.419       # 固定深度（实测标定值，如需真实深度启用上方depth_topic）
+    show_display: true
+    display_window_name: "YOLO Detection"

@@ -25,6 +25,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/JointMonitor.msg"
   "msg/LineSpeed.msg"
   "msg/ErrorInfo.msg"
+  "msg/ObjectInfo.msg"
 
   #action
   "action/Move.action"

@@ -1,0 +1,2074 @@
+#!/usr/bin/env python3
+
+import signal
+import os
+import sys
+import time
+import math
+import select
+import termios
+import tty
+
+import numpy as np
+import rclpy
+from rclpy.node import Node
+from rclpy.executors import ExternalShutdownException
+
+from scipy.spatial.transform import Rotation as R
+
+from tl_ros2_interface.msg import ObjectInfo, CartesianPose
+from tl_ros2_interface.srv import CoordTransform, GetPosReachable
+from std_msgs.msg import Float64MultiArray
+from sensor_msgs.msg import JointState
+
+from tl_vision.zhua import EG2Gripper
+
+np.set_printoptions(precision=8, suppress=True)
+
+
+class ObjectToBaseNode(Node):
+    def __init__(self):
+        super().__init__('control_node')
+
+        self.declare_parameter('robot_ip', '192.168.1.13')
+        self.declare_parameter('robot_port', '6001')
+        self.declare_parameter('camera_object_topic', '/tl_vision/object_3d_pos_camera')
+        self.declare_parameter('base_frame_id', 'base_link')
+        self.declare_parameter('object_type', 'scissors')
+        self.declare_parameter('grasp_forward_offset', 0.0)
+        self.declare_parameter('approach_movetype', 'MOVJ')
+        self.declare_parameter('servoj_interp_points', 2000)
+        self.declare_parameter('tracking_interp_points', 1000)
+        self.declare_parameter('servoj_vmax', [300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0])
+        self.declare_parameter('servoj_amax', [3000.0, 3000.0, 3000.0, 3000.0, 3000.0, 3000.0, 3000.0])
+        self.declare_parameter('servoj_jmax', [50000.0, 50000.0, 50000.0, 50000.0, 50000.0, 50000.0, 50000.0])
+        self.declare_parameter('fixed_approach_height', 273.5)   # 固定接近/跟踪高度（毫米）
+        self.declare_parameter('fixed_grasp_height', 128.0)      # 固定抓取高度（毫米），下到物体位置
+
+        self.declare_parameter('servoj_loss_timeout', 3.0)       # 丢失超时（秒）
+        self.declare_parameter('servoj_arrival_threshold', 0.5)  # 到位判定阈值（度）
+        self.declare_parameter('object_stable_threshold', 3.0)   # 物体静止多久触发抓取（秒）
+        self.declare_parameter('grasp_verify_wait', 3.0)         # 抓取后验证等待时间（秒）
+        self.declare_parameter('place_restart_delay', 5.0)       # 放置后重启跟踪延迟（秒）
+        self.declare_parameter('place_interp_points', 600)       # 放置运动插值点数
+        self.declare_parameter('cam_stable_frames', 5)           # 图像稳定所需帧数
+        self.declare_parameter('cam_stable_threshold', 0.005)    # 图像稳定阈值（米）
+        self.declare_parameter('track_mid_factor', 0.5)          # 跟踪补偿系数
+
+        # ── 循环转移模式参数 ──
+        self.declare_parameter('place_positions_b', [0.0] * 42) # B侧6个放置位置
+        self.declare_parameter('drop_zone_pose', [0.0] * 7)     # 散落区释放姿态
+        self.declare_parameter('gripper_grasp_threshold', 700)  # 夹爪闭合检测阈值
+
+        # ── 放置位置参数（示教器测量，单位mm）──
+        self.declare_parameter('place_positions', [0.0] * 42)  # 6个点 × 7维(ax,ay,az,rx,ry,rz,posture)
+        self.declare_parameter(
+            'zero_joint',
+            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        )
+        self.declare_parameter(
+            'handeye_matrix',
+            [
+                1.0, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0, 0.0,
+                0.0, 0.0, 1.0, 0.0,
+                0.0, 0.0, 0.0, 1.0
+            ]
+        )
+
+        # ── 夹爪参数（从 gripper.yaml 读取）──
+        self.declare_parameter('gripper_port', '/dev/ttyUSB0')
+        self.declare_parameter('gripper_slave_id', 1)
+        self.declare_parameter('gripper_baudrate', 115200)
+        self.declare_parameter('gripper_speed', 500)
+        self.declare_parameter('gripper_force', 500)
+        self.declare_parameter('gripper_catch_mode', 0)
+        self.declare_parameter('gripper_open_position', 1000)
+        self.declare_parameter('gripper_close_position', 0)
+        self.declare_parameter('gripper_max_opening', 1000)
+        self.declare_parameter('gripper_min_opening', 0)
+        self.declare_parameter('gripper_grasp_wait_duration', 3.0)
+
+        self.robot_ip = self.get_parameter('robot_ip').value
+        self.robot_port = self.get_parameter('robot_port').value
+        self.camera_object_topic = self.get_parameter('camera_object_topic').value
+        self.base_frame_id = self.get_parameter('base_frame_id').value
+
+        self.target_object_type = str(self.get_parameter('object_type').value)
+        self.grasp_forward_offset = float(self.get_parameter('grasp_forward_offset').value)
+        self.approach_movetype = str(self.get_parameter('approach_movetype').value)
+        self.zero_joint = list(self.get_parameter('zero_joint').value)
+
+        # ── 夹爪参数 ──
+        self.gripper_port = str(self.get_parameter('gripper_port').value)
+        self.gripper_slave_id = int(self.get_parameter('gripper_slave_id').value)
+        self.gripper_baudrate = int(self.get_parameter('gripper_baudrate').value)
+        self.gripper_speed = int(self.get_parameter('gripper_speed').value)
+        self.gripper_force = int(self.get_parameter('gripper_force').value)
+        self.gripper_catch_mode = int(self.get_parameter('gripper_catch_mode').value)
+        self.gripper_open_position = int(self.get_parameter('gripper_open_position').value)
+        self.gripper_close_position = int(self.get_parameter('gripper_close_position').value)
+        self.gripper_max_opening = int(self.get_parameter('gripper_max_opening').value)
+        self.gripper_min_opening = int(self.get_parameter('gripper_min_opening').value)
+        self.gripper_grasp_wait_duration = float(self.get_parameter('gripper_grasp_wait_duration').value)
+
+        self.running = True
+        self.cleaned = False
+        self.tracking_mode = False            # 视觉跟随模式（按 c 切换）
+        self._last_processed_stamp = 0.0      # 上次处理的 YOLO 时间戳
+        self._last_traj_update_time = 0.0     # 上次更新轨迹的时间（节流用）
+        self._loss_start_time = None          # 目标丢失起始时间
+        self._loss_homed = False              # 丢失后是否已回零
+
+        self.latest_object_type = None
+        self.latest_base_point = None
+        self.latest_stamp = None
+        self._last_joint_target = None      # 指数平滑上一帧关节目标
+
+        # TCP 位姿缓存（来自 /tcp_pose 话题）
+        self.latest_tcp_pose = None
+
+        # 关节角度缓存（来自 /joint_states 话题）
+        self.latest_joint_state = None
+
+        # ServoJ 插值运动相关（从 ROS 参数读取）
+        self.servoj_current_target = [0.0] * 7   # 当前定时器实际发送的值
+        self.servoj_initialized = False           # 是否已从关节状态初始化
+        self.servoj_interp_points = int(self.get_parameter('servoj_interp_points').value)
+        self.tracking_interp_points = int(self.get_parameter('tracking_interp_points').value)
+        self.fixed_approach_height = float(self.get_parameter('fixed_approach_height').value)
+        self.fixed_grasp_height = float(self.get_parameter('fixed_grasp_height').value)
+        self.servoj_loss_timeout = float(self.get_parameter('servoj_loss_timeout').value)
+        self.servoj_arrival_threshold = float(self.get_parameter('servoj_arrival_threshold').value)
+        self._object_stable_threshold = float(self.get_parameter('object_stable_threshold').value)
+        self._grasp_verify_wait = float(self.get_parameter('grasp_verify_wait').value)
+        self._place_restart_delay = float(self.get_parameter('place_restart_delay').value)
+        self._place_interp_points = int(self.get_parameter('place_interp_points').value)
+        self._cam_stable_required = int(self.get_parameter('cam_stable_frames').value)
+        self._cam_stable_threshold = float(self.get_parameter('cam_stable_threshold').value)
+
+        # ── 读取放置位置参数 ──
+        raw = self.get_parameter('place_positions').value
+        self.place_positions = []
+        for i in range(6):
+            start = i * 7
+            if start + 7 <= len(raw):
+                self.place_positions.append([float(v) for v in raw[start:start+7]])
+            else:
+                self.place_positions.append([0.0]*7)
+
+        # ── 读取B侧放置位置和散落区 ──
+        raw_b = self.get_parameter('place_positions_b').value
+        self.place_positions_b = []
+        for i in range(6):
+            start = i * 7
+            if start + 7 <= len(raw_b):
+                self.place_positions_b.append([float(v) for v in raw_b[start:start+7]])
+            else:
+                self.place_positions_b.append([0.0]*7)
+        self.drop_zone_pose = list(self.get_parameter('drop_zone_pose').value)
+        self.gripper_grasp_threshold = int(self.get_parameter('gripper_grasp_threshold').value)
+        self.servoj_current_final = None          # 当前轨迹的目标终点（到位检测用）
+        self.servoj_trajectory = []               # 预生成的 N 个插值点
+        self.servoj_traj_idx = 0                  # 当前发送到第几个点
+        self.servoj_moving = False                # 是否正在发送轨迹中
+        self.servoj_vmax = list(self.get_parameter('servoj_vmax').value)    # °/s
+        self.servoj_amax = list(self.get_parameter('servoj_amax').value)    # °/s²
+        self.servoj_jmax = list(self.get_parameter('servoj_jmax').value)    # °/s³
+        self.servoj_timer = None
+        self._servoj_target = None           # servoj 平滑追踪的目标关节角度（None=已到位）
+
+        # ── 抓取序列状态（到点 → 闭合夹爪 → 等待 3s → 回零）──
+        self._grasp_on_arrival = False   # 到位后是否执行抓取序列
+        self._grasp_triggered = False    # 跟踪模式下是否已触发抓取（防重复）
+        self._grasp_home_timer = None    # 延迟回零定时器
+        self._servoj_stable_start = None # 到位稳定起始时间（防路过误触发）
+
+        # ── 图像稳定检测（跟踪模式下，图像不动了→物体静止→抓取）──
+        self._object_stable_start = None   # 物体开始静止的时间戳
+        self._stable_start_joints = None   # 计时启动时的关节目标（用于判断是否真动了）
+        self._last_cam_pos = None          # 上一次物体在相机坐标系下的位置
+        self._cam_stable_frames = 0        # 连续稳定帧计数
+        self._last_object_angle = 0.0      # 最新检测到的物体角度（弧度）
+        self._tracking_start_time = None   # 本次跟踪开始时间（用于初始动态插值）
+        self._latest_cam_x = 0.0           # 最新YOLO检测的相机X坐标（用于右侧区域平滑）
+        # _object_stable_threshold 从 ROS 参数读取（已在上面声明）
+
+        # ── 多块连续抓取 ──
+        self.multi_block_mode = False          # 多块模式总开关
+        self._target_locked = False            # 目标已锁定，不再更新
+        self._block_count_before = 0           # 抓取前检测到的方块数（一次性记录）
+        self._block_count_after = 0            # 抓取后检测到的方块数（一次性记录）
+        self._current_detected_count = 0       # 当前YOLO最新检测到的方块数
+        self._need_before_count = False        # 需要记录一次抓取前个数
+        self._need_after_count = False         # 需要记录一次抓取后个数
+        self._verify_grasp = False             # 正在验证抓取是否成功
+        self._verify_start_time = None         # 验证开始时间
+        self._home_for_multiblock = False      # 回零到家后多块处理
+        self._place_idx = 0                    # 当前放置到第几个位置
+        self._multiblock_retry = 0             # 连续重试次数
+        self._place_on_arrival = False         # 到位后执行放置
+        self._after_placement = False          # 放置回零到家后重启跟踪
+        self._restart_timer = None             # 重启跟踪定时器
+        self._place_open_timer = None          # 放置到位后延迟松夹爪
+        self._place_home_timer = None          # 松夹爪后延迟回零
+        self._pending_block = None             # 等待处理的下一个目标
+        self._last_block_mode = False          # 仅剩1个方块时的单块跟随模式
+        # 直接抓取模式（前N-1个方块不需要跟踪）
+        self._multiblock_targets = []          # 预记录的方块基坐标列表 [{x,y,angle}, ...]
+        self._multiblock_idx = 0               # 当前直接抓取到第几个
+        self._multiblock_phase = None          # None / 'direct' / 'tracking'
+        self._pending_direct_cart = None       # 待处理的直接抓取笛卡尔目标（避免回调内spin）
+        self._pending_place_cart = None        # 待处理的放置笛卡尔目标（避免回调内spin）
+        self._place_delay_until = 0.0          # 放置延迟时间戳
+        self._direct_delay_until = 0.0         # 直接抓取延迟时间戳
+
+        # ── 循环转移模式（A↔B堆叠交换） ──
+        self.cycle_mode = False                # 循环转移模式开关
+        self.cycle_direction = 'A_to_B'        # 'A_to_B' 或 'B_to_A'
+        self.cycle_pick_order = [2, 1, 0, 5, 4, 3]  # 倒序取顶层
+        self.cycle_place_order = [0, 1, 2, 3, 4, 5]  # 正序放置
+        self.cycle_block_idx = 0               # 当前处理到第几个块
+        self.cycle_delay = 0.5                 # 动作间延迟（秒）
+        self._cycle_running = False            # 是否正在执行循环中
+        self._auto_start_cycle = False         # 多方块完成后自动启动循环转移
+
+        # 键盘控制相关
+        self.old_terminal_settings = None
+        self.keyboard_fd = None
+        self.keyboard_fd_need_close = False
+        self.setup_keyboard()
+
+        self.T_tool_camera = self.load_handeye_matrix_from_param()
+
+        # ── 计算相机在基座标系下的偏移（跟踪时姿态固定为 roll=-π）──
+        # 用于将跟踪目标从"TCP对准物体"改为"TCP与相机中间点对准物体"
+        t_tool_cam = self.T_tool_camera[:3, 3]  # 相机在TCP坐标系下的平移
+        r_fixed = R.from_euler('XYZ', [-3.1416, 0.0, 0.0], degrees=False)
+        R_base_tool = r_fixed.as_matrix()
+        self._cam_offset_base = R_base_tool @ t_tool_cam  # 相机在基座标系下的偏移(m)
+        mid_factor = float(self.get_parameter('track_mid_factor').value)
+        self._track_mid_offset = mid_factor * self._cam_offset_base
+
+        self.safe_log_info('========== T_tool_camera ==========')
+        self.safe_log_info(f'\n{self.T_tool_camera}')
+        self.safe_log_info(f'相机偏移(基座标系): X={self._cam_offset_base[0]*1000:.1f}mm  '
+                          f'Y={self._cam_offset_base[1]*1000:.1f}mm  Z={self._cam_offset_base[2]*1000:.1f}mm')
+        self.safe_log_info(f'跟踪补偿(减此值): X={self._track_mid_offset[0]*1000:.1f}mm  '
+                          f'Y={self._track_mid_offset[1]*1000:.1f}mm  Z={self._track_mid_offset[2]*1000:.1f}mm')
+        self.safe_log_info('===================================')
+
+        # ── 夹爪初始化（参数从 gripper.yaml 读取）──
+        self.gripper = None
+        # 尝试绑定 CH340 驱动（新电脑 Kernel 6.8 需要）
+        if not os.path.exists(self.gripper_port):
+            try:
+                with open('/sys/bus/usb-serial/drivers/ch341-uart/new_id', 'w') as f:
+                    f.write('1a86 7523')
+                time.sleep(1)
+            except Exception:
+                pass
+        try:
+            self.gripper = EG2Gripper(
+                port=self.gripper_port,
+                slave_id=self.gripper_slave_id,
+                baudrate=self.gripper_baudrate
+            )
+            self.gripper.set_speed(self.gripper_speed)
+            self.gripper.set_force(self.gripper_force)
+            if self.gripper_catch_mode == 1:
+                self.gripper.set_catch_mode(True)
+            self.safe_log_info('夹爪初始化成功')
+            self.safe_log_info(
+                f'夹爪参数: port={self.gripper_port}, '
+                f'speed={self.gripper_speed}, force={self.gripper_force}g, '
+                f'catch_mode={"持续夹取" if self.gripper_catch_mode else "一次夹取"}'
+            )
+        except Exception as e:
+            self.safe_log_warn(f'夹爪初始化失败（可忽略）: {e}')
+
+        # 创建 ROS2 服务客户端（仅保留运行时所需服务）
+        self._create_service_clients()
+
+        # 创建 ROS2 话题订阅与发布
+        self._create_topic_sub_pub()
+
+        self.sub_object_camera = self.create_subscription(
+            ObjectInfo,
+            self.camera_object_topic,
+            self.object_camera_callback,
+            10
+        )
+
+        self.pub_object_base = self.create_publisher(
+            ObjectInfo,
+            '/tl_vision/object_3d_pos_base',
+            10
+        )
+
+        # ── 初始化：夹爪张开 ──
+        if self.gripper:
+            try:
+                self.gripper.open_gripper(opening=self.gripper_open_position)
+                self.safe_log_info(f'✔ 夹爪已张开（位置: {self.gripper_open_position}）')
+            except Exception as e:
+                self.safe_log_warn(f'夹爪张开失败: {e}')
+        else:
+            self.safe_log_warn('夹爪未初始化，跳过张开')
+
+        self.safe_log_info('control_node 初始化完成')
+        self.safe_log_info(f'订阅: {self.camera_object_topic}')
+        self.safe_log_info(f'base_frame_id: {self.base_frame_id}')
+        self.safe_log_info(f'机械臂: {self.robot_ip}:{self.robot_port}')
+        self.safe_log_info(f'目标类型 object_type: {self.target_object_type}')
+        self.safe_log_info(f'fiCxed_approach_height: {self.fixed_approach_height} mm')
+        self.safe_log_info(f'fixed_grasp_height: {self.fixed_grasp_height} mm')
+        self.safe_log_info(f'approach_movetype: {self.approach_movetype}')
+        self.safe_log_info(f'ServoJ 插值点数: {self.servoj_interp_points}')
+        self.safe_log_info(f'ServoJ vmax: {self.servoj_vmax}')
+        self.safe_log_info('按键: c 单块跟随 | m 多块连续抓取 | r 循环转移 | z 回零 | o 夹爪张开 | p 夹爪闭合 | 3 夹爪参数 | q 退出')
+
+    def _create_service_clients(self):
+        """创建运行时所需的 tl_driver 服务客户端（坐标变换与可达性检测）。"""
+        self.coord_transform_client = self.create_client(CoordTransform, '/tl_driver/coord_transform')
+        self.get_pos_reachable_client = self.create_client(GetPosReachable, '/tl_driver/get_pos_reachable')
+
+    def _create_topic_sub_pub(self):
+        """创建话题订阅、发布器与 ServoJ 定时器。"""
+        self.tcp_pose_sub = self.create_subscription(
+            CartesianPose,
+            '/tcp_pose',
+            self.tcp_pose_callback,
+            10
+        )
+        # 订阅关节状态，获取当前关节角度（tl_driver 已 remap 到 /nano/joint_states）
+        self.joint_state_sub = self.create_subscription(
+            JointState,
+            '/nano/joint_states',
+            self.joint_state_callback,
+            10
+        )
+        # ServoJ 关节角度发布器（替换原来的 moveJ 发布器）
+        self.servoj_pos_pub = self.create_publisher(
+            Float64MultiArray,
+            '/tl_driver/set_servoj_pos',
+            10
+        )
+        # 订阅 YOLO 批量检测结果（用于多块抓取）
+        self.all_objects_sub = self.create_subscription(
+            Float64MultiArray,
+            '/tl_vision/all_objects_camera',
+            self.all_objects_camera_callback,
+            10
+        )
+        # 发布关节状态给 robot_state_publisher（用于 RViz 显示）
+        self.joint_state_pub = self.create_publisher(
+            JointState,
+            '/joint_states',
+            10
+        )
+        # ServoJ 定时器（10ms = 100Hz，持续发送带插值的关节角度）
+        self.servoj_timer = self.create_timer(0.008, self.servoj_timer_callback)
+
+    def tcp_pose_callback(self, msg: CartesianPose):
+        """缓存来自 /tcp_pose 话题的最新末端位姿。"""
+        self.latest_tcp_pose = msg
+
+    def joint_state_callback(self, msg: JointState):
+        """缓存来自 /joint_states 话题的最新关节角度。"""
+        self.latest_joint_state = msg
+
+    def servoj_timer_callback(self):
+        """定时器回调（100Hz）：从预生成轨迹中取点发送到 /tl_driver/set_servoj_pos。"""
+        if not self.running:
+            return
+
+        # 首次运行时，用当前关节位置初始化 current_target（弧度→度）
+        if not self.servoj_initialized and self.latest_joint_state is not None:
+            current_pos_rad = list(self.latest_joint_state.position)
+            current_pos_deg = [v * 180.0 / math.pi for v in current_pos_rad]
+            self.servoj_current_target = (current_pos_deg + [0.0] * 7)[:7]
+            self.servoj_initialized = True
+
+        if not self.servoj_initialized:
+            return
+
+        # ── 安全阈值：Z 低于 167mm 立即回零 ──
+        if self.latest_tcp_pose is not None:
+            current_z = self.latest_tcp_pose.position.z
+            if current_z < 165.0:
+                self.safe_log_warn(f'⚠ 安全阈值触发！Z={current_z:.1f}mm < 167mm，立即回零')
+                self.tracking_mode = False
+                self.servoj_moving = False
+                self._loss_homed = True
+                self._grasp_triggered = False  # 清除抓取标志，防止卡死
+                zero_joint = (list(self.zero_joint) + [0.0] * 7)[:7]
+                if self.servoj_initialized:
+                    start = list(self.servoj_current_target)
+                    n = self.servoj_interp_points
+                    traj = []
+                    for step in range(1, n + 1):
+                        ratio = step / n
+                        point = [start[i] + (zero_joint[i] - start[i]) * ratio for i in range(7)]
+                        traj.append(point)
+                    self.servoj_traj_idx = 0
+                    self.servoj_trajectory = traj
+                    self.servoj_current_final = zero_joint
+                    self.servoj_moving = True
+                    self._servoj_stable_start = None
+                return
+
+        # ── 方式1：大范围轨迹运动（servoj_move：抓取、放置、回零）──
+        if self.servoj_moving:
+            if self.servoj_traj_idx < len(self.servoj_trajectory):
+                self.servoj_current_target = self.servoj_trajectory[self.servoj_traj_idx]
+                self.servoj_traj_idx += 1
+                if self.servoj_current_final is not None:
+                    max_diff = max(
+                        abs(self.servoj_current_target[i] - self.servoj_current_final[i])
+                        for i in range(7)
+                    )
+                    if max_diff < self.servoj_arrival_threshold:
+                        self.servoj_current_target = list(self.servoj_current_final)
+                        self.servoj_moving = False
+                        self.servoj_current_final = None
+                        self._on_servoj_arrival()
+                    else:
+                        self._servoj_stable_start = None
+            else:
+                self.servoj_moving = False
+                self.servoj_current_final = None
+                self._on_servoj_arrival()
+
+        # 发布 ServoJ 关节角度到 tl_driver
+        msg = Float64MultiArray()
+        msg.data = self.servoj_current_target
+        self.servoj_pos_pub.publish(msg)
+
+        # 发布关节状态到 /joint_states（用于 RViz 显示）
+        if self.latest_joint_state is not None:
+            js_msg = JointState()
+            js_msg.header.stamp = self.get_clock().now().to_msg()
+            js_msg.name = list(self.latest_joint_state.name)
+            # servoj_current_target 是度，转回弧度
+            current_rad = [v * math.pi / 180.0 for v in self.servoj_current_target]
+            js_msg.position = current_rad[:len(js_msg.name)]
+            self.joint_state_pub.publish(js_msg)
+
+    def safe_log_info(self, msg):
+        if rclpy.ok():
+            try:
+                self.get_logger().info(str(msg))
+            except Exception:
+                print(msg)
+        else:
+            print(msg)
+
+    def safe_log_warn(self, msg):
+        if rclpy.ok():
+            try:
+                self.get_logger().warn(str(msg))
+            except Exception:
+                print(f'[WARN] {msg}')
+        else:
+            print(f'[WARN] {msg}')
+
+    def safe_log_error(self, msg):
+        if rclpy.ok():
+            try:
+                self.get_logger().error(str(msg))
+            except Exception:
+                print(f'[ERROR] {msg}')
+        else:
+            print(f'[ERROR] {msg}')
+
+    def setup_keyboard(self):
+        """
+        修复 ros2 launch 下 sys.stdin 可能不是 tty，导致按 c 没反应的问题。
+
+        优先使用 sys.stdin。
+        如果 sys.stdin 不是 tty，则尝试打开 /dev/tty。
+        """
+        try:
+            if sys.stdin.isatty():
+                self.keyboard_fd = sys.stdin.fileno()
+                self.keyboard_fd_need_close = False
+            else:
+                try:
+                    self.keyboard_fd = os.open('/dev/tty', os.O_RDONLY | os.O_NONBLOCK)
+                    self.keyboard_fd_need_close = True
+                except Exception:
+                    self.keyboard_fd = None
+                    self.keyboard_fd_need_close = False
+
+            if self.keyboard_fd is None:
+                self.safe_log_warn('未检测到可用终端，键盘控制不可用')
+                return
+
+            self.old_terminal_settings = termios.tcgetattr(self.keyboard_fd)
+            tty.setcbreak(self.keyboard_fd)
+
+            self.safe_log_info('键盘控制已启用: c 控制 | z 回零点 | q 退出')
+
+        except Exception as e:
+            print(f'键盘初始化失败: {e}')
+            self.keyboard_fd = None
+            self.keyboard_fd_need_close = False
+            self.old_terminal_settings = None
+
+    def restore_keyboard(self):
+        try:
+            if self.keyboard_fd is not None and self.old_terminal_settings is not None:
+                try:
+                    termios.tcsetattr(
+                        self.keyboard_fd,
+                        termios.TCSADRAIN,
+                        self.old_terminal_settings
+                    )
+                except Exception:
+                    pass
+
+                self.old_terminal_settings = None
+
+            if self.keyboard_fd is not None and self.keyboard_fd_need_close:
+                try:
+                    os.close(self.keyboard_fd)
+                except Exception:
+                    pass
+
+            self.keyboard_fd = None
+            self.keyboard_fd_need_close = False
+
+        except Exception as e:
+            print(f'恢复键盘异常: {e}')
+
+    def read_key(self):
+        try:
+            if self.keyboard_fd is None:
+                return None
+
+            dr, _, _ = select.select([self.keyboard_fd], [], [], 0)
+
+            if dr:
+                data = os.read(self.keyboard_fd, 1)
+                if data:
+                    return data.decode(errors='ignore')
+
+        except Exception:
+            return None
+
+        return None
+
+    def load_handeye_matrix_from_param(self):
+        try:
+            handeye_list = list(self.get_parameter('handeye_matrix').value)
+
+            if len(handeye_list) != 16:
+                raise ValueError(
+                    f'handeye_matrix 参数长度错误，期望 16，实际 {len(handeye_list)}'
+                )
+
+            T_tool_camera = np.array(
+                handeye_list,
+                dtype=np.float64
+            ).reshape(4, 4)
+
+            if not np.all(np.isfinite(T_tool_camera)):
+                raise ValueError(
+                    f'handeye_matrix 中存在 NaN 或 Inf:\n{T_tool_camera}'
+                )
+
+            expected_last_row = np.array(
+                [0.0, 0.0, 0.0, 1.0],
+                dtype=np.float64
+            )
+
+            if not np.allclose(T_tool_camera[3, :], expected_last_row, atol=1e-6):
+                self.safe_log_warn(
+                    f'handeye_matrix 最后一行不是 [0, 0, 0, 1]: '
+                    f'{T_tool_camera[3, :]}'
+                )
+
+            return T_tool_camera
+
+        except Exception as e:
+            self.safe_log_error(f'读取 handeye_matrix 失败: {e}')
+            self.cleanup_and_exit()
+
+    def get_robot_pose(self):
+        """从缓存的 /tcp_pose 话题数据获取当前末端位姿。"""
+        if self.latest_tcp_pose is None:
+            self.safe_log_warn('TCP pose 尚未接收到数据')
+            return False, None
+
+        try:
+            # CartesianPose 位置单位为 mm，转换为米
+            x = self.latest_tcp_pose.position.x / 1000.0
+            y = self.latest_tcp_pose.position.y / 1000.0
+            z = self.latest_tcp_pose.position.z / 1000.0
+
+            # 从 CartesianPose.rpy 获取欧拉角（弧度）
+            roll = self.latest_tcp_pose.rpy.x
+            pitch = self.latest_tcp_pose.rpy.y
+            yaw = self.latest_tcp_pose.rpy.z
+
+            return True, [x, y, z, roll, pitch, yaw]
+
+        except Exception as e:
+            self.safe_log_error(f'获取位姿失败: {e}')
+            return False, None
+
+    def pose_to_tool_rt(self, pose):
+        if pose is None or len(pose) < 6:
+            raise ValueError(f'pose 长度不足: {pose}')
+
+        t_tool = np.array(
+            pose[0:3],
+            dtype=np.float64
+        ).reshape(3, 1)
+
+        A, B, C = pose[3], pose[4], pose[5]
+
+        rotation = R.from_euler(
+            'XYZ',
+            [A, B, C],
+            degrees=False
+        )
+
+        R_tool = rotation.as_matrix()
+
+        return R_tool, t_tool
+
+    def pose_to_T_base_tool(self, pose):
+        R_tool, t_tool = self.pose_to_tool_rt(pose)
+
+        T_base_tool = np.eye(4, dtype=np.float64)
+        T_base_tool[0:3, 0:3] = R_tool
+        T_base_tool[0:3, 3] = t_tool.reshape(3)
+
+        return T_base_tool
+
+    def object_camera_callback(self, msg):
+        if not self.running:
+            return
+
+        try:
+            object_type = msg.type
+
+            P_camera = np.array(
+                [
+                    msg.pos.point.x,
+                    msg.pos.point.y,
+                    msg.pos.point.z,
+                    1.0
+                ],
+                dtype=np.float64
+            )
+
+            if not np.all(np.isfinite(P_camera)):
+                self.safe_log_warn(
+                    f'收到非法物体坐标，type={object_type}，跳过'
+                )
+                return
+
+            success, robot_pose = self.get_robot_pose()
+
+            if not success:
+                self.safe_log_warn(
+                    f'机械臂位姿获取失败，type={object_type}，跳过本次转换'
+                )
+                return
+
+            _t0 = time.perf_counter()
+            T_base_tool = self.pose_to_T_base_tool(robot_pose)
+            T_base_camera = T_base_tool @ self.T_tool_camera
+            self.latest_object_type = str(object_type)
+
+            # 检查是否有有效的位置数据（非零深度）
+            has_pos = (abs(msg.pos.point.x) > 0.001 or
+                       abs(msg.pos.point.y) > 0.001 or
+                       abs(msg.pos.point.z) > 0.001)
+
+            if not has_pos:
+                # 无有效位置 → 角度也不可靠，跳过
+                return
+
+            # 有有效深度 → 角度和位置都可信
+            self._last_object_angle = float(msg.angle)
+
+            # ── 图像稳定检测：使用基坐标系位置（不受相机移动影响）──
+            P_base = T_base_camera @ P_camera
+            base_xyz = P_base[:3]
+            if self._last_cam_pos is not None and self.tracking_mode:
+                diff = np.linalg.norm(base_xyz - self._last_cam_pos)
+                if diff < self._cam_stable_threshold:
+                    self._cam_stable_frames += 1
+                else:
+                    self._cam_stable_frames = 0
+                    if not (self.multi_block_mode and self._target_locked):
+                        self._object_stable_start = None
+            self._last_cam_pos = base_xyz.copy()
+
+            if not np.all(np.isfinite(P_base)):
+                self.safe_log_warn(
+                    f'转换后物体坐标非法，type={object_type}，跳过'
+                )
+                return
+
+            _t1 = time.perf_counter()
+
+            trans_msg = ObjectInfo()
+            trans_msg.type = object_type
+            trans_msg.pos.header.stamp = msg.pos.header.stamp
+            trans_msg.pos.header.frame_id = self.base_frame_id
+            trans_msg.pos.point.x = float(P_base[0])
+            trans_msg.pos.point.y = float(P_base[1])
+            trans_msg.pos.point.z = float(P_base[2])
+            trans_msg.angle = float(msg.angle)
+
+            self.pub_object_base.publish(trans_msg)
+
+            # 保存相机X坐标用于右侧区域平滑
+            self._latest_cam_x = float(P_camera[0])
+
+            # 多块模式且目标已锁定：不更新位置和时间戳，防止轨迹重复生成
+            if self.multi_block_mode and self._target_locked:
+                return
+
+            self.latest_base_point = np.array([P_base[0], P_base[1], P_base[2]], dtype=np.float64)
+            self.latest_stamp = time.time()
+
+            # 调试：打印 TCP 位姿与检测到的物体基坐标（用于方案B校准）
+            # if self.latest_tcp_pose is not None:
+            #     self.safe_log_info(
+            #         f'[调试] TCP(mm): X={self.latest_tcp_pose.position.x:.1f} '
+            #         f'Y={self.latest_tcp_pose.position.y:.1f} '
+            #         f'Z={self.latest_tcp_pose.position.z:.1f} | '
+            #         f'物体基坐标: X={P_base[0]*1000:.1f} '
+            #         f'Y={P_base[1]*1000:.1f} '
+            #         f'Z={P_base[2]*1000:.1f}'
+            #     )
+
+        except Exception as e:
+            self.safe_log_error(f'物体坐标转换失败: {e}')
+
+    def all_objects_camera_callback(self, msg):
+        """
+        接收 YOLO 批量检测结果（相机坐标系）。
+        多块模式下：更新检测数量，选择最左上方方块跟踪。
+        Float64MultiArray: [count, x1,y1,z1,angle1, ...]
+
+        支持一次性计数模式（_need_before_count / _need_after_count）：
+        只在需要时记录一次个数，不做连续跟踪。
+        """
+        if not self.running:
+            return
+
+        data = list(msg.data)
+        if len(data) < 1:
+            return
+        count = int(data[0])
+        self._current_detected_count = count
+
+        # ── 一次性计数（抓取前/后，在零点记录）──
+        if self._need_before_count:
+            self._block_count_before = count
+            self._need_before_count = False
+            self.safe_log_info(f'══════ 抓取前个数为: {count} ══════')
+            if count == 0:
+                self.safe_log_info('未检测到方块，多块抓取完成，退出程序')
+                self.multi_block_mode = False
+                self.tracking_mode = False
+                self.running = False
+            elif count == 1:
+                self.safe_log_info('仅剩1个方块，切换为单块跟随模式')
+                self.multi_block_mode = False
+                self._last_block_mode = True
+                self.tracking_mode = True
+            elif count >= 2 and len(data) >= 1 + 4 * count:
+                # 多个方块：直接记录所有位置，N-1个直接抓取，最后1个跟踪
+                self.safe_log_info(f'检测到{count}个方块，前{count-1}个直接抓取，最后1个跟踪')
+                success, robot_pose = self.get_robot_pose()
+                if success:
+                    _t0 = time.perf_counter()
+                    T_base_tool = self.pose_to_T_base_tool(robot_pose)
+                    T_base_camera = T_base_tool @ self.T_tool_camera
+                    self._multiblock_targets = []
+                    for i in range(count):
+                        idx = 1 + i * 4
+                        P_cam = np.array([data[idx], data[idx+1], data[idx+2], 1.0], dtype=np.float64)
+                        angle = float(data[idx+3])
+                        P_base = T_base_camera @ P_cam
+                        _t1 = time.perf_counter()
+                        self.safe_log_info(
+                            f'[多块-基坐标] 方块{i+1}: '
+                            f'X={P_base[0]*1000:.1f} Y={P_base[1]*1000:.1f} Z={P_base[2]*1000:.1f} '
+                            f'angle={angle:.3f}rad  '
+                            f'(耗时: {(_t1-_t0)*1000:.3f}ms)'
+                        )
+                        self._multiblock_targets.append({
+                            'x': float(P_base[0]), 'y': float(P_base[1]), 'angle': angle
+                        })
+                    # 保持YOLO原始顺序
+                    self._multiblock_phase = 'direct'
+                    self._multiblock_idx = 0
+                    self.tracking_mode = False
+                    self._schedule_direct_grasp()
+                else:
+                    self.safe_log_warn('获取机械臂位姿失败，无法记录方块位置')
+            return
+
+        if self._need_after_count:
+            self._block_count_after = count
+            self._need_after_count = False
+            self.safe_log_info(f'══════ 抓取后个数为: {count} ══════')
+            return
+
+        if not self.multi_block_mode or self._target_locked:
+            return
+
+        # 只有 count>0 且数据足够时才锁目标
+        if count == 0 or len(data) < 5:
+            return
+
+        # 获取机械臂位姿，准备坐标变换
+        success, robot_pose = self.get_robot_pose()
+        if not success:
+            return
+        _t0 = time.perf_counter()
+        T_base_tool = self.pose_to_T_base_tool(robot_pose)
+        T_base_camera = T_base_tool @ self.T_tool_camera
+
+        # 转换所有方块到基坐标
+        blocks = []
+        for i in range(count):
+            idx = 1 + i * 4
+            if idx + 3 >= len(data):
+                break
+            P_cam = np.array([data[idx], data[idx+1], data[idx+2], 1.0], dtype=np.float64)
+            angle = float(data[idx+3])
+            P_base = T_base_camera @ P_cam
+            _t1 = time.perf_counter()
+            self.safe_log_info(
+                f'[多块-基坐标] 检测方块{i+1}: '
+                f'X={P_base[0]*1000:.1f} Y={P_base[1]*1000:.1f} Z={P_base[2]*1000:.1f} '
+                f'angle={angle:.3f}rad  '
+                f'(耗时: {(_t1-_t0)*1000:.3f}ms)'
+            )
+            blocks.append({'x': float(P_base[0]), 'y': float(P_base[1]), 'angle': angle})
+
+        if len(blocks) == 0:
+            return
+
+        # YOLO 已按像素Y上→下、X左→右排序，取第一个（最左上方）
+        b = blocks[0]
+        self.latest_base_point = np.array([b['x'], b['y'], 0.0], dtype=np.float64)
+        self._last_object_angle = b['angle']
+        self.latest_object_type = self.target_object_type
+        self.latest_stamp = time.time()
+        self._target_locked = True
+        self._last_processed_stamp = 0.0  # 重置处理标记
+
+        self.safe_log_info(
+            f'[多块] 检测到 {len(blocks)} 个，锁定目标: X={b["x"]*1000:.1f} Y={b["y"]*1000:.1f}'
+        )
+
+    def _place_joint(self, joint_pos):
+        """移动到指定关节位置（使用放置专用插值点数）"""
+        return self.servoj_move(joint_pos, self._place_interp_points)
+
+    def _execute_place_sequence(self):
+        """
+        抓取验证成功后：移动到放置位置 → 张开夹爪 → 回零 → 继续下一块 
+        place_positions 格式：[x_mm, y_mm, z_mm, rx, ry, rz, posture] × 6
+        """
+        if self._place_idx >= 6:
+            self.safe_log_info('所有方块已放置完毕！')
+            self.multi_block_mode = False
+            return
+
+        pos = self.place_positions[self._place_idx]
+        self.safe_log_info(f'⬇ 放置到位置 #{self._place_idx+1}: X={pos[0]:.1f} Y={pos[1]:.1f} Z={pos[2]:.1f}')
+
+        # 笛卡尔 → 关节角
+        target_cart = [pos[0], pos[1], pos[2], pos[3], pos[4], pos[5], pos[6]]
+        ret, target_joint = self.get_target_joint_from_cartesian(target_cart)
+        if ret != 0 or len(target_joint) < 7:
+            self.safe_log_error(f'放置位置 #{self._place_idx+1} IK失败')
+            self.multi_block_mode = False
+            return
+
+        if self._place_joint(list(target_joint[:7])):
+            self._place_on_arrival = True
+        else:
+            self.safe_log_error('移动到放置位置失败')
+            self.multi_block_mode = False
+
+    def get_target_joint_from_cartesian(self, target_cart):
+        """通过 /tl_driver/coord_transform 服务将笛卡尔位姿转为关节角度。"""
+        req = CoordTransform.Request()
+        req.origin_coord = 1  # 直角坐标
+        req.target_coord = 0  # 关节坐标
+        req.form = 0
+        req.origin_pos = list(target_cart)
+        req.reference_pos = [0.0] * 7
+
+        # 重试机制：ServoJ 运动期间 NRC 可能繁忙，最多重试 3 次
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                future = self.coord_transform_client.call_async(req)
+                rclpy.spin_until_future_complete(self, future)
+                result = future.result()
+
+                if result.success:
+                    return 0, list(result.target_pos)
+
+                if attempt < max_retries - 1:
+                    self.safe_log_warn(
+                        f'笛卡尔转关节失败(第{attempt+1}次): {result.message}，重试...'
+                    )
+                    time.sleep(0.05)  # 等 50ms 再试
+                else:
+                    self.safe_log_error(
+                        f'笛卡尔转关节失败(已重试{max_retries}次): {result.message}'
+                    )
+
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    self.safe_log_warn(f'笛卡尔转关节异常(第{attempt+1}次): {e}，重试...')
+                    time.sleep(0.05)
+                else:
+                    self.safe_log_error(f'笛卡尔转关节异常(已重试{max_retries}次): {e}')
+
+        return -1, []
+
+    def check_pos_reachable(self, point_values, coord=0, angle_unit=0, posture=1):
+        """通过 /tl_driver/get_pos_reachable 服务检测关节位姿是否可达。"""
+        # 构建 14 元素位姿数组: [coord, angle_unit, posture, 0,0,0,0, j1..j7]
+        pos = [0.0] * 14
+        pos[0] = float(coord)
+        pos[1] = float(angle_unit)
+        pos[2] = float(posture)
+        for i in range(len(point_values)):
+            pos[7 + i] = float(point_values[i])
+
+        self.safe_log_info(f'可达性检测 pos14: {pos}')
+        self.safe_log_info(f'可达性检测 movetype: {self.approach_movetype}')
+
+        req = GetPosReachable.Request()
+        req.pos = pos
+        req.move_type = self.approach_movetype
+
+        try:
+            future = self.get_pos_reachable_client.call_async(req)
+            rclpy.spin_until_future_complete(self, future)
+            result = future.result()
+
+            self.safe_log_info(f'get_pos_reachable 返回: success={result.success}, message={result.message}')
+
+            if not result.success:
+                self.safe_log_warn(f'点位不可达: {result.message}')
+                return False
+
+            self.safe_log_info('点位可达')
+            return True
+
+        except Exception as e:
+            self.safe_log_error(f'可达性判断异常: {e}')
+            return False
+
+    def servoj_move(self, joint_pos, interp_n=None):
+        """预生成 N 个插值点轨迹，定时器依次发送。"""
+        try:
+            joint_list = list(joint_pos)
+
+            if len(joint_list) < 7:
+                joint_list = joint_list + [0.0] * (7 - len(joint_list))
+
+            if not self.servoj_initialized:
+                self.safe_log_warn('ServoJ 尚未初始化（未收到关节数据），跳过运动')
+                return False
+
+            final_target = joint_list[:7]
+            start = list(self.servoj_current_target)
+
+            # 预生成 N 个插值点（可指定，默认使用 servoj_interp_points）
+            n = interp_n if interp_n is not None else self.servoj_interp_points
+            self.servoj_trajectory = []
+            for step in range(1, n + 1):
+                ratio = step / n
+                point = [
+                    start[i] + (final_target[i] - start[i]) * ratio
+                    for i in range(7)
+                ]
+                self.servoj_trajectory.append(point)
+
+            self.servoj_current_final = final_target  # 记录终点
+            self.servoj_traj_idx = 0
+            self.servoj_moving = True
+            self._servoj_stable_start = None        # 新轨迹，重置稳定计时
+            return True
+
+        except Exception as e:
+            self.safe_log_error(f'movej 异常: {e}')
+            return False
+
+    def execute_control(self):
+        if self.latest_base_point is None:
+            self.safe_log_warn('当前没有检测到目标物体')
+            return False
+
+        if self.latest_object_type != self.target_object_type:
+            self.safe_log_warn(
+                f'当前物体类型为 {self.latest_object_type}，'
+                f'目标类型为 {self.target_object_type}，不执行控制'
+            )
+            return False
+
+        p = self.latest_base_point.copy()
+
+        target_cart = [
+            float((p[0] + self.grasp_forward_offset) * 1000.0),  # X：前向偏移
+            float(p[1] * 1000.0),
+            float(self.fixed_grasp_height),   # 抓取时下降到物体位置
+            -3.14,
+            0.0,
+            float(self._last_object_angle),
+            0.0
+        ]
+
+        self.safe_log_info(
+            f'目标笛卡尔坐标: '
+            f'[{target_cart[0]:.3f}, {target_cart[1]:.3f}, {target_cart[2]:.3f}, '
+            f'{target_cart[3]:.3f}, {target_cart[4]:.3f}, {target_cart[5]:.3f}, {target_cart[6]:.3f}]'
+        )
+
+        ret, target_joint = self.get_target_joint_from_cartesian(target_cart)
+
+        if ret != 0:
+            self.safe_log_error(f'笛卡尔转关节失败: ret={ret}')
+            return False
+
+        joint_list = list(target_joint)
+
+        if len(joint_list) < 7:
+            self.safe_log_error(f'转换后的关节坐标长度不足: {joint_list}')
+            return False
+
+        self.safe_log_info(f'目标关节坐标: {joint_list}')
+
+        if not self.check_pos_reachable(target_joint):
+            self.safe_log_warn('目标位置不可达')
+            return False
+
+        self.safe_log_info('目标位置可达，开始运动')
+        if self.servoj_move(target_joint):
+            self._grasp_on_arrival = True  # 到点后触发抓取序列
+            return True
+        return False
+
+    def move_zero(self, interp_n=None):
+        """
+        回零运动。
+        :param interp_n: 插值点数，None 则使用默认 servoj_interp_points
+        """
+        if len(self.zero_joint) < 7:
+            zero_joint = list(self.zero_joint) + [0.0] * (7 - len(self.zero_joint))
+        else:
+            zero_joint = list(self.zero_joint[:7])
+
+        speed_label = '放置速度' if interp_n is not None else '默认速度'
+        self.safe_log_info(f'回零点 ({speed_label}, n={interp_n or self.servoj_interp_points}): {zero_joint}')
+
+        if not self.check_pos_reachable(zero_joint):
+            self.safe_log_warn('零点位置不可达')
+            return False
+
+        return self.servoj_move(zero_joint, interp_n)
+
+    def _on_servoj_arrival(self):
+        """ServoJ 到点：触发抓取序列 / 放置 / 重启多块"""
+        # 放置到位 → 延迟1秒 → 张开夹爪 → 延迟2秒 → 回零
+        if self._place_on_arrival:
+            self._place_on_arrival = False
+            self.safe_log_info(f'✔ 已到达放置位置 #{self._place_idx+1}，1秒后打开夹爪')
+            self._place_open_timer = self.create_timer(1.0, self._on_place_open_timer)
+            return
+        
+        # 放置后回零到家 → 直接重启跟踪（不需要再验证）
+        if self._after_placement:
+            self._after_placement = False
+            self._restart_multiblock_tracking()
+            return
+
+        # 到家后重新启动多块模式（验证抓取结果）
+        if self._home_for_multiblock:
+            self._home_for_multiblock = False
+            self._restart_multiblock_verification()
+            return
+
+        # movej/movel 路径：_grasp_on_arrival 标志
+        if self._grasp_on_arrival:
+            self._grasp_on_arrival = False
+            self._grasp_triggered = False
+            if self._cycle_running:
+                # 循环模式下由 _cycle_visual_track_grasp 自行控制
+                return
+            self._execute_grasp_sequence()
+            return
+
+        # 视觉跟随模式下的到位：不触发抓取，由 _trigger_grasp_from_tracking 控制
+        # （物体静止 2 秒后的稳定检测才触发抓取，到位只是轨迹走完而已）
+
+    def _on_place_open_timer(self):
+        """放置后延迟1秒到：张开夹爪，延迟2秒后回零"""
+        self._place_open_timer.cancel()
+        self._place_open_timer = None
+        self.safe_log_info(f'✔ 1秒到，张开夹爪')
+        if self.gripper:
+            try:
+                self.gripper.open_gripper(opening=self.gripper_open_position)
+            except Exception as e:
+                self.safe_log_error(f'夹爪张开失败: {e}')
+        self._place_home_timer = self.create_timer(2.0, self._on_place_home_timer)
+
+    def _on_place_home_timer(self):
+        """松夹爪后延迟2秒到：直接生成回零轨迹（跳过可达性检测，零点是安全的）"""
+        self._place_home_timer.cancel()
+        self._place_home_timer = None
+        self.safe_log_info(f'✔ 2秒到，回零')
+        self._place_idx += 1
+        self._after_placement = True
+        # 直接生成 ServoJ 回零轨迹（不走 move_zero 避免服务调用在定时器回调中阻塞）
+        zero_joint = (list(self.zero_joint) + [0.0] * 7)[:7]
+        if self.servoj_initialized:
+            start = list(self.servoj_current_target)
+            n = self._place_interp_points
+            traj = []
+            for step in range(1, n + 1):
+                ratio = step / n
+                point = [start[i] + (zero_joint[i] - start[i]) * ratio for i in range(7)]
+                traj.append(point)
+            self.servoj_current_final = zero_joint
+            self.servoj_traj_idx = 0
+            self.servoj_trajectory = traj
+            self.servoj_moving = True
+            self._servoj_stable_start = None
+            self.safe_log_info(f'放置后回零轨迹已生成（{n}点，约{n/100:.1f}秒到达）')
+        else:
+            self.safe_log_warn('ServoJ 未初始化，无法回零')
+
+    def _trigger_grasp_from_tracking(self):
+        """物体静止后：关闭跟踪 → movej 到物体位置 → 到点抓取"""
+        if self._grasp_triggered:
+            return
+
+        if self.latest_base_point is None:
+            self.safe_log_warn('没有物体位置数据，无法抓取')
+            return
+
+        self._grasp_triggered = True
+        self.tracking_mode = False
+
+        # 移除 _trigger_grasp_from_tracking 里的 _block_count_before 记录
+        if self.multi_block_mode:
+            pass
+
+        p = self.latest_base_point.copy()
+        target_cart = [
+            float((p[0] + self.grasp_forward_offset) * 1000.0),  # X：前向偏移补偿
+            float(p[1] * 1000.0),
+            float(self.fixed_grasp_height),       # Z：下降到物体位置抓取
+            -3.14, 0.0, float(self._last_object_angle), 0.0
+        ]
+
+        yaw_deg = np.rad2deg(target_cart[5])
+        self.safe_log_info(f'⬇ 前往抓取位置: [{target_cart[0]:.1f}, {target_cart[1]:.1f}, {target_cart[2]:.1f}] 角度(RZ): {yaw_deg:.1f}°')
+
+        ret, target_joint = self.get_target_joint_from_cartesian(target_cart)
+        if ret != 0 or len(target_joint) < 7:
+            self.safe_log_error('目标位置计算失败，取消抓取')
+            self._grasp_triggered = False
+            self._multiblock_phase = None
+            self._target_locked = False
+            return
+
+        if not self.check_pos_reachable(target_joint):
+            self.safe_log_warn('目标位置不可达，取消抓取')
+            self._grasp_triggered = False
+            self._multiblock_phase = None
+            self._target_locked = False
+            return
+
+        if self.servoj_move(list(target_joint[:7])):
+            self._grasp_on_arrival = True  # 到位后触发抓取序列
+            self.safe_log_info('servoj 到位后自动执行抓取')
+        else:
+            self.safe_log_error('servoj_move失败，取消抓取')
+            self._grasp_triggered = False
+            self._multiblock_phase = None
+            self._target_locked = False
+
+    def _execute_grasp_sequence(self):
+        """到点后的抓取序列：闭合夹爪 → 等待 gripper_grasp_wait_duration → 回零"""
+        # 1. 闭合夹爪（使用 gripper.yaml 中的闭合位置）
+        if self.gripper:
+            try:
+                self.gripper.close_gripper(opening=self.gripper_close_position)
+                self.safe_log_info(f'✔ 夹爪已闭合（位置: {self.gripper_close_position}），{self.gripper_grasp_wait_duration} 秒后自动回零')
+            except Exception as e:
+                self.safe_log_error(f'夹爪闭合失败: {e}')
+        else:
+            self.safe_log_warn('夹爪未初始化，3 秒后直接回零')
+
+        # 2. 取消之前的定时器（防止重复）
+        if self._grasp_home_timer is not None:
+            self._grasp_home_timer.cancel()
+
+        # 3. 根据配置等待后回零
+        wait_sec = self.gripper_grasp_wait_duration
+        self._grasp_home_timer = self.create_timer(wait_sec, self._on_grasp_home_timer)
+
+    def _on_grasp_home_timer(self):
+        """抓取等待到，执行回零"""
+        self.safe_log_info(f'{self.gripper_grasp_wait_duration} 秒到，执行回零')
+        self._grasp_home_timer.cancel()
+        self._grasp_home_timer = None
+        # 直接设置 ServoJ 轨迹回零（不经过可达性检测，零点是安全的）
+        zero_joint = (list(self.zero_joint) + [0.0] * 7)[:7]
+        if self.servoj_initialized:
+            start = list(self.servoj_current_target)
+            n = self.servoj_interp_points
+            traj = []
+            for step in range(1, n + 1):
+                ratio = step / n
+                point = [start[i] + (zero_joint[i] - start[i]) * ratio for i in range(7)]
+                traj.append(point)
+            self.servoj_current_final = zero_joint
+            self.servoj_traj_idx = 0
+            self.servoj_trajectory = traj
+            self.servoj_moving = True
+            self._servoj_stable_start = None
+            # 多块模式或最后一个方块：到家后验证抓取结果
+            if self.multi_block_mode or self._last_block_mode:
+                self._home_for_multiblock = True
+                mode = '多块' if self.multi_block_mode else '单块最后'
+                self.safe_log_info(f'{mode}模式：回零到位后验证抓取结果')
+            self.safe_log_info(f'ServoJ 回零轨迹已生成，{n/100:.1f} 秒到达')
+        else:
+            self.safe_log_warn('ServoJ 未初始化，无法回零')
+
+    def _restart_multiblock_verification(self):
+        """回零到家后：做一次YOLO检测记录抓取后个数"""
+        if not self.multi_block_mode and not self._last_block_mode:
+            return
+        # 直接模式也做YOLO验证，防止夹空就去放置
+        self._need_after_count = True
+        self.tracking_mode = False  # 验证期间不跟踪
+        self._verify_grasp = True
+        self._verify_start_time = time.time()
+        self.safe_log_info('等待YOLO一次检测，记录抓取后个数...')
+    
+    def _restart_multiblock_tracking(self):
+        """放置后回零到家：等待5秒后自动恢复跟踪下一块"""
+        if not self.multi_block_mode:
+            if self._last_block_mode:
+                self._last_block_mode = False
+                self.safe_log_info('最后一个方块已放置完成，进入循环转移')
+                self._auto_start_cycle = True
+            return
+        if self._place_idx >= 6:
+            self.safe_log_info('所有方块已放置完毕！')
+            self.multi_block_mode = False
+            self._target_locked = False
+            # 自动进入循环转移模式
+            self._auto_start_cycle = True
+            return
+        # ── 统一：每次回零后重新扫描位置再抓取 ──
+        self.safe_log_info(f'等待1秒后在零点重新扫描当前方块位置（已放置 {self._place_idx}/6）')
+        self._target_locked = False
+        self._restart_timer = self.create_timer(1.0, self._do_restart_tracking)
+
+    def _do_restart_tracking(self):
+        """定时器回调（一次性）：在零点做一次YOLO检测记录当前个数，然后恢复跟踪"""
+        # 立即取消自身（防止周期性重复触发）
+        if self._restart_timer is not None:
+            self._restart_timer.cancel()
+            self._restart_timer = None
+        if not self.multi_block_mode:
+            return
+        # 如果当前检测已经是0，直接退出
+        if self._current_detected_count == 0:
+            self.safe_log_info('当前未检测到方块，多块模式自动结束')
+            self.multi_block_mode = False
+            self.tracking_mode = False
+            self.running = False
+            return
+        self.safe_log_info('在零点记录抓取前个数...')
+        self._need_before_count = True
+        self.tracking_mode = True  # 恢复视觉跟随模式，主循环才能调用 _update_trajectory_from_detection
+        self._target_locked = False
+        self._grasp_triggered = False
+        self._object_stable_start = None
+        self._last_processed_stamp = 0.0
+        self._loss_start_time = None
+        self._loss_homed = False
+        self.latest_base_point = None
+        self.latest_stamp = None
+    
+    def _verify_grasp_result(self):
+        """抓取后的一次计数到位后，对比抓取前后个数决定下一步"""
+        self._verify_grasp = False
+
+        # 等待一次性计数完成（最多等3秒）
+        wait_start = time.time()
+        while self._need_after_count and (time.time() - wait_start) < 3.0:
+            rclpy.spin_once(self, timeout_sec=0.1) 
+        if self._need_after_count:
+            self._need_after_count = False
+            self._block_count_after = self._current_detected_count
+            self.safe_log_info(f'══════ 抓取后个数为: {self._block_count_after}（超时取当前值）══════')
+
+        before = self._block_count_before
+        after = self._block_count_after
+        self.safe_log_info(f'验证: 抓取前 {before} 个 → 抓取后 {after} 个')
+
+        if after < before:
+            # 成功：数量减少了
+            self.safe_log_info(f'✔ 抓取成功！减少 {before - after} 个，1秒后执行放置')
+            self._multiblock_retry = 0
+            # 等待1秒过渡，避免验证完马上姿态变动
+            wait_end = time.time() + 1.0
+            while time.time() < wait_end and self.running:
+                rclpy.spin_once(self, timeout_sec=0.1)
+            self._execute_place_sequence()
+        else:
+            # 失败：数量没变，无限重试（有人值守）
+            self._multiblock_retry += 1
+            self.safe_log_warn(f'✖ 抓取失败（第 {self._multiblock_retry} 次），2秒后重试')
+            # 张开夹爪，准备重新抓取
+            if self.gripper:
+                try:
+                    self.gripper.open_gripper(opening=self.gripper_open_position)
+                    self.safe_log_info('✔ 夹爪已张开，准备重新抓取')
+                except Exception as e:
+                    self.safe_log_error(f'夹爪张开失败: {e}')
+            # 重新扫描方块位置，走正常多块直接抓取逻辑
+            self._need_before_count = True
+            self._target_locked = False
+            self._grasp_triggered = False
+            self.tracking_mode = False
+            self.safe_log_info('重新扫描方块位置，重新执行多块直接抓取...')
+    
+    def _update_trajectory_from_detection(self):
+        """视觉跟随模式下：用最新 YOLO 检测结果重新生成轨迹，覆盖当前轨迹。"""
+        # 抓取已触发，不更新轨迹，让抓取动作走完
+        if self._grasp_triggered:
+            return
+
+        now = time.time()
+
+        # ===== 检查 YOLO 是否丢失目标 =====
+        # 多块模式锁定目标后：不检查丢失，等静止抓取
+        if not (self.multi_block_mode and self._target_locked):
+            if self.latest_stamp is not None and self._last_processed_stamp > 0.0:
+                elapsed_no_detection = now - self.latest_stamp
+
+                # 超过 servoj_loss_timeout 秒 → 回零
+                if elapsed_no_detection > self.servoj_loss_timeout:
+                    if not self._loss_homed:
+                        self._loss_homed = True
+                        self._grasp_triggered = False  # 清除抓取标志，防止卡死
+                        self.servoj_moving = False
+                        self.tracking_mode = False
+                        self.safe_log_warn(f' YOLO 目标丢失超过 {self.servoj_loss_timeout}s，回零')
+                        if self.multi_block_mode:
+                            self._home_for_multiblock = True
+                        self.move_zero()
+                    return
+
+                # 连续 0.5 秒没有新检测 → 认为目标丢失
+                if elapsed_no_detection > 0.5:
+                    if self._loss_start_time is None:
+                        self._loss_start_time = now
+                        self.servoj_moving = False
+                        self.safe_log_warn(f'YOLO 目标丢失，停在当前位置等待...')
+                    return
+
+                # 丢失状态中，且最新检测恢复
+                if self._loss_start_time is not None and self.latest_stamp > self._loss_start_time:
+                    self.safe_log_info('YOLO 目标恢复，继续跟踪')
+                    self._loss_start_time = None
+                    self._loss_homed = False
+
+        # ===== 目标回来了（之前丢失过，现在又检测到了，且 latest_stamp 从未更新过）=====
+        if self._loss_start_time is not None or self._loss_homed:
+            self.safe_log_info('YOLO 目标恢复，继续跟踪')
+            self._loss_start_time = None
+            self._loss_homed = False
+
+        # ===== 目标静止检测（不打断跟踪，并行检测）=====
+        final_joints = getattr(self, 'servoj_current_final', None)
+        # 计时器未启动时：最近1秒内生成过新轨迹 OR 稳定帧不足 → 不启动
+        if self._object_stable_start is None:
+            if (now - self._last_traj_update_time < 1.0 or
+                self._cam_stable_frames < self._cam_stable_required):
+                pass
+            else:
+                self._object_stable_start = now
+                if final_joints is not None:
+                    self._stable_start_joints = list(final_joints)
+                self.safe_log_info(f'跟踪已稳定1秒（≥{self._cam_stable_required}帧静止），开始计时（{self._object_stable_threshold:.0f}秒后抓取）')
+        # 计时器已启动：仅当新轨迹与计时开始时目标偏差>2°才重置
+        elif (now - self._last_traj_update_time < 1.0 and
+              self._stable_start_joints is not None and
+              final_joints is not None):
+            diff = max(abs(final_joints[i] - self._stable_start_joints[i]) for i in range(7))
+            if diff >= 2.0:
+                self._object_stable_start = None
+                self._stable_start_joints = None
+        elif now - self._object_stable_start >= self._object_stable_threshold:
+            if not self._grasp_triggered:
+                self.safe_log_info(f'物体已静止 {self._object_stable_threshold:.0f} 秒，执行抓取')
+                self._object_stable_start = None
+                self._stable_start_joints = None
+                self._trigger_grasp_from_tracking()
+
+        # ===== 没有新检测数据，不更新轨迹 =====
+        if self.latest_base_point is None:
+            return
+        if self.latest_object_type != self.target_object_type:
+            return
+        if self.latest_stamp == self._last_processed_stamp:
+            return
+
+        p = self.latest_base_point.copy()
+
+        # ── 计算目标笛卡尔坐标 ──
+        target_cart = [
+            float((p[0] - self._track_mid_offset[0] + self.grasp_forward_offset) * 1000.0),
+            float((p[1] - self._track_mid_offset[1]) * 1000.0),
+            float(self.fixed_approach_height - self._track_mid_offset[2] * 1000.0),
+            -3.14, 0.0, 0.0, 0.0
+        ]
+
+        ret, target_joint = self.get_target_joint_from_cartesian(target_cart)
+        if ret != 0:
+            self.safe_log_warn(f'坐标转换服务调用失败(ret={ret})，下一帧重试')
+            return
+        if len(target_joint) < 7:
+            self.safe_log_warn(f'转换后的关节坐标长度不足({len(target_joint)})，下一帧重试')
+            return
+
+        joint_list = list(target_joint[:7])
+        for i in range(7):
+            if abs(joint_list[i]) > 180.0:
+                self.safe_log_warn(f'关节{i+1}角度异常: {joint_list[i]:.2f}°，跳过更新')
+                return
+
+        # ── 指数平滑关节目标（抑制YOLO抖动）──
+        # 画面右侧区域（相机X > 80mm）降低alpha防漂移
+        alpha = 0.4
+        if self._latest_cam_x > 0.08:
+            alpha = 0.25
+        if self._last_joint_target is not None:
+            joint_list = [alpha * joint_list[i] + (1 - alpha) * self._last_joint_target[i] for i in range(7)]
+        self._last_joint_target = list(joint_list)
+
+        # ── 更新节流：目标变化太小或时间太短，跳过本次更新 ──
+        if self._last_traj_update_time > 0:
+            max_joint_diff = max(abs(joint_list[i] - self.servoj_current_target[i]) for i in range(7))
+            time_since = now - self._last_traj_update_time
+            # 微小变化（<1.5°）且刚更新过（<1s内）→ 跳过，让当前轨迹走完
+            if max_joint_diff < 1.5 and time_since < 1.0:
+                return
+        self._last_traj_update_time = now
+
+        # ── 生成插值轨迹（用 servoj_current_target 保持连续性）──
+        start = list(self.servoj_current_target)
+        max_joint_diff = max(abs(joint_list[i] - start[i]) for i in range(7))
+        # 跟踪初期（前3秒）：动态插值防止大角度突变；之后：固定60点加快速度
+        if self._tracking_start_time is not None and time.time() - self._tracking_start_time > 3.0:
+            n = self.tracking_interp_points   # 固定60点，快速跟随
+        else:
+            n = max(self.tracking_interp_points, int(max_joint_diff * 8))
+            n = min(n, 1000)
+        traj = []
+        for step in range(1, n + 1):
+            ratio = step / n
+            point = [
+                start[i] + (joint_list[i] - start[i]) * ratio
+                for i in range(7)
+            ]
+            traj.append(point)
+
+        self.servoj_current_final = joint_list
+        self.servoj_traj_idx = 0
+        self.servoj_trajectory = traj
+        self.servoj_moving = True
+        self._last_processed_stamp = self.latest_stamp
+
+        self.safe_log_info(
+            f'[跟随更新] 插值{n}点 目标关节: {[f"{j:.2f}" for j in joint_list]}'
+        )
+
+    def _schedule_direct_grasp(self):
+        """设置直接抓取的笛卡尔目标，主循环会执行IK和servoj_move"""
+        if self._multiblock_idx >= len(self._multiblock_targets):
+            return
+        target = self._multiblock_targets[self._multiblock_idx]
+        self._pending_direct_cart = [
+            float((target['x'] + self.grasp_forward_offset) * 1000.0),
+            float(target['y'] * 1000.0),
+            float(self.fixed_grasp_height),
+            -3.14, 0.0, float(target['angle']), 0.0
+        ]
+        self.safe_log_info(
+            f'⬇ 直接抓取第{self._multiblock_idx+1}块: '
+            f'[{self._pending_direct_cart[0]:.1f}, {self._pending_direct_cart[1]:.1f}, {self._pending_direct_cart[2]:.1f}]'
+        )
+        self._direct_delay_until = time.time() + 2.0
+
+    def _execute_pending_direct_grasp(self):
+        """主循环中执行：等待2秒延迟 → IK → servoj_move"""
+        target_cart = self._pending_direct_cart
+        if target_cart is None:
+            return
+        # 等待2秒延迟
+        if time.time() < self._direct_delay_until:
+            return
+        self._pending_direct_cart = None
+        ret, target_joint = self.get_target_joint_from_cartesian(target_cart)
+        if ret != 0 or len(target_joint) < 7:
+            self.safe_log_error(f'第{self._multiblock_idx+1}块IK失败')
+            return
+        if self.servoj_move(list(target_joint[:7])):
+            self._grasp_on_arrival = True
+
+    def _schedule_place(self):
+        """设置放置目标，由主循环执行IK和servoj_move"""
+        if self._place_idx >= 6:
+            self.safe_log_info('所有方块已放置完毕！')
+            self.multi_block_mode = False
+            return
+        pos = self.place_positions[self._place_idx]
+        self.safe_log_info(f'⬇ 2秒后放置到位置 #{self._place_idx+1}: X={pos[0]:.1f} Y={pos[1]:.1f} Z={pos[2]:.1f}')
+        self._pending_place_cart = [pos[0], pos[1], pos[2], pos[3], pos[4], pos[5], pos[6]]
+        self._place_delay_until = time.time() + 2.0
+
+    def _execute_pending_place(self):
+        """主循环中执行：等待2秒延迟 → IK → servoj_move"""
+        target_cart = self._pending_place_cart
+        if target_cart is None:
+            return
+        # 等待2秒延迟
+        if time.time() < self._place_delay_until:
+            return
+        self._pending_place_cart = None
+        ret, target_joint = self.get_target_joint_from_cartesian(target_cart)
+        if ret != 0 or len(target_joint) < 7:
+            self.safe_log_error(f'放置位置 #{self._place_idx+1} IK失败')
+            self.multi_block_mode = False
+            return
+        if self._place_joint(list(target_joint[:7])):
+            self._place_on_arrival = True
+        else:
+            self.safe_log_error('移动到放置位置失败')
+            self.multi_block_mode = False
+
+    # ════════════════════════════════════════════
+    # 循环转移模式（A↔B堆叠交换）
+    # ════════════════════════════════════════════
+
+    def _cycle_wait_for_servoj(self, timeout=30.0):
+        """等待当前 servoj_move 完成（超时返回 False）"""
+        start_t = time.time()
+        while self.servoj_moving and self.running and (time.time() - start_t) < timeout:
+            rclpy.spin_once(self, timeout_sec=0.05)
+        return not self.servoj_moving
+
+    def _cycle_move_cartesian(self, cart_pos, interp_n=None, settle_delay=0.3):
+        """移动到笛卡尔坐标位置（IK + servoj_move），到点后驻留等待机械臂停稳"""
+        ret, target_joint = self.get_target_joint_from_cartesian(cart_pos)
+        if ret != 0 or len(target_joint) < 7:
+            self.safe_log_error(f'循环转移 IK失败: {cart_pos}')
+            return False
+        if not self.servoj_move(list(target_joint[:7]), interp_n):
+            return False
+        if not self._cycle_wait_for_servoj():
+            self.safe_log_error('循环转移 servoj_move 超时')
+            return False
+        # 驻留等待机械臂真正停稳
+        time.sleep(settle_delay)
+        return True
+
+    def _cycle_lift_up(self, lift_mm=50.0):
+        """夹住后抬升 Z 轴（基于当前 TCP 位姿）"""
+        if self.latest_tcp_pose is None:
+            self.safe_log_warn('抬升失败：无 TCP 数据')
+            return False
+        x = self.latest_tcp_pose.position.x
+        y = self.latest_tcp_pose.position.y
+        z = self.latest_tcp_pose.position.z + lift_mm
+        roll = self.latest_tcp_pose.rpy.x
+        pitch = self.latest_tcp_pose.rpy.y
+        yaw = self.latest_tcp_pose.rpy.z
+        cart = [x, y, z, roll, pitch, yaw, 0.0]
+        self.safe_log_info(f'⬆ 抬升 Z+{lift_mm:.0f}mm → {z:.1f}mm')
+        return self._cycle_move_cartesian(cart)
+
+    def _cycle_pick_from_stack(self, pos):
+        """从堆叠位置取块（Z-2mm），夹爪闭合检测 + 抬升"""
+        cart = [pos[0], pos[1], pos[2] - 2.0, pos[3], pos[4], pos[5], pos[6]]
+        self.safe_log_info(f'⬆ 取堆叠块: X={cart[0]:.1f} Y={cart[1]:.1f} Z={cart[2]:.1f}')
+        if not self._cycle_move_cartesian(cart):
+            return False
+        # 闭合夹爪检测（等待2秒让夹爪完全闭合）
+        if not self.gripper:
+            return False
+        self.gripper.close_gripper(opening=self.gripper_close_position)
+        time.sleep(1.5)
+        curr = self.gripper.read_position()
+        if curr is not None and 100 < curr < self.gripper_grasp_threshold:
+            self.safe_log_info(f'✔ 取块成功 (夹爪位置={curr})')
+        else:
+            self.safe_log_warn(f'✖ 取块失败 (夹爪位置={curr})')
+            return False
+        # 抬升 + 延迟
+        if not self._cycle_lift_up(50):
+            return False
+        time.sleep(self.cycle_delay)
+        return True
+
+    def _cycle_drop_at_zone(self):
+        """去散落区释放方块"""
+        d = self.drop_zone_pose
+        self.safe_log_info(f' 去散落区释放: X={d[0]:.1f} Y={d[1]:.1f} Z={d[2]:.1f}')
+        if not self._cycle_move_cartesian(d, self._place_interp_points):
+            return False
+        # 延迟1秒后松爪
+        time.sleep(1.0)
+        if self.gripper:
+            self.gripper.open_gripper(opening=self.gripper_open_position)
+            self.safe_log_info('✔ 散落区已松爪')
+        time.sleep(self.cycle_delay)
+        # 回零后再开始视觉跟踪（从零点出发）
+        if not self.move_zero():
+            return False
+        if not self._cycle_wait_for_servoj():
+            return False
+        time.sleep(self.cycle_delay)
+        return True
+
+    def _cycle_visual_track_grasp(self):
+        """视觉跟踪模式 + 夹爪闭合检测抓取 + 抬升（失败回零重试）"""
+        if not self.gripper:
+            return False
+
+        for retry in range(5):
+            self.safe_log_info(f' 视觉跟踪尝试 {retry+1}/5...')
+            self.gripper.open_gripper(opening=self.gripper_open_position)
+            time.sleep(0.3)
+            self.latest_stamp = None
+            self.latest_base_point = None
+            self._last_processed_stamp = 0.0
+            self._loss_start_time = None
+            self._loss_homed = False
+            self.tracking_mode = True
+            self._grasp_triggered = False
+            self._object_stable_start = None
+            self._cam_stable_frames = 0
+
+            # 阶段1：等待YOLO数据或跟踪触发（最多15秒）
+            start_t = time.time()
+            has_data = False
+            while self.running and (time.time() - start_t) < 15.0:
+                rclpy.spin_once(self, timeout_sec=0.05)
+                if self._loss_homed:
+                    break
+                if not self.tracking_mode:
+                    break
+                if self.latest_base_point is not None and not has_data:
+                    has_data = True
+                    self.safe_log_info('✔ YOLO数据到达')
+                self._update_trajectory_from_detection()
+            else:
+                continue  # 超时无数据
+
+            # 阶段2：等待到抓取点
+            if self._loss_homed:
+                self.safe_log_warn('YOLO丢失，回零重试...')
+                self._loss_homed = False
+                self.tracking_mode = False
+                continue
+
+            t2 = time.time()
+            while self.running and (time.time() - t2) < 15.0:
+                rclpy.spin_once(self, timeout_sec=0.05)
+                if not self.servoj_moving:
+                    break
+            time.sleep(0.5)
+            self.tracking_mode = False
+
+            # 阶段3：闭爪检测
+            self.gripper.close_gripper(opening=self.gripper_close_position)
+            self.safe_log_info('⬇ 闭合夹爪')
+            time.sleep(1.5)
+            curr = self.gripper.read_position()
+            if curr is not None and 100 < curr < self.gripper_grasp_threshold:
+                self.safe_log_info(f'✔ 抓到 (夹爪位置={curr})')
+                break
+            self.safe_log_warn(f'✖ 没抓到 (位置={curr})，回零重试...')
+            self.move_zero()
+            self._cycle_wait_for_servoj()
+        else:
+            self.safe_log_error('视觉跟踪抓取失败')
+            return False
+
+        # 阶段5：抬升 + 延迟（不回零，直接去放置）
+        if not self._cycle_lift_up(50):
+            return False
+        time.sleep(self.cycle_delay)
+        return True
+
+    def _cycle_place_at_target(self, pos):
+        """放置到目标位置（B或A）"""
+        cart = [pos[0], pos[1], pos[2], pos[3], pos[4], pos[5], pos[6]]
+        self.safe_log_info(f' 放置到目标: X={cart[0]:.1f} Y={cart[1]:.1f} Z={cart[2]:.1f}')
+        if not self._cycle_move_cartesian(cart, self._place_interp_points):
+            return False
+        time.sleep(1.0)
+        if self.gripper:
+            self.gripper.open_gripper(opening=self.gripper_open_position)
+            self.safe_log_info('✔ 已松爪')
+        time.sleep(self.cycle_delay)
+        # 回零
+        if not self.move_zero():
+            return False
+        if not self._cycle_wait_for_servoj():
+            return False
+        time.sleep(self.cycle_delay)
+        return True
+
+    def _run_cycle_transfer(self):
+        """执行循环转移，持续 A↔B 交替直到手动停止"""
+        self._cycle_running = True
+        self._auto_start_cycle = False
+        self.safe_log_info(f' 启动循环转移，持续 A↔B 交替...')
+
+        while self.running:
+            self.safe_log_info(f'━━━ 方向: {self.cycle_direction} ━━━')
+
+            # 根据方向确定取块顺序和目标位置
+            if self.cycle_direction == 'A_to_B':
+                pick_positions = self.place_positions
+                target_positions = self.place_positions_b
+                pick_order = [2, 1, 0, 5, 4, 3]  # A侧：先三角1倒序
+            else:
+                pick_positions = self.place_positions_b
+                target_positions = self.place_positions
+                pick_order = [5, 4, 3, 2, 1, 0]  # B侧：先三角2倒序
+
+            for idx in range(6):
+                if not self.running:
+                    break
+                pi_pick = pick_order[idx]
+                pi_place = self.cycle_place_order[idx]
+                self.safe_log_info(f'━━━ 块 {idx+1}/6 (取索引 {pi_pick} → 放索引 {pi_place}) ━━━')
+
+                # 1. 从堆叠取块（失败则回零结束程序）
+                if not self._cycle_pick_from_stack(pick_positions[pi_pick]):
+                    self.safe_log_error(f'取块{idx+1}失败，回零结束')
+                    self.move_zero()
+                    self._cycle_wait_for_servoj()
+                    self._cycle_running = False
+                    self.running = False
+                    return
+                time.sleep(self.cycle_delay)
+
+                # 2. 去散落区释放
+                if not self._cycle_drop_at_zone():
+                    self.safe_log_error(f'散落释放{idx+1}失败，暂停循环')
+                    self._cycle_running = False
+                    return
+                time.sleep(self.cycle_delay)
+
+                # 3. 视觉跟踪抓取（失败则回零重试）
+                for retry in range(3):
+                    if self._cycle_visual_track_grasp():
+                        break
+                    self.safe_log_warn(f'视觉跟踪{idx+1}重试 {retry+1}/3')
+                    self._loss_homed = False
+                    self.tracking_mode = False
+                    time.sleep(1.0)
+                else:
+                    self.safe_log_error(f'视觉跟踪{idx+1}失败，暂停循环')
+                    self.move_zero()
+                    self._cycle_wait_for_servoj()
+                    self._cycle_running = False
+                    return
+                time.sleep(self.cycle_delay)
+
+                # 4. 放置到目标位置
+                if not self._cycle_place_at_target(target_positions[pi_place]):
+                    self.safe_log_error(f'放置{idx+1}失败，暂停循环')
+                    self._cycle_running = False
+                    return
+
+            # 切换方向
+            if self.cycle_direction == 'A_to_B':
+                self.cycle_direction = 'B_to_A'
+            else:
+                self.cycle_direction = 'A_to_B'
+            self.safe_log_info(f' 方向完成，切换为: {self.cycle_direction}')
+
+        self._cycle_running = False
+
+    def handle_key(self, key):
+        self.safe_log_info(f'收到按键: {repr(key)}')
+
+        if key == 'c':
+            self.tracking_mode = not self.tracking_mode
+            if self.tracking_mode:
+                self._grasp_triggered = False
+                self._object_stable_start = None
+                self._cam_stable_frames = 0
+                self._last_cam_pos = None
+                self._tracking_start_time = time.time()
+                self.safe_log_info('开启视觉跟随模式（物体静止 2 秒后自动抓取）')
+                self._update_trajectory_from_detection()
+            else:
+                self.safe_log_info('关闭视觉跟随模式')
+
+        elif key == 'm':
+            if self.multi_block_mode:
+                self.safe_log_info('已在多块模式中，忽略重复按键')
+                return
+            self.multi_block_mode = True
+            self.tracking_mode = True  # 复用单块跟踪流程
+            self._grasp_triggered = False
+            self._object_stable_start = None
+            self._home_for_multiblock = False
+            self._verify_grasp = False
+            self._place_idx = 0
+            self._multiblock_retry = 0
+            self._block_count_before = 0
+            self._block_count_after = 0
+            self._place_on_arrival = False
+            self._target_locked = False
+            self.safe_log_info('开启多块连续抓取模式')
+            # 在零点等待1秒，让YOLO识别当前方块个数（只记录一次）
+            self.safe_log_info('等待YOLO识别当前方块个数...')
+            self._need_before_count = True
+            wait_start = time.time()
+            while self._need_before_count and (time.time() - wait_start) < 3.0:
+                rclpy.spin_once(self, timeout_sec=0.1)
+            if not self._need_before_count:
+                self.safe_log_info(f'▶ 开始跟踪抓取，初始个数: {self._block_count_before}')
+            else:
+                self._need_before_count = False
+                self.safe_log_warn('YOLO未返回数据，使用当前检测值')
+                self._block_count_before = self._current_detected_count
+                self.safe_log_info(f'▶ 开始跟踪抓取，初始个数: {self._block_count_before}')
+
+        elif key == 'z':
+            self.tracking_mode = False
+            self.multi_block_mode = False
+            self._target_locked = False
+            self._home_for_multiblock = False
+            self._verify_grasp = False
+            if self._restart_timer is not None:
+                self._restart_timer.cancel()
+                self._restart_timer = None
+            self.safe_log_info('按键 z: 回零点')
+            self.move_zero()
+
+        elif key == 'o':
+            if self.gripper:
+                self.gripper.open_gripper(opening=self.gripper_open_position)
+                self.safe_log_info(f'夹爪张开（位置: {self.gripper_open_position}）')
+            else:
+                self.safe_log_warn('夹爪未初始化')
+
+        elif key == 'p':
+            if self.gripper:
+                self.gripper.close_gripper(opening=self.gripper_close_position)
+                self.safe_log_info(f'夹爪闭合（位置: {self.gripper_close_position}）')
+            else:
+                self.safe_log_warn('夹爪未初始化')
+
+        elif key == '3':
+            if self.gripper:
+                self.safe_log_info(
+                    f'夹爪参数 — '
+                    f'port: {self.gripper_port} | '
+                    f'speed: {self.gripper_speed} | '
+                    f'force: {self.gripper_force}g | '
+                    f'open: {self.gripper_open_position} | '
+                    f'close: {self.gripper_close_position} | '
+                    f'catch_mode: {"持续" if self.gripper_catch_mode else "一次"} | '
+                    f'wait: {self.gripper_grasp_wait_duration}s'
+                )
+            else:
+                self.safe_log_warn('夹爪未初始化')
+
+        elif key == 'r':
+            if self._cycle_running:
+                self.safe_log_info('循环转移已在运行中')
+                return
+            self.safe_log_info(f' 启动循环转移: {self.cycle_direction}')
+            self.multi_block_mode = False
+            self.tracking_mode = False
+            self._run_cycle_transfer()
+
+        elif key == 'q':
+            print('\n按键 q: 退出 control_node')
+            self.running = False
+
+    def run(self):
+        while self.running and rclpy.ok():
+            try:
+                rclpy.spin_once(self, timeout_sec=0.05)
+
+                # 视觉跟随模式下，每帧检查是否有新 YOLO 检测
+                if self.tracking_mode and not self._cycle_running:
+                    self._update_trajectory_from_detection()
+
+                # 多方块完成后自动启动循环转移
+                if self._auto_start_cycle and not self._cycle_running:
+                    self._run_cycle_transfer()
+
+                # 多块模式：等待一次性抓取后计数完成，然后验证
+                if self._verify_grasp:
+                    if not self._need_after_count:
+                        # 一次性计数已收到（或超时），执行验证
+                        self._verify_grasp_result()
+                    elif time.time() - self._verify_start_time > 5.0:
+                        # 超时保护：5秒还没收到计数，强行验证
+                        self.safe_log_warn('抓取后计数超时，使用当前检测值')
+                        self._block_count_after = self._current_detected_count
+                        self._need_after_count = False
+                        self._verify_grasp_result()
+
+                # 直接抓取（前N-1块）：IK转换 + servoj_move，避免在回调内 spin
+                if self._pending_direct_cart is not None:
+                    self._execute_pending_direct_grasp()
+
+                # 放置：IK转换 + servoj_move，避免在回调内 spin
+                if self._pending_place_cart is not None:
+                    self._execute_pending_place()
+
+                key = self.read_key()
+                if key is not None:
+                    self.handle_key(key)
+
+            except ExternalShutdownException:
+                break
+
+            except KeyboardInterrupt:
+                print('\n用户中断 control_node')
+                self.running = False
+                break
+
+            except Exception as e:
+                if self.running and rclpy.ok():
+                    self.safe_log_error(f'主循环异常: {e}')
+                else:
+                    print(f'主循环退出: {e}')
+                break
+
+        self.cleanup()
+
+    def cleanup(self):
+        if self.cleaned:
+            return
+
+        self.cleaned = True
+        self.running = False
+
+        print('\n正在清理 control_node 资源...')
+
+        # 先恢复键盘设置（最重要，否则终端卡死）
+        self.restore_keyboard()
+
+        # 取消延迟回零定时器
+        if self._grasp_home_timer is not None:
+            try:
+                self._grasp_home_timer.cancel()
+            except Exception:
+                pass
+            self._grasp_home_timer = None
+
+        # 取消放置相关定时器
+        for timer_name in ('_place_open_timer', '_place_home_timer'):
+            timer = getattr(self, timer_name, None)
+            if timer is not None:
+                try:
+                    timer.cancel()
+                except Exception:
+                    pass
+                setattr(self, timer_name, None)
+
+        # 快速关闭夹爪（加超时保护）
+        if self.gripper:
+            try:
+                self.gripper.close()
+            except Exception:
+                pass
+            self.gripper = None
+            print('夹爪已关闭')
+
+        print('control_node 资源清理完成')
+
+    def cleanup_and_exit(self):
+        self.cleanup()
+        raise SystemExit(1)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    node = None
+
+    try:
+        node = ObjectToBaseNode()
+
+        def signal_handler(sig, frame):
+            print('\n收到中断信号，正在退出 control_node...')
+            if node is not None:
+                node.running = False
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        node.run()
+
+    except KeyboardInterrupt:
+        print('\n用户中断 control_node')
+
+    except SystemExit:
+        pass
+
+    except Exception as e:
+        print(f'control_node 程序异常: {e}')
+
+    finally:
+        if node is not None:
+            try:
+                node.cleanup()
+            except Exception:
+                pass
+            try:
+                node.destroy_node()
+            except Exception:
+                pass
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
+
+
+if __name__ == '__main__':
+    main()

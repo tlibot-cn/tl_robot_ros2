@@ -1,0 +1,36 @@
+{
+  "version": "6.3.1",
+  "flags": {},
+  "shapes": [
+    {
+      "label": "scissors",
+      "points": [
+        [
+          551.965811965812,
+          405.2991452991453
+        ],
+        [
+          649.4017094017094,
+          548.8888888888889
+        ],
+        [
+          892.1367521367522,
+          403.5897435897436
+        ],
+        [
+          786.1538461538462,
+          248.8888888888889
+        ]
+      ],
+      "group_id": 31,
+      "description": "",
+      "shape_type": "polygon",
+      "flags": {},
+      "mask": null
+    }
+  ],
+  "imagePath": "img_0031.jpg",
+  "imageData": null,
+  "imageHeight": 720,
+  "imageWidth": 1280
+}

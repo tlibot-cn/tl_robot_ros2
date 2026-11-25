@@ -1,0 +1,9 @@
+camera:
+  ros__parameters:
+    rgb_camera.profile: "640x480x15"
+    depth_module.depth_profile: "640x480x15"
+    infra_rgb: false
+    align_depth.enable: true
+    enable_color: true
+    enable_depth: true
+    enable_sync: true

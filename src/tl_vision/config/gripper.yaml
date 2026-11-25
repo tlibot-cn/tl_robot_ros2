@@ -1,0 +1,20 @@
+control_node:
+  ros__parameters:
+    # ── Modbus 配置（通过机械臂 RS485）──
+    gripper_port: 2                     # 机械臂 RS485 端口号（不是USB路径）
+    gripper_slave_id: 1                 # 夹爪 Modbus 从站 ID
+    gripper_baudrate: 115200            # 串口波特率
+
+    # ── 运动参数 ──
+    gripper_speed: 700                  # 夹爪运动速度 (10-1000)
+    gripper_force: 400                  # 夹持力 (100-1000 g)
+    gripper_catch_mode: 0               # 夹取模式: 0=一次夹取, 1=持续夹取
+
+    # ── 开口度配置 ──
+    gripper_open_position: 1000         # 张开位置 (0-1000, 1000≈70mm)
+    gripper_close_position: 0           # 闭合位置 (0-1000, 0≈完全闭合)
+    gripper_max_opening: 1000           # 最大开口度限制 (0-1000)
+    gripper_min_opening: 0              # 最小开口度限制 (0-1000)
+
+    # ── 抓取时序 ──
+    gripper_grasp_wait_duration: 1.5    # 抓取闭合后等待回零的时间（秒）
